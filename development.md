@@ -117,8 +117,35 @@ the shared lyon tessellator to emit `.lvec` geometry. The format contains positi
 vertex colors and coverage; holes, round strokes and the bundled gradients are preserved.
 Gradient colors are adaptively sampled at build time. The TV uploads each mesh lazily once and
 draws with a texture-free GLES2 shader. No SVG parser runs on the TV. The shared tessellator also
-handles font outlines. Collected app PNG/JPEG artwork, wallpaper photos, tile-background images
-and the webOS installation icon remain raster assets. See [assets.md](assets.md) for licenses.
+handles font outlines. Installed app PNG/JPEG/WebP artwork, wallpaper photos, tile-background
+images and the webOS installation icon remain raster assets. See [assets.md](assets.md) for licenses.
+
+### Installed app artwork
+
+TV inventory retains each app's `folderPath`, `largeIcon` and `icon`. Visible cards resolve artwork
+from that metadata and the installed `appinfo.json`, preferring large icons and falling back to
+the regular icon or `icon.png`. Developer, store and system application directories are supported,
+including absolute/`file://` paths and relative resource paths. Curated vector brand logos retain
+their existing display treatment; other apps use their own installed artwork and an automatically
+sampled card colour. Missing, corrupt or unsupported artwork uses the existing generic treatment.
+
+Discovery, bounded file reads, decoding and colour sampling run on a dedicated worker. If the
+jailed app cannot read an asset directly, the native process calls Homebrew Channel's elevated
+`exec` service with the embedded Node 8-compatible `tv/read-app-icon.cjs` reader. It returns bounded
+image bytes without writing collected files or changing filesystem permissions. PNG, JPEG and WebP
+are supported; runtime SVG parsing is not required. Source files are limited to 512 KiB and
+2048×2048 pixels; decoded icons are at most 256×256 with a 16 MiB/256-entry CPU cache. GPU uploads
+stay on the SDL thread and share the existing 48 MiB texture cache. Pending/unavailable icons do
+not block input, and failures are cached until inventory is refreshed.
+
+**Refresh apps** (or desktop F5) invalidates artwork, including previous failures; generation IDs
+discard stale replies. Check newly installed/updated apps and both normal tile and Home-takeover
+launches on a real TV to verify sandbox access. These paths are covered with mocked filesystem
+and worker tests, not live-TV calls in automated checks.
+
+`assets/app-icons.json`, collected images and `assets/icon-colours.json` now serve only desktop
+preview fixtures. The TV package excludes those fixtures and their generated icon/colour maps.
+Adding support for an installed app's icon does not require collecting artwork or changing JSON.
 
 Text reads the bundled TTF's advances, kerning and line metrics lazily. Only needed glyph outlines
 are tessellated in font-em coordinates. Complete text runs are cached in static GPU buffers,

@@ -20,6 +20,7 @@ fn controls(state: &State) -> Vec<crate::state::Control> {
         colors: BTreeMap::new(),
         version: "test".into(),
         metrics: BTreeMap::new(),
+        artwork: crate::app_artwork::Service::new(false),
     };
     let navigation = view::navigation(&assets, state.preferences.language);
     view::scene_with_pill(

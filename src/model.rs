@@ -49,6 +49,8 @@ pub struct App {
     pub title: String,
     pub brand: String,
     pub category: String,
+    #[serde(skip)]
+    pub icon: Option<crate::app_artwork::Source>,
 }
 
 impl App {
@@ -84,6 +86,7 @@ impl App {
             title: title.into(),
             brand: brand.into(),
             category: category.into(),
+            icon: None,
         }
     }
 }

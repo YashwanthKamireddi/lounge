@@ -51,9 +51,11 @@ sources. Original sources remain in `assets/`; no artwork service is contacted o
 | `zdf.svg`         | [ZDF](https://commons.wikimedia.org/wiki/File:ZDF_logo.svg)                                           | ZDF; public-domain logo artwork                                                        |
 | `das-erste.svg`   | [Das Erste](https://commons.wikimedia.org/wiki/File:Das_Erste_2014.svg)                               | ARD; public-domain logo artwork                                                        |
 
-Installed-app PNG/JPEG artwork is collected from the owner's TV. Names and marks remain the
-property of the respective app owners. Luma's folded-light L logo is original artwork; its SVG
-geometry produces the small/large webOS installation icons.
+On TV, installed-app PNG/JPEG/WebP artwork is read from that TV's installed applications at runtime.
+Previously collected PNG/JPEG artwork remains in the repository for desktop previews and is
+excluded from native TV packages. Names and marks remain the property of the respective app
+owners. Luma's folded-light L logo is original artwork; its SVG geometry produces the small/large
+webOS installation icons.
 
 Weather data: [Open-Meteo](https://open-meteo.com/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
