@@ -11,6 +11,9 @@ pub struct Profile {
     previous: Option<Instant>,
     intervals: Vec<f64>,
     cpu: Vec<f64>,
+    build: Vec<f64>,
+    compose: Vec<f64>,
+    slow: Vec<String>,
 }
 #[derive(Serialize)]
 pub struct Timing {
@@ -25,9 +28,26 @@ pub struct Summary {
     pub warmup_frames: usize,
     pub pacing: Option<Timing>,
     pub cpu_submission: Option<Timing>,
+    /// CPU geometry building inside the render call, before any GL command.
+    pub cpu_build: Option<Timing>,
+    /// Scene composition (layout) before rendering.
+    pub compose: Option<Timing>,
+    /// What happened in each frame that missed two refreshes or more.
+    pub slow_frames: Vec<String>,
 }
 impl Profile {
+    #[cfg(test)]
     pub fn record(&mut self, now: Instant, cpu_ms: f64, exclude: bool) {
+        self.record_split(now, cpu_ms, 0., 0., exclude);
+    }
+    pub fn record_split(
+        &mut self,
+        now: Instant,
+        cpu_ms: f64,
+        build_ms: f64,
+        compose_ms: f64,
+        exclude: bool,
+    ) {
         self.presented += 1;
         if self.presented > WARMUP
             && !exclude
@@ -36,8 +56,17 @@ impl Profile {
             self.intervals
                 .push(now.duration_since(previous).as_secs_f64() * 1000.);
             self.cpu.push(cpu_ms);
+            self.build.push(build_ms);
+            self.compose.push(compose_ms);
         }
         self.previous = Some(now);
+    }
+    /// The interval just recorded, when it counted toward the summary.
+    pub fn last_interval(&self) -> Option<f64> {
+        (self.presented > WARMUP).then(|| self.intervals.last().copied()).flatten()
+    }
+    pub fn note_slow(&mut self, note: String) {
+        self.slow.push(note);
     }
     pub fn pause(&mut self) {
         self.previous = None;
@@ -48,6 +77,9 @@ impl Profile {
             warmup_frames: WARMUP,
             pacing: summarize(&self.intervals),
             cpu_submission: summarize(&self.cpu),
+            cpu_build: summarize(&self.build),
+            compose: summarize(&self.compose),
+            slow_frames: self.slow.clone(),
         }
     }
 }

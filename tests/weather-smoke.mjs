@@ -143,7 +143,7 @@ async function scenario(name, script, frames = 210) {
 }
 const forecastCount = () => requests.filter((request) => request.path === '/v1/forecast').length;
 const searchCount = () => requests.filter((request) => request.path === '/v1/search').length;
-const locationPage = 'settings,down,down,down,enter,down,enter';
+const locationPage = 'settings,down,down,enter,down,enter';
 try {
   await run('cargo', ['build', '--locked', '--package', 'luma']);
   await writePreferences();
@@ -173,12 +173,12 @@ try {
   assert.equal(forecastCount(), 1);
   const fahrenheit = await scenario(
     'fahrenheit',
-    'settings,down,down,down,enter,down,down,enter,down,enter,home,await-weather',
+    'settings,down,down,enter,down,down,enter,down,enter,home,await-weather',
   );
   assert.equal(fahrenheit.preferences.temperature_unit, 'fahrenheit');
   assert.equal(fahrenheit.weather.cache.reading.temperature, 14.2);
   assert.equal(forecastCount(), 1);
-  const hidden = await scenario('widget-off', 'settings,down,down,down,enter,enter,home');
+  const hidden = await scenario('widget-off', 'settings,down,down,enter,enter,home');
   assert.equal(hidden.preferences.show_weather, false);
   assert.equal(hidden.preferences.weather_location.name, 'Vienna');
   assert.equal(forecastCount(), 1);
@@ -230,7 +230,7 @@ try {
   );
   const latest = await scenario(
     'latest-search',
-    `${locationPage},type:slow,back,enter,click:900:197,click:1364:726,type:Paris,back,enter,await-search,down,enter`,
+    `${locationPage},type:slow,back,enter,click:900:197,click:1770:294,type:Paris,back,enter,await-search,down,enter`,
   );
   assert.equal(latest.preferences.weather_location.name, 'Paris');
   assert.ok(latest.weather.results.length === 0);

@@ -1,9 +1,7 @@
-use crate::i18n::Language;
 use crate::weather::{Location, Unit};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
-pub const CATEGORIES: [&str; 4] = ["Streaming", "Music", "Gaming", "Utilities"];
 pub const BACKGROUNDS: [(&str, &str); 9] = [
     ("slate", "Slate"),
     ("midnight", "Midnight"),
@@ -74,6 +72,36 @@ pub struct Input {
     pub connected: Option<bool>,
 }
 
+/// The signed-in LG account's profile, as LG Home shows it: a nickname and
+/// the colour of its avatar circle. Nothing else about the account is read.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Profile {
+    pub nick: String,
+    pub color: u32,
+}
+
+impl Profile {
+    /// From LG's account fields; a missing or malformed colour falls back to
+    /// LG's default profile purple.
+    pub fn from_fields(nick: &str, background: Option<&str>) -> Option<Self> {
+        let nick = nick.trim();
+        if nick.is_empty() {
+            return None;
+        }
+        let color = background
+            .and_then(|hex| hex.trim().strip_prefix('#'))
+            .filter(|hex| hex.len() == 6)
+            .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+            .unwrap_or(0x7360e7);
+        Some(Self { nick: nick.chars().take(32).collect(), color })
+    }
+
+    /// The avatar's letter: the nickname's first, upper-cased.
+    pub fn initial(&self) -> String {
+        self.nick.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Inventory {
     pub apps: Vec<App>,
@@ -95,6 +123,8 @@ pub struct Preferences {
     pub hidden: Vec<String>,
     pub background: String,
     pub show_names: bool,
+    /// Bundled Top Shelf art behind the dock; off shows the wallpaper.
+    pub top_shelf_art: bool,
     pub hour_24: bool,
     pub reduced_motion: bool,
     pub input_modes: BTreeMap<String, InputMode>,
@@ -104,8 +134,11 @@ pub struct Preferences {
     pub weather_location: Option<Location>,
     #[serde(deserialize_with = "crate::weather::deserialize_unit")]
     pub temperature_unit: Unit,
-    #[serde(deserialize_with = "crate::i18n::deserialize_language")]
-    pub language: Language,
+    /// Most recently opened apps first; orders the app switcher.
+    pub recent: Vec<String>,
+    /// The profile picture: a file in the avatars folder, or "rotate" for all
+    /// of them in turn. None is the first picture.
+    pub avatar: Option<String>,
 }
 
 impl Default for Preferences {
@@ -115,13 +148,15 @@ impl Default for Preferences {
             hidden: vec![],
             background: "dunes".into(),
             show_names: false,
+            top_shelf_art: false,
             hour_24: false,
             reduced_motion: false,
             input_modes: BTreeMap::new(),
             show_weather: true,
             weather_location: None,
             temperature_unit: Unit::Celsius,
-            language: Language::En,
+            recent: vec![],
+            avatar: None,
         }
     }
 }
@@ -175,6 +210,8 @@ impl Preferences {
             clean(ids);
         }
         clean(&mut self.hidden);
+        clean(&mut self.recent);
+        self.recent.truncate(24);
         self.input_modes.retain(|id, _| valid_app_id(id));
     }
 }

@@ -19,38 +19,47 @@ for (const directory of [
   await fs.mkdir(path.join(out, directory), { recursive: true });
 }
 
-// Decode the existing licensed font, rather than introducing a different font.
-const font = path.join(out, 'font.woff2');
-await fs.copyFile(path.join(source, 'fonts/inter-latin.woff2'), font);
-const decoded = spawnSync('woff2_decompress', [font], { encoding: 'utf8' });
-if (decoded.error || decoded.status !== 0) {
-  throw new Error('Font conversion needs woff2_decompress. Run pnpm assets inside nix develop.', {
-    cause: decoded.error ?? new Error(decoded.stderr),
-  });
+// Font outputs are rebuilt from scratch, so a face no longer generated never ships.
+for (const file of await fs.readdir(out)) {
+  if (file.startsWith('font')) await fs.rm(path.join(out, file));
 }
-await fs.rm(font);
-const cjk = path.join(source, 'fonts/noto-sans-sc.ttf');
-const hangul = path.join(source, 'fonts/noto-sans-kr.ttf');
-try {
-  await fs.access(cjk);
-  await fs.access(hangul);
-} catch {
-  throw new Error('Prepare the bundled Chinese and Korean fonts with pnpm assets:fonts first.');
+// Apple's SF Pro when the owner keeps a copy in untracked local/fonts (it is
+// licensed for Apple platforms, so it is never committed); otherwise Inter
+// (OFL), cut from the official variable font at its text optical size to
+// Latin and Latin Extended, so accented names (Łódź, Pokémon) render.
+const sfPro = path.join(root, 'local/fonts/SF-Pro.ttf');
+const useSfPro = await fs.access(sfPro).then(() => true, () => false);
+if (!useSfPro) {
+  const font = path.join(out, 'font.woff2');
+  await fs.copyFile(path.join(source, 'fonts/inter.woff2'), font);
+  const decoded = spawnSync('woff2_decompress', [font], { encoding: 'utf8' });
+  if (decoded.error || decoded.status !== 0) {
+    throw new Error('Font conversion needs woff2_decompress. Run pnpm assets inside nix develop.', {
+      cause: decoded.error ?? new Error(decoded.stderr),
+    });
+  }
+  await fs.rm(font);
 }
 const weights = spawnSync(
   'python3',
-  [path.join(import.meta.dirname, 'font-weights.py'), out, cjk, hangul],
-  {
-    encoding: 'utf8',
-  },
+  [path.join(import.meta.dirname, 'font-weights.py'), out, ...(useSfPro ? [sfPro] : [])],
+  { encoding: 'utf8' },
 );
 if (weights.error || weights.status !== 0) {
   throw new Error('Font weights need Python/fontTools. Run pnpm assets inside nix develop.', {
     cause: weights.error ?? new Error(weights.stderr),
   });
 }
-await fs.copyFile(path.join(source, 'fonts/ofl.txt'), path.join(out, 'font-license.txt'));
-await fs.copyFile(path.join(source, 'fonts/noto-ofl.txt'), path.join(out, 'font-cjk-license.txt'));
+if (useSfPro) {
+  await fs.writeFile(
+    path.join(out, 'font-license.txt'),
+    'SF Pro is copyright Apple Inc. and licensed by Apple for its platforms. This copy was\n' +
+      'supplied by the device owner from local/fonts for personal use; it is not part of Luma.\n',
+  );
+} else {
+  await fs.copyFile(path.join(source, 'fonts/ofl.txt'), path.join(out, 'font-license.txt'));
+}
+console.log(`Font: ${useSfPro ? 'SF Pro (local/fonts)' : 'Inter'}`);
 
 for (const file of await fs.readdir(path.join(source, 'wallpapers'))) {
   if (!/\.(jpg|svg)$/.test(file)) continue;
@@ -89,16 +98,36 @@ for (const file of await fs.readdir(path.join(source, 'wallpapers'))) {
       ]);
     }
     const data = await image.linear(brightness).png().toBuffer();
+    if (scale === 1) {
+      // Glass/backdrop blur from the clean photo (Apple blurs the image itself,
+      // then veils it), not from the vignetted wallpaper, which goes near-black.
+      await sharp(data)
+        .resize(640, 360)
+        .blur(12)
+        // Lossless: JPEG blocks and banding show once a blur is stretched 3x.
+        .png({ compressionLevel: 9 })
+        .toFile(path.join(out, 'wallpapers', `${id}-glass.png`));
+    }
     const shaded = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 1920 1080"><defs>
     <linearGradient id="v" x2="0" y2="1"><stop stop-color="#0d1013" stop-opacity=".24"/><stop offset=".19" stop-color="#0e1115" stop-opacity=".08"/><stop offset=".35" stop-color="#0f1114" stop-opacity=".35"/><stop offset=".63" stop-color="#111317" stop-opacity=".86"/><stop offset=".85" stop-color="#17191d" stop-opacity=".92157"/><stop offset="1" stop-color="#17191d" stop-opacity=".96078"/></linearGradient>
     <linearGradient id="h"><stop stop-color="#111417" stop-opacity=".42"/><stop offset=".75" stop-color="#111417" stop-opacity="0"/></linearGradient></defs>
     <path fill="#17191c" d="M0 0h1920v1080H0z"/><image href="data:image/png;base64,${data.toString('base64')}" width="1920" height="1080" opacity=".92"/><path fill="url(#h)" d="M0 0h1920v1080H0z"/><path fill="url(#v)" d="M0 0h1920v1080H0z"/></svg>`;
     // This generated SVG embeds a trusted bundled photograph; its data URL can
     // exceed libxml's default 10 MiB attribute limit at 4K.
-    await sharp(Buffer.from(shaded), { unlimited: true })
-      .jpeg({ quality: 96 })
-      .toFile(path.join(out, 'wallpapers', `${id}${scale === 2 ? '@2x' : ''}.jpg`));
+    const wallpaper = path.join(out, 'wallpapers', `${id}${scale === 2 ? '@2x' : ''}.jpg`);
+    await sharp(Buffer.from(shaded), { unlimited: true }).jpeg({ quality: 96 }).toFile(wallpaper);
+    if (scale === 1) {
+      // Home glass (dock, time pill) blurs the wallpaper exactly as shown,
+      // shading included, so it reads as glass over the photo, not a slab.
+      await sharp(wallpaper)
+        .resize(640, 360)
+        .blur(12)
+        .png({ compressionLevel: 9 })
+        .toFile(path.join(out, 'wallpapers', `${id}-home-glass.png`));
+    }
   }
+  // The pre-blurred "glass" backdrop is written above from the clean photo:
+  // panels sample it at their own screen position (no runtime blur).
   await sharp(input)
     .resize(480, 270, { fit: 'cover' })
     .jpeg({ quality: 82 })
@@ -117,6 +146,56 @@ for (const [id, relative] of Object.entries(map)) {
   }
 }
 await fs.writeFile(path.join(out, 'icons.json'), `${JSON.stringify(icons, null, 2)}\n`);
+
+// Optional owner-supplied full-bleed card artwork in untracked local/tiles/,
+// named by exact app ID. Rendered at 2x the 270x154.4 card, as GLES2 has no mipmaps here.
+const tiles = path.join(out, 'tiles');
+await fs.rm(tiles, { recursive: true, force: true });
+await fs.mkdir(tiles);
+const tileColors = {};
+for (const file of await fs.readdir(path.join(root, 'local/tiles')).catch(() => [])) {
+  const id = file.replace(/\.(png|jpe?g)$/i, '');
+  if (id === file || !/^[a-zA-Z0-9._-]+$/.test(id)) continue;
+  const input = sharp(path.join(root, 'local/tiles', file));
+  const { width, height } = await input.metadata();
+  const [w, h] = [540, 309];
+  // Square store icons keep the whole mark; their edge colour fills the wider card.
+  const image =
+    width / height > 1.2
+      ? input.resize(w, h, { fit: 'cover', kernel: 'lanczos3' })
+      : input.resize({ height: h, kernel: 'lanczos3' }).extend({
+          left: Math.floor((w - h) / 2),
+          right: Math.ceil((w - h) / 2),
+          extendWith: 'copy',
+        });
+  await image.png({ compressionLevel: 9 }).toFile(path.join(tiles, `${id}.png`));
+  const { dominant } = await sharp(path.join(tiles, `${id}.png`)).stats();
+  tileColors[id] = [dominant.r, dominant.g, dominant.b];
+}
+await fs.writeFile(path.join(out, 'tiles.json'), `${JSON.stringify(tileColors, null, 2)}\n`);
+
+// Optional owner-supplied Top Shelf art in untracked local/heroes/, named by
+// app ID. 1280x720 keeps each texture at 3.7 MB on the TV.
+const heroes = path.join(out, 'heroes');
+await fs.rm(heroes, { recursive: true, force: true });
+await fs.mkdir(heroes);
+const heroIds = [];
+for (const file of await fs.readdir(path.join(root, 'local/heroes')).catch(() => [])) {
+  const id = file.replace(/\.(png|jpe?g)$/i, '');
+  if (id === file || !/^[a-zA-Z0-9._-]+$/.test(id)) continue;
+  await sharp(path.join(root, 'local/heroes', file))
+    .resize(1280, 720, { fit: 'cover', kernel: 'lanczos3' })
+    .jpeg({ quality: 88 })
+    .toFile(path.join(heroes, `${id}.jpg`));
+  // The dock's glass blurs whatever is behind it, so each hero has a backdrop.
+  await sharp(path.join(heroes, `${id}.jpg`))
+    .resize(640, 360)
+    .blur(12)
+    .png({ compressionLevel: 9 })
+    .toFile(path.join(heroes, `${id}-glass.png`));
+  heroIds.push(id);
+}
+await fs.writeFile(path.join(out, 'heroes.json'), `${JSON.stringify(heroIds.sort())}\n`);
 await fs.copyFile(path.join(source, 'icon-colours.json'), path.join(out, 'colors.json'));
 await fs.writeFile(
   path.join(out, 'version.txt'),
@@ -125,7 +204,7 @@ await fs.writeFile(
 
 const surfaces = {
   generic: ['#4e5c6b', '#243c4e'],
-  'live-tv': ['#192a43', '#0d1628'],
+  'live-tv': ['#ff5a4e', '#c8102e'],
   netflix: ['#141414', '#141414'],
   youtube: ['#0f0f0f', '#0f0f0f'],
   'apple-tv': ['#252525', '#080808'],
@@ -141,7 +220,7 @@ const surfaces = {
   kodi: ['#0a749b', '#08445e'],
   moonlight: ['#435d8f', '#252e59'],
   gaming: ['#435d8f', '#252e59'],
-  browser: ['#192a43', '#0d1628'],
+  browser: ['#3a8dff', '#0b4bd1'],
   'hbo-max': ['#181818', '#080808'],
   'paramount-plus': ['#075bda', '#00298e'],
   peacock: ['#171717', '#080808'],
@@ -150,7 +229,7 @@ const surfaces = {
   twitch: ['#6330b8', '#32165c'],
   dazn: ['#252623', '#10110e'],
   'rakuten-tv': ['#bf143a', '#620c20'],
-  'apple-music': ['#e9415e', '#a91c38'],
+  'apple-music': ['#252525', '#080808'],
   'amazon-music': ['#183c4a', '#102128'],
   'bbc-iplayer': ['#4a162e', '#230b16'],
   itvx: ['#24341b', '#111a0c'],

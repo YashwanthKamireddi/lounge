@@ -208,6 +208,8 @@ fn visible_cards_switch_from_fallback_to_installed_artwork_without_an_icon_map()
         colors: Default::default(),
         version: "test".into(),
         metrics: Default::default(),
+        tiles: Default::default(),
+        heroes: Default::default(),
         artwork: Service::with_loader(true, |_| {
             decode(&encoded(ImageFormat::Png, 32, 32, [24, 40, 56, 255]))
         }),
@@ -224,13 +226,7 @@ fn visible_cards_switch_from_fallback_to_installed_artwork_without_an_icon_map()
         None,
     );
     let scene = || {
-        crate::view::scene_with_pill(
-            &state,
-            &assets,
-            800.,
-            100.,
-            time::OffsetDateTime::UNIX_EPOCH,
-        )
+        crate::view::scene(&state, &assets, time::OffsetDateTime::UNIX_EPOCH)
     };
     assert!(
         !scene()
@@ -254,3 +250,88 @@ fn visible_cards_switch_from_fallback_to_installed_artwork_without_an_icon_map()
         .unwrap();
     assert_eq!(image.color, [24, 40, 56]);
 }
+
+#[test]
+fn refresh_keeps_shown_icons_and_disk_cache_serves_them_without_a_read() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let worker_calls = calls.clone();
+    let service = Service::with_loader(true, move |_| {
+        worker_calls.fetch_add(1, Ordering::SeqCst);
+        decode(&encoded(ImageFormat::Png, 2, 2, [9, 0, 0, 255]))
+    });
+    let source = Source::new("sample", &json!({}));
+    assert!(service.get(&source).is_none());
+    poll_until(&service, || service.get(&source).is_some());
+    // An inventory refresh must not drop an icon already on screen.
+    service.refresh();
+    assert!(service.get(&source).is_some());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    let directory = std::env::temp_dir().join(format!("luma-icons-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    let path = disk_path(&directory, &source);
+    let artwork = decode(&encoded(ImageFormat::Png, 2, 2, [7, 0, 0, 255])).unwrap();
+    std::fs::create_dir_all(&directory).unwrap();
+    artwork.pixels.save_with_format(&path, ImageFormat::Png).unwrap();
+    let cached = load_cached(Some(&directory), &source).unwrap();
+    assert_eq!(cached.pixels.get_pixel(0, 0)[0], 7);
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn disk_cache_refuses_ids_that_could_leave_its_folder() {
+    let directory = std::env::temp_dir().join(format!("luma-icons-guard-{}", std::process::id()));
+    let source = Source::new("../escape", &json!({}));
+    assert!(load_cached(Some(&directory), &source).is_none());
+    assert!(!directory.exists());
+}
+
+#[test]
+fn failed_reads_retry_by_themselves_with_growing_gaps() {
+    assert_eq!(retry_delay(1), Duration::from_secs(15));
+    assert_eq!(retry_delay(2), Duration::from_secs(30));
+    assert_eq!(retry_delay(9), Duration::from_secs(600));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let worker_calls = calls.clone();
+    let service = Service::with_loader(true, move |_| {
+        // Fail the first read (a service timeout), succeed after.
+        if worker_calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            None
+        } else {
+            decode(&encoded(ImageFormat::Png, 2, 2, [5, 0, 0, 255]))
+        }
+    });
+    let source = Source::new("sample", &json!({}));
+    assert!(service.get(&source).is_none());
+    poll_until(&service, || service.cache.borrow().entries[&source].image.is_some());
+    // Bring the retry forward rather than waiting 15 s in a test.
+    service.cache.borrow_mut().entries.get_mut(&source).unwrap().retry_at =
+        Some(std::time::Instant::now());
+    poll_until(&service, || service.get(&source).is_some());
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn an_app_update_gets_a_fresh_icon_cache_key() {
+    let directory = Path::new("/tmp/luma-icons");
+    let old = Source::new("sample", &json!({"version": "1.0.0"}));
+    let new = Source::new("sample", &json!({"version": "1.1.0"}));
+    assert_ne!(old, new);
+    assert_ne!(disk_path(directory, &old), disk_path(directory, &new));
+}
+
+#[test]
+fn transparent_icons_whose_logo_touches_the_edge_keep_the_neutral_card() {
+    let mut image = image::RgbaImage::new(48, 48);
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        // A red logo across the middle that reaches the left and right edges.
+        *pixel = if (20..28).contains(&y) {
+            image::Rgba([220, 20, 20, 255])
+        } else {
+            image::Rgba([0, 0, 0, 0])
+        };
+        let _ = x;
+    }
+    assert_eq!(background(&image), [20; 3]);
+}
+

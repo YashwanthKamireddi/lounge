@@ -174,3 +174,55 @@ pub fn save(path: &Path, preferences: &Preferences) -> Result<(), String> {
     fs::rename(&temporary, path)
         .map_err(|e| format!("Could not replace preferences file {}: {e}", path.display()))
 }
+
+/// Saves preferences off the drawing thread: on the TV a write to its flash
+/// can take long enough to stall a frame. Only the newest copy is written
+/// (rapid changes collapse into one write); failures come back on `errors`,
+/// and finishing waits for the last write.
+pub struct Writer {
+    sender: Option<std::sync::mpsc::Sender<Preferences>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    pub errors: std::sync::mpsc::Receiver<String>,
+}
+
+impl Writer {
+    pub fn new(path: std::path::PathBuf) -> Self {
+        let (sender, requests) = std::sync::mpsc::channel::<Preferences>();
+        let (failures, errors) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            while let Ok(mut preferences) = requests.recv() {
+                while let Ok(newer) = requests.try_recv() {
+                    preferences = newer;
+                }
+                if let Err(error) = save(&path, &preferences) {
+                    let _ = failures.send(error);
+                }
+            }
+        });
+        Self {
+            sender: Some(sender),
+            thread: Some(thread),
+            errors,
+        }
+    }
+
+    pub fn save(&self, preferences: &Preferences) {
+        if let Some(sender) = &self.sender {
+            let _ = sender.send(preferences.clone());
+        }
+    }
+
+    /// Writes whatever is still queued, then stops.
+    pub fn finish(&mut self) {
+        self.sender = None;
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl Drop for Writer {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}

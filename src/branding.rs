@@ -28,7 +28,7 @@ impl Brand {
             "hbo-max" | "bbc-iplayer" | "crunchyroll" | "twitch" | "dazn" | "paramount-plus"
             | "channel-4" | "wavve" => (0.70, 64.),
             "now-tv" => (0.70, 52.),
-            "live-tv" | "browser" => (0.62, 68.),
+            "live-tv" | "browser" => (0.62, 100.),
             _ => (0.70, 56.),
         }
     }
@@ -101,7 +101,7 @@ pub const BRANDS: &[Brand] = &[
     music(
         "apple-music",
         "Apple Music",
-        &["com.apple.music", "com.apple.ampl"],
+        &["com.apple.applemusic", "com.apple.music", "com.apple.ampl"],
     ),
     music(
         "amazon-music",

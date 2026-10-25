@@ -1,7 +1,7 @@
 use crate::{
     model::{App, Input, InputMode, Preferences, demo_inventory},
     platform::{normalize_apps, normalize_inputs},
-    state::{Direction, Effect, Overlay, Page, State, Target},
+    state::{Direction, Effect, Overlay, Page, State, Target, TextField},
     storage, view,
 };
 use serde_json::json;
@@ -20,38 +20,47 @@ fn controls(state: &State) -> Vec<crate::state::Control> {
         colors: BTreeMap::new(),
         version: "test".into(),
         metrics: BTreeMap::new(),
+        tiles: Default::default(),
+        heroes: Default::default(),
         artwork: crate::app_artwork::Service::new(false),
     };
-    let navigation = view::navigation(&assets, state.preferences.language);
-    view::scene_with_pill(
-        state,
-        &assets,
-        navigation.items[state.page_index()].x,
-        navigation.items[state.page_index()].w,
-        time::OffsetDateTime::UNIX_EPOCH,
-    )
-    .controls
+    view::scene(state, &assets, time::OffsetDateTime::UNIX_EPOCH).controls
 }
 
 #[test]
-fn remote_routes_from_header_and_back_through_settings() {
+fn remote_routes_through_the_tvos_home_and_settings() {
     let mut state = ready();
-    state.direction(Direction::Down, &controls(&state));
     assert_eq!(state.focus, Target::App("netflix".into()));
+    // No tab bar, and the time pill only shows: Up from a dock app without
+    // Top Shelf art stays on it.
     state.direction(Direction::Up, &controls(&state));
-    assert_eq!(state.focus, Target::Nav(0));
-    state.open(2);
+    assert_eq!(state.focus, Target::App("netflix".into()));
+    // With Top Shelf art, Up shows it full screen (Up again stays there);
+    // Down restores the dock.
+    state.heroes = vec!["netflix".into()];
+    state.preferences.top_shelf_art = true;
+    state.direction(Direction::Up, &controls(&state));
+    assert!(state.expanded && state.scroll < 0.);
+    state.direction(Direction::Up, &controls(&state));
+    assert!(state.expanded);
+    assert_eq!(state.focus, Target::App("netflix".into()));
     state.direction(Direction::Down, &controls(&state));
+    assert!(!state.expanded && state.scroll == 0.);
+    state.focus = Target::App(crate::state::SETTINGS_TILE.into());
+    assert!(state.activate().is_empty());
+    assert_eq!(state.page, Page::Settings);
     assert_eq!(state.focus, Target::Sidebar(0));
     state.activate();
     assert_eq!(state.focus, Target::Setting(0));
     assert!(state.back().is_empty());
     assert_eq!(state.focus, Target::Sidebar(0));
+    // Up at the top of Settings stays put rather than reaching a removed tab bar.
+    state.direction(Direction::Up, &controls(&state));
+    assert_eq!(state.focus, Target::Sidebar(0));
     state.back();
-    assert_eq!(state.focus, Target::Nav(2));
-    state.back();
-    assert_eq!(state.page, Page::Home);
-    assert_eq!(state.back(), vec![Effect::Quit]);
+    assert_eq!(state.page, Page::Apps);
+    // Back on Home opens the app switcher rather than quitting.
+    assert_eq!(state.back(), vec![Effect::Running]);
 }
 
 #[test]
@@ -64,26 +73,20 @@ fn hiding_restores_nearest_app_and_hidden_filter_can_restore_it() {
     assert_eq!(state.activate(), vec![Effect::Save]);
     assert!(state.preferences.hidden.contains(&"netflix".into()));
     assert_eq!(state.focus, Target::App("youtube.leanback.v4".into()));
-    state.filter = 5;
-    assert_eq!(state.apps().len(), 1);
-    state.focus = Target::App("netflix".into());
-    state.options();
-    state.focus = Target::Option(1);
-    state.activate();
-    assert!(state.preferences.hidden.is_empty());
-    assert_eq!(state.focus, Target::App("netflix".into()));
-    assert_eq!(state.filter, 0);
+    assert!(state.apps().iter().all(|app| app.id != "netflix"));
 }
 
 #[test]
 fn reorder_persists_order_and_keeps_selected_identity() {
     let mut state = ready();
+    state.open(1);
     state.focus = Target::App("netflix".into());
+    // Holding OK on an app starts Move at once, as on tvOS.
     state.hold();
-    assert_eq!(
-        state.direction(Direction::Right, &controls(&state)),
-        vec![Effect::Save]
-    );
+    assert_eq!(state.moving.as_deref(), Some("netflix"));
+    // Arrows write nothing to disk; the order is saved once Move ends.
+    assert!(state.direction(Direction::Right, &controls(&state)).is_empty());
+    assert!(state.unsaved_order);
     assert_eq!(
         &state.preferences.favorites(&state.inventory.apps)[..2],
         &["youtube.leanback.v4", "netflix"]
@@ -91,29 +94,31 @@ fn reorder_persists_order_and_keeps_selected_identity() {
     assert_eq!(state.focus, Target::App("netflix".into()));
     assert!(state.back().is_empty());
     assert!(state.moving.is_none());
+    assert!(state.unsaved_order, "saving falls to the main loop once Move ends");
 }
 
 #[test]
-fn keyboard_is_modal_and_back_preserves_then_clears_search() {
+fn search_is_modal_filters_live_and_leaves_home_unfiltered() {
     let mut state = ready();
     state.open(1);
-    state.focus = Target::Search;
+    state.focus = Target::App(crate::state::SEARCH_TILE.into());
     state.activate();
     assert!(
         controls(&state)
             .iter()
-            .all(|c| matches!(c.target, Target::Key(_) | Target::CloseDialog))
+            // Keys plus live result cards; Back dismisses, as on tvOS.
+            .all(|c| matches!(c.target, Target::Key(_) | Target::App(_)))
     );
     state.text("netflix");
     state.delete();
     state.text("x");
-    state.back();
-    assert_eq!(state.query, "netflix");
-    assert_eq!(state.focus, Target::Search);
     assert_eq!(state.apps().len(), 1);
     state.back();
-    assert!(state.query.is_empty());
-    assert_eq!(state.focus, Target::Nav(1));
+    // The last search is kept for next time; Home shows every app again and
+    // focus returns to the Search tile.
+    assert_eq!(state.query, "netflix");
+    assert_eq!(state.focus, Target::App(crate::state::SEARCH_TILE.into()));
+    assert!(state.apps().len() > 1);
     assert_eq!(state.page, Page::Apps);
 }
 
@@ -124,9 +129,15 @@ fn partial_refresh_preserves_valid_inputs_and_never_invents_tv_apps() {
         crate::model::Inventory::default(),
         Some("Inputs unavailable".into()),
     );
-    assert!(state.inventory.apps.is_empty());
+    // Only Luma's own Settings/Search and input tiles remain; no TV app is made up.
+    assert!(
+        state
+            .inventory
+            .apps
+            .iter()
+            .all(|app| app.brand.starts_with("luma-"))
+    );
     assert_eq!(state.inventory.inputs.len(), 3);
-    assert_eq!(state.first_content(), Target::Browse);
 }
 
 #[test]
@@ -251,8 +262,8 @@ fn cancelling_options_preserves_identity_and_does_not_save() {
     state.focus = Target::App("netflix".into());
     state.options();
     assert!(matches!(state.overlay, Some(Overlay::Options { .. })));
-    state.focus = Target::CloseDialog;
-    assert!(state.activate().is_empty());
+    // tvOS context menus have no close button: Back cancels.
+    assert!(state.back().is_empty());
     assert_eq!(state.focus, Target::App("netflix".into()));
     assert!(state.overlay.is_none());
 }
@@ -264,7 +275,8 @@ fn pointer_focus_does_not_scroll_the_clicked_control() {
     state.scroll = 150.;
     state.pointer_focus(Target::App("netflix".into()));
     assert_eq!(state.scroll, 150.);
-    state.focus(Target::Nav(1), &controls(&state));
+    // Remote focus on the dock row scrolls the grid back to the top.
+    state.focus(Target::App("netflix".into()), &controls(&state));
     assert_eq!(state.scroll, 0.);
 }
 
@@ -288,25 +300,64 @@ fn reordering_skips_hidden_and_unavailable_favorite_slots() {
         "amazon".into(),
     ]);
     state.preferences.hidden.push("youtube.leanback.v4".into());
+    state.open(1);
     state.focus = Target::App("netflix".into());
-    state.hold();
+    // Move from the options menu; the order becomes exactly what is shown.
+    state.options();
+    state.focus = Target::Option(0);
+    state.activate();
     state.direction(Direction::Right, &controls(&state));
-    assert_eq!(
-        state.preferences.favorites.unwrap(),
-        vec!["amazon", "missing", "youtube.leanback.v4", "netflix"]
-    );
+    let order = state.preferences.favorites.clone().unwrap();
+    assert_eq!(&order[..2], &["amazon", "netflix"]);
+    assert!(!order.contains(&"missing".into()));
+    assert!(state.apps().iter().all(|app| app.id != "youtube.leanback.v4"));
     assert_eq!(state.focus, Target::App("netflix".into()));
 }
 
 #[test]
-fn focused_navigation_tabs_switch_pages_immediately() {
+fn home_key_closes_settings_and_keeps_focus_on_return() {
     let mut state = ready();
-    state.direction(Direction::Right, &controls(&state));
-    assert_eq!(state.page, Page::Apps);
-    assert_eq!(state.focus, Target::Nav(1));
-    state.direction(Direction::Right, &controls(&state));
-    assert_eq!(state.page, Page::Settings);
-    assert_eq!(state.focus, Target::Nav(2));
+    // Back from an app with nothing open: the home stays as it was left.
+    state.open(1);
+    state.focus = Target::App("netflix".into());
+    state.home_key(false);
+    assert_eq!(state.focus, Target::App("netflix".into()));
+    // Home pressed inside Settings: Settings closes onto the home screen.
+    state.open(2);
+    state.focus = Target::Setting(1);
+    state.home_key(true);
+    assert_eq!(state.page, crate::state::Page::Apps);
+    assert!(state.subpage.is_none() && state.overlay.is_none());
+    // Home pressed mid-Move ends Move.
+    state.focus = Target::App("netflix".into());
+    state.hold();
+    assert!(state.moving.is_some());
+    state.home_key(true);
+    assert!(state.moving.is_none());
+}
+
+#[test]
+fn hidden_apps_come_back_from_general_settings() {
+    let mut state = ready();
+    state.open(2);
+    state.section = 0;
+    state.focus = Target::Setting(0);
+    assert!(!controls(&state).iter().any(|c| c.target == Target::Setting(7)));
+    state.preferences.hidden = vec!["netflix".into(), "youtube.leanback.v4".into()];
+    assert!(controls(&state).iter().any(|c| c.target == Target::Setting(7)));
+    state.focus = Target::Setting(7);
+    state.activate();
+    assert_eq!(state.subpage, Some(crate::state::Subpage::Hidden));
+    assert_eq!(state.focus, Target::Choice(0));
+    // Showing one keeps the list open on the next.
+    assert_eq!(state.activate(), vec![Effect::Save]);
+    assert_eq!(state.preferences.hidden, vec!["youtube.leanback.v4".to_string()]);
+    assert_eq!(state.focus, Target::Choice(0));
+    // Showing the last closes it; focus lands on the row below the gone one.
+    assert_eq!(state.activate(), vec![Effect::Save]);
+    assert!(state.preferences.hidden.is_empty());
+    assert!(state.subpage.is_none());
+    assert_eq!(state.focus, Target::Setting(3));
 }
 
 #[test]
@@ -367,35 +418,6 @@ fn background_entry_restores_the_applied_background() {
 }
 
 #[test]
-fn categories_and_search_have_clear_actions_and_conditional_hidden_control() {
-    let mut state = ready();
-    state.open(1);
-    assert!(
-        !controls(&state)
-            .iter()
-            .any(|c| c.target == Target::Filter(5))
-    );
-    state.focus = Target::Search;
-    state.direction(Direction::Left, &controls(&state));
-    assert_eq!(state.focus, Target::Filter(4));
-    state.preferences.hidden.push("netflix".into());
-    state.focus = Target::Search;
-    state.direction(Direction::Left, &controls(&state));
-    assert_eq!(state.focus, Target::Filter(5));
-    state.activate();
-    assert_eq!(state.apps().len(), 1);
-    state.focus = Target::ClearFilter;
-    state.activate();
-    assert_eq!(state.filter, 0);
-    assert_eq!(state.focus, Target::Filter(1));
-    state.query = "YouTube".into();
-    state.focus = Target::ClearSearch;
-    state.activate();
-    assert!(state.query.is_empty());
-    assert_eq!(state.focus, Target::Search);
-}
-
-#[test]
 fn a_notice_does_not_escape_modal_focus_and_closing_restores_the_app() {
     let mut state = ready();
     state.open(1);
@@ -405,8 +427,9 @@ fn a_notice_does_not_escape_modal_focus_and_closing_restores_the_app() {
     assert!(
         controls(&state)
             .iter()
-            .all(|c| matches!(c.target, Target::Option(_) | Target::CloseDialog))
+            .all(|c| matches!(c.target, Target::Option(_)))
     );
+    // Move and Hide: Hide is the last row.
     state.focus = Target::Option(1);
     state.direction(Direction::Down, &controls(&state));
     assert_eq!(state.focus, Target::Option(1));
@@ -415,32 +438,26 @@ fn a_notice_does_not_escape_modal_focus_and_closing_restores_the_app() {
 }
 
 #[test]
-fn remote_toolbar_focus_normalizes_scroll_but_hover_does_not() {
+fn long_captions_stay_within_two_lines_and_clear_the_next_row() {
     let mut state = ready();
     state.open(1);
-    state.scroll = 100.;
-    state.pointer_focus(Target::Filter(1));
-    assert_eq!(state.scroll, 100.);
-    state.focus(Target::Filter(2), &controls(&state));
-    assert_eq!(state.scroll, 0.);
-}
-
-#[test]
-fn long_captions_expand_rows_without_overlapping_the_next_row() {
-    let mut state = ready();
-    state.open(1);
-    state.inventory.apps.iter_mut().find(|app| app.id == "netflix").unwrap().title = "A very long installed application title that needs more than two lines to remain fully readable".into();
+    // The first app of the grid's first row, and the one below it.
+    let columns = crate::state::APPS_COLUMNS;
+    let id = state.apps()[columns].id.clone();
+    state.inventory.apps.iter_mut().find(|app| app.id == id).unwrap().title = "A very long installed application title that needs more than two lines to remain fully readable".into();
+    state.focus = Target::App(id.clone());
     let targets = controls(&state);
     let title = targets
         .iter()
-        .find(|c| c.target == Target::App("netflix".into()))
+        .find(|c| c.target == Target::App(id.clone()))
         .unwrap();
-    let next_id = state.apps()[6].id.clone();
+    let next_id = state.apps()[2 * columns].id.clone();
     let next = targets
         .iter()
         .find(|c| c.target == Target::App(next_id.clone()))
         .unwrap();
-    assert!(title.rect.h > 240.);
+    // The tile face (194) plus a caption of at most two lines.
+    assert!(title.rect.h > 194. && title.rect.h <= 194. + 26. + 60.);
     assert!(next.rect.y > title.rect.y + title.rect.h);
 }
 
@@ -457,26 +474,6 @@ fn reduced_motion_disables_panel_wallpaper_and_notification_animation() {
     state.activate();
     state.notify("Saved");
     assert!(!state.animating());
-}
-
-#[test]
-fn pinning_a_hidden_app_restores_it_and_leaves_hidden_when_empty() {
-    let mut state = ready();
-    state.open(1);
-    state.filter = 5;
-    state.preferences.hidden.push("org.jellyfin.webos".into());
-    state.focus = Target::App("org.jellyfin.webos".into());
-    state.options();
-    state.activate();
-    assert!(state.preferences.hidden.is_empty());
-    assert_eq!(state.filter, 0);
-    assert!(
-        state
-            .preferences
-            .favorites(&state.inventory.apps)
-            .contains(&"org.jellyfin.webos".into())
-    );
-    assert_eq!(state.focus, Target::App("org.jellyfin.webos".into()));
 }
 
 #[test]
@@ -566,59 +563,10 @@ fn removing_weather_location_clears_cache_and_cancels_pending_results() {
 }
 
 #[test]
-fn language_selection_restores_its_parent_and_is_saved_with_preferences() {
-    let mut state = ready();
-    state.open(2);
-    state.focus = Target::Setting(4);
-    state.direction(Direction::Right, &controls(&state));
-    assert_eq!(state.subpage, Some(crate::state::Subpage::Language));
-    assert_eq!(state.focus, Target::Choice(0));
-    state.direction(Direction::Down, &controls(&state));
-    assert_eq!(state.activate(), vec![Effect::Save]);
-    assert_eq!(state.preferences.language, crate::i18n::Language::De);
-    assert_eq!(state.focus, Target::Setting(4));
-    state.activate();
-    state.direction(Direction::Left, &controls(&state));
-    assert_eq!(state.focus, Target::Setting(4));
-}
-
-#[test]
-fn remote_can_select_and_restore_every_language() {
-    for (index, language) in crate::i18n::Language::ALL.into_iter().enumerate() {
-        let mut state = ready();
-        state.open(2);
-        state.focus = Target::Setting(4);
-        state.activate();
-        for _ in 0..index {
-            state.direction(Direction::Down, &controls(&state));
-        }
-        assert_eq!(state.focus, Target::Choice(index));
-        assert_eq!(state.activate(), vec![Effect::Save]);
-        assert_eq!(state.preferences.language, language);
-        assert_eq!(state.focus, Target::Setting(4));
-
-        let saved = serde_json::to_value(&state.preferences).unwrap();
-        let mut restored = State::new(serde_json::from_value(saved).unwrap());
-        restored.open(2);
-        restored.focus = Target::Setting(4);
-        restored.activate();
-        assert_eq!(restored.preferences.language, language);
-        assert_eq!(restored.focus, Target::Choice(index));
-        restored.direction(Direction::Down, &controls(&restored));
-        assert_eq!(
-            restored.focus,
-            Target::Choice((index + 1) % crate::i18n::Language::ALL.len())
-        );
-    }
-}
-
-#[test]
-fn unsupported_language_preferences_recover_without_losing_other_choices() {
-    let preferences: Preferences = serde_json::from_value(
-        json!({"language":"unknown","favorites":["netflix"],"show_names":true}),
-    )
-    .unwrap();
-    assert_eq!(preferences.language, crate::i18n::Language::En);
+fn stored_language_preferences_load_without_losing_other_choices() {
+    let preferences: Preferences =
+        serde_json::from_value(json!({"language":"de","favorites":["netflix"],"show_names":true}))
+            .unwrap();
     assert!(preferences.show_names);
     assert_eq!(preferences.favorites, Some(vec!["netflix".into()]));
 }
@@ -701,4 +649,222 @@ fn known_app_ids_preserve_the_curated_brands_and_categories() {
             "Known app {id} must retain its curated brand and category"
         );
     }
+}
+
+#[test]
+fn number_keys_open_the_matching_visible_favourite() {
+    let mut state = ready();
+    let favourites: Vec<String> = state
+        .preferences
+        .favorites(&state.inventory.apps)
+        .into_iter()
+        .filter(|id| state.inventory.apps.iter().any(|app| &app.id == id))
+        .collect();
+    assert_eq!(
+        state.quick_launch(0),
+        vec![Effect::Launch(favourites[0].clone())]
+    );
+    state.preferences.hidden.push(favourites[0].clone());
+    assert_eq!(
+        state.quick_launch(0),
+        vec![Effect::Launch(favourites[1].clone())]
+    );
+    assert!(state.quick_launch(500).is_empty());
+}
+
+#[test]
+fn move_never_starts_on_a_hidden_app() {
+    let mut state = ready();
+    state.open(1);
+    state.preferences.hidden.push("org.jellyfin.webos".into());
+    let before = state.preferences.favorites.clone();
+    state.start_move("org.jellyfin.webos");
+    assert!(state.moving.is_none());
+    assert_eq!(state.preferences.favorites, before);
+}
+
+#[test]
+fn switcher_closes_every_app_safely_and_back_returns_home_at_once() {
+    let mut state = ready();
+    state.open(1);
+    let home = state.focus.clone();
+    state.open_switcher(vec!["netflix".into(), "youtube.leanback.v4".into()]);
+    assert_eq!(state.focus, Target::Switch(0));
+    // Close both: the second close empties the list without panicking.
+    assert_eq!(state.direction(Direction::Up, &[]), vec![Effect::Close("netflix".into())]);
+    assert!(state.switcher.as_ref().unwrap().reflow.is_some());
+    assert_eq!(
+        state.direction(Direction::Up, &[]),
+        vec![Effect::Close("youtube.leanback.v4".into())]
+    );
+    // The last window keeps flying while the home already has focus.
+    assert_eq!(state.focus, home);
+    assert!(state.switcher.as_ref().unwrap().dismissed.is_some());
+    // Keys now reach the home, not the fading switcher.
+    state.direction(Direction::Right, &controls(&state));
+    assert_ne!(state.focus, Target::Switch(0));
+
+    let mut state = ready();
+    state.open(1);
+    let home = state.focus.clone();
+    state.open_switcher(vec!["netflix".into()]);
+    assert!(state.back().is_empty());
+    assert_eq!(state.focus, home);
+    assert!(state.switcher.as_ref().unwrap().dismissed.is_some());
+}
+
+#[test]
+fn recent_key_opens_the_switcher_only_from_the_bare_home() {
+    let mut state = ready();
+    state.open(1);
+    assert_eq!(state.recent(), vec![Effect::Running]);
+    state.open_keyboard(TextField::Apps);
+    assert!(state.recent().is_empty());
+    state.back();
+    state.open(2);
+    assert!(state.recent().is_empty());
+}
+
+#[test]
+fn the_first_focus_on_launch_appears_settled_without_animating() {
+    let mut state = ready();
+    state.open(1);
+    state.track_focus();
+    assert_eq!(state.focus_amount(&state.focus.clone()), 1.);
+    assert!(!state.animating());
+}
+
+
+#[test]
+fn moving_between_settings_sections_does_not_replay_the_push() {
+    let mut state = ready();
+    state.open(2);
+    state.tick();
+    state.page_since = None;
+    state.settings_since = None;
+    let controls = controls(&state);
+    state.direction(Direction::Down, &controls);
+    state.tick();
+    assert_ne!(state.focus, Target::Sidebar(0));
+    assert!(state.settings_since.is_none(), "moving between sections replayed the push");
+    // Entering a section still pushes.
+    state.activate();
+    state.tick();
+    assert!(state.settings_since.is_some());
+}
+
+#[test]
+fn moving_an_app_glides_the_tiles_it_displaces() {
+    let mut state = ready();
+    state.open(1);
+    let apps: Vec<String> = state.apps().iter().map(|app| app.id.clone()).collect();
+    let (first, second) = (apps[0].clone(), apps[1].clone());
+    state.start_move(&first);
+    let shown = controls(&state);
+    state.direction(Direction::Right, &shown);
+    let (_, from) = state.rearranged.as_ref().expect("a reorder glides");
+    // The moved app starts one slot to the left of its new place, its
+    // neighbour one to the right; nothing else moved.
+    let step = crate::state::GRID_STEP;
+    assert_eq!(from.get(&first), Some(&(-step, 0.)));
+    assert_eq!(from.get(&second), Some(&(step, 0.)));
+    assert_eq!(from.len(), 2);
+    // A second press at once carries on from where the tile is drawn: it is
+    // still a whole slot back, and now two from its newest place.
+    let shown = controls(&state);
+    state.direction(Direction::Right, &shown);
+    let offset = state.glide_offsets()[&first];
+    assert!((offset.0 + 2. * step).abs() < 20., "{offset:?}");
+    // Reduced Motion: tiles move at once.
+    let mut state = ready();
+    state.preferences.reduced_motion = true;
+    state.open(1);
+    state.start_move(&first);
+    let shown = controls(&state);
+    state.direction(Direction::Right, &shown);
+    assert!(state.rearranged.is_none());
+}
+
+#[test]
+fn top_shelf_art_waits_for_focus_to_rest_on_a_dock_app() {
+    let mut state = ready();
+    state.open(1);
+    let dock: Vec<String> = state.apps().iter().take(3).map(|app| app.id.clone()).collect();
+    state.focus = Target::App(dock[0].clone());
+    state.track_focus();
+    assert_eq!(state.shelf_app.as_deref(), Some(dock[0].as_str()), "the first app shows at once");
+    // A quick sweep: the art does not change while passing.
+    state.focus = Target::App(dock[1].clone());
+    state.track_focus();
+    state.focus = Target::App(dock[2].clone());
+    state.track_focus();
+    assert_eq!(state.shelf_app.as_deref(), Some(dock[0].as_str()));
+    assert!(state.shelf_from.is_none());
+    // Resting: the art of the app focus stopped on fades in.
+    std::thread::sleep(std::time::Duration::from_secs_f32(crate::state::SHELF_REST + 0.02));
+    state.track_focus();
+    assert_eq!(state.shelf_app.as_deref(), Some(dock[2].as_str()));
+    assert!(state.shelf_from.is_some());
+}
+
+#[test]
+fn partial_repaint_covers_exactly_what_changed() {
+    use crate::{damage, renderer::Draw, state::Rect};
+    let tile = |x: f32| Draw::Shape(Rect::new(x, 100., 200., 100.), 30., 0., [1.; 4]);
+    let before = vec![tile(0.), tile(300.)];
+    // Nothing changed: no repaint area at all is still a valid (empty) area.
+    assert!(damage::diff(&before, &before).is_some_and(|r| r.w * r.h == 0.), "nothing changed: nothing to repaint");
+    // One tile moved: the area covers its old and new place, not the other.
+    let after = vec![tile(0.), tile(320.)];
+    let area = damage::diff(&before, &after).expect("a small change repaints a part");
+    assert!(area.x <= 300. && area.x + area.w >= 520.);
+    assert!(area.x > 200., "the unchanged tile is left alone");
+    // A full-screen dissolve repaints everything.
+    let mut fading = after.clone();
+    fading.push(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4]));
+    assert!(damage::diff(&after, &fading).is_none());
+    // Buffer age: an unknown or too-old buffer repaints everything; an older
+    // one also covers the frames since it was drawn.
+    let mut tracker = damage::Tracker::default();
+    let small = Some(Rect::new(0., 0., 100., 100.));
+    assert!(tracker.region(small, 0).is_none());
+    assert!(tracker.region(small, 2).is_none(), "no history yet");
+    tracker.presented(Some(Rect::new(500., 500., 100., 100.)));
+    let both = tracker.region(small, 2).expect("history covers it");
+    assert!(both.x <= 0. && both.x + both.w >= 600.);
+    tracker.presented(None);
+    assert!(tracker.region(small, 2).is_none(), "a full frame in between repaints all");
+}
+
+#[test]
+fn the_first_scroll_after_a_pause_glides_rather_than_jumps() {
+    let mut state = ready();
+    state.open(1);
+    state.glide_scroll();
+    // Idle: no frames are drawn for a while.
+    std::thread::sleep(std::time::Duration::from_millis(120));
+    state.scroll = 690.;
+    state.glide_scroll();
+    assert!(
+        state.shown_scroll > 0. && state.shown_scroll < 690. * 0.6,
+        "first step went to {}",
+        state.shown_scroll
+    );
+}
+
+#[test]
+fn background_writer_keeps_the_newest_preferences_and_finishes_every_save() {
+    let directory = std::env::temp_dir().join(format!("luma-writer-{}", std::process::id()));
+    let path = directory.join("preferences.json");
+    let mut writer = crate::storage::Writer::new(path.clone());
+    for background in ["slate", "midnight", "forest"] {
+        writer.save(&Preferences {
+            background: background.into(),
+            ..Preferences::default()
+        });
+    }
+    writer.finish();
+    assert_eq!(crate::storage::load(&path).unwrap().background, "forest");
+    assert!(writer.errors.try_recv().is_err());
+    std::fs::remove_dir_all(&directory).unwrap();
 }

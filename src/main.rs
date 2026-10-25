@@ -1,16 +1,25 @@
 mod app_artwork;
+mod avatars;
 mod branding;
+mod debug;
 mod diagnostics;
+mod effects;
 mod font;
 mod i18n;
+mod input;
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 mod luna;
+mod crash_guard;
+mod damage;
 mod model;
+mod sdl_events;
 mod platform;
+mod options;
 mod raster;
 mod renderer;
 #[path = "scroll-preview.rs"]
 mod scroll_preview;
+mod script;
 mod state;
 mod storage;
 mod vector;
@@ -25,6 +34,12 @@ mod webos_compat;
 #[cfg(test)]
 mod tests;
 
+use effects::{effects, save_order};
+use input::{
+    HELD_MOVE, Press, WEBOS_BACK_KEYCODE, WEBOS_KEY_BACK, WEBOS_KEY_EXIT, WEBOS_KEY_RECENT, hit,
+    pointer_position, quick_slot,
+};
+use options::Options;
 use platform::{Platform, Request, Response};
 use raster::Size;
 use sdl2::{
@@ -35,265 +50,71 @@ use sdl2::{
 };
 use state::{Direction, Effect, Overlay, State, Target};
 use std::{
-    collections::VecDeque,
     path::PathBuf,
     time::{Duration, Instant},
 };
 use time::OffsetDateTime;
 
-#[derive(Default)]
-struct Options {
-    webos_home: bool,
-    assets: Option<PathBuf>,
-    preferences: Option<PathBuf>,
-    screenshot: Option<PathBuf>,
-    dump: Option<PathBuf>,
-    frames: Option<u64>,
-    script: VecDeque<String>,
-    fullscreen: bool,
-    time: Option<OffsetDateTime>,
-    resolution: Option<Size>,
-    capture_size: Option<Size>,
-    diagnostics: Option<PathBuf>,
-    profile_frames: Option<usize>,
-    weather_test_server: Option<String>,
-    test_extra_apps: usize,
-}
-
-impl Options {
-    fn parse() -> Result<Self, String> {
-        let mut result = Self::default();
-        let mut args = std::env::args().skip(1).peekable();
-        // SAM/jailer puts native launch metadata (e.g. @system_native_app and
-        // nid) in argv[1]. It is not a Luma CLI option. Keep the original argv
-        // intact for SDL/libhelpers, which also read the process launch data.
-        if cfg!(feature = "webos")
-            && args.peek().is_some_and(|argument| {
-                serde_json::from_str::<serde_json::Value>(argument)
-                    .is_ok_and(|value| value.is_object())
-            })
-        {
-            if let Some(argument) = args.next() {
-                let metadata: serde_json::Value =
-                    serde_json::from_str(&argument).map_err(|error| error.to_string())?;
-                result.webos_home = metadata.get("nid").and_then(serde_json::Value::as_str)
-                    == Some(platform::HOME_ID);
-            }
-            eprintln!("Luma webOS launch parameters accepted");
-        }
-        while let Some(arg) = args.next() {
-            if arg == "--help" {
-                println!(
-                    "Luma native\n\n  --assets PATH       Generated artwork directory\n  --preferences PATH  Isolated preferences file\n  --fullscreen        Fullscreen desktop preview\n  --resolution SIZE   Request 1080p, 4k, or WIDTHxHEIGHT; verify actual drawable\n  --frames N          Exit after N event-loop frames\n  --profile-frames N  Force N presentations (20+) and report pacing after warmup\n  --script ACTIONS    Comma-separated home/apps/settings/up/down/left/right/enter/back/menu/hold/type:TEXT/click:X:Y/wait\n  --time RFC3339      Fix the preview's clock and date\n  --screenshot PATH   Save an offscreen PNG\n  --capture-scale N   Capture at 1x/1080p (default) or 2x/4k\n  --diagnostics PATH  Save actual drawable, GPU, font-cache and timing information\n  --dump-state PATH   Save final UI state as JSON\n\nCompile with --features webos for the TV backend. Desktop builds never call TV services."
-                );
-                println!(
-                    "\n  --test-extra-apps N  Explicit scroll preview with up to 300 non-launchable extra cards; separate preferences"
-                );
-                std::process::exit(0);
-            }
-            if arg == "--fullscreen" {
-                result.fullscreen = true;
-                continue;
-            }
-            let value = args
-                .next()
-                .ok_or_else(|| format!("Missing value for {arg}"))?;
-            match arg.as_str() {
-                "--assets" => result.assets = Some(value.into()),
-                "--preferences" => result.preferences = Some(value.into()),
-                "--screenshot" => result.screenshot = Some(value.into()),
-                "--dump-state" => result.dump = Some(value.into()),
-                "--resolution" => result.resolution = Some(value.parse()?),
-                "--capture-scale" => {
-                    result.capture_size = Some(match value.as_str() {
-                        "1" => Size::HD,
-                        "2" => Size::UHD,
-                        _ => return Err("--capture-scale must be 1 or 2".into()),
-                    })
-                }
-                "--diagnostics" => result.diagnostics = Some(value.into()),
-                "--weather-test-server" => result.weather_test_server = Some(value),
-                "--test-extra-apps" => {
-                    result.test_extra_apps = value
-                        .parse::<usize>()
-                        .ok()
-                        .filter(|count| *count <= 300)
-                        .ok_or("--test-extra-apps must be between 0 and 300")?;
-                }
-                "--profile-frames" => {
-                    result.profile_frames = Some(
-                        value
-                            .parse::<usize>()
-                            .ok()
-                            .filter(|n| (20..=1000000).contains(n))
-                            .ok_or("--profile-frames must be between 20 and 1000000")?,
-                    )
-                }
-                "--time" => {
-                    result.time = Some(
-                        OffsetDateTime::parse(
-                            &value,
-                            &time::format_description::well_known::Rfc3339,
-                        )
-                        .map_err(|e| e.to_string())?,
-                    )
-                }
-                "--frames" => {
-                    result.frames = Some(
-                        value
-                            .parse::<u64>()
-                            .ok()
-                            .filter(|n| *n > 0)
-                            .ok_or("--frames must be positive")?,
-                    )
-                }
-                "--script" => result.script = value.split(',').map(str::to_owned).collect(),
-                _ => return Err(format!("Unknown option: {arg}")),
-            }
-        }
-        if result.screenshot.is_some() && result.frames.is_none() && result.profile_frames.is_none()
-        {
-            result.frames = Some(90);
-        }
-        Ok(result)
-    }
-}
-
-struct Press {
-    target: Target,
-    start: Instant,
-    held: bool,
-    pointer: bool,
-}
-
-const SCRIPT_POINTER: u32 = u32::MAX - 1;
-// SDL-webOS's Back scancode is outside rust-sdl2's standard Scancode enum.
-// Keycode retains the raw value: SDL_SCANCODE_TO_KEYCODE(SDL_SCANCODE_WEBOS_BACK).
-const WEBOS_BACK_KEYCODE: i32 = (1 << 30) | 482;
-
-fn effects(
-    effects: Vec<Effect>,
-    state: &mut State,
-    platform: &Platform,
-    preferences: &std::path::Path,
-    weather: &weather_service::Service,
-) -> bool {
-    for effect in effects {
-        match effect {
-            Effect::Save => {
-                if let Err(error) = storage::save(preferences, &state.preferences) {
-                    eprintln!("{error}");
-                    state.notify(state.preferences.language.t("savedError"));
-                }
-            }
-            Effect::Refresh => {
-                if !state.loading {
-                    state.loading = true;
-                    state.dirty = true;
-                    platform.send(Request::Refresh);
-                }
-            }
-            Effect::Launch(id) => {
-                if scroll_preview::is_placeholder(&id) {
-                    state.notify(state.preferences.language.t("scrollTestOnly"));
-                    continue;
-                }
-                if !state.launching {
-                    if platform.webos {
-                        state.launching = true;
-                        state.notify(state.preferences.language.t("opening"));
-                        platform.send(Request::Launch(id));
-                    } else {
-                        let title = state
-                            .inventory
-                            .apps
-                            .iter()
-                            .find(|a| a.id == id)
-                            .map_or(id.as_str(), |app| app.title.as_str());
-                        state.notify(
-                            state
-                                .preferences
-                                .language
-                                .format("desktopPreview", &[("app", title)]),
-                        );
-                    }
-                }
-            }
-            Effect::Quit => return false,
-            Effect::Weather(command) => weather.send(command),
-        }
-    }
-    true
-}
-
-fn script(
-    action: &str,
-    state: &mut State,
-    controls: &[state::Control],
-) -> Result<Vec<Effect>, String> {
-    Ok(match action {
-        "home" => {
-            state.open(0);
-            vec![]
-        }
-        "apps" => {
-            state.open(1);
-            vec![]
-        }
-        "settings" => {
-            state.open(2);
-            vec![]
-        }
-        "up" => state.direction(Direction::Up, controls),
-        "down" => state.direction(Direction::Down, controls),
-        "left" => state.direction(Direction::Left, controls),
-        "right" => state.direction(Direction::Right, controls),
-        "enter" => state.activate(),
-        "back" => state.back(),
-        "menu" => {
-            state.options();
-            vec![]
-        }
-        "hold" => {
-            state.hold();
-            vec![]
-        }
-        "wait" => vec![],
-        action if action.starts_with("type:") => {
-            let field = if state.subpage == Some(state::Subpage::WeatherLocation) {
-                state::TextField::Location
-            } else {
-                state::TextField::Apps
-            };
-            state.open_keyboard(field);
-            state.text(&action[5..]);
-            vec![]
-        }
-        "await-search" => vec![],
-        "await-weather" => vec![],
-        _ => return Err(format!("Unknown scripted action: {action}")),
-    })
+/// How long an inventory read stays fresh before a return re-reads it.
+const INVENTORY_FRESH: Duration = Duration::from_secs(30);
+/// What the background preloader hands back for the drawing thread to upload.
+enum Preloaded {
+    Image(image::RgbaImage),
+    /// Read straight from the image's shipped ASTC copy: nothing to decode.
+    Compressed(renderer::Compressed),
+    Vector(Vec<u8>),
 }
 
 fn main() {
+    debug::debug_log();
     if let Err(error) = run() {
         eprintln!("Luma native: {error}");
         std::process::exit(1);
     }
 }
 
+/// Background workers yield the CPU to the UI thread (Linux `nice`), so a
+/// decode or icon read never delays a frame on the TV's small CPU.
+pub fn background_priority() {
+    #[cfg(feature = "webos")]
+    // SAFETY: nice() only adjusts this thread's scheduling priority.
+    unsafe {
+        libc::nice(10);
+    }
+}
+
 fn compose(
     state: &mut State,
     assets: &view::Assets,
-    pill: f32,
-    width: f32,
     now: OffsetDateTime,
+    previous: Option<&view::Scene>,
 ) -> view::Scene {
-    let scene = view::scene_with_pill(state, assets, pill, width, now);
+    state.track_focus();
+    state.glide_scroll();
+    // A new Settings level pushes from this very frame, out of exactly what
+    // the last frame showed.
+    if state.track_settings_level()
+        && let Some(previous) = previous
+        && let Some(range) = previous.settings_range.clone()
+    {
+        state.settings_ghost = Some(previous.draw[range].to_vec());
+    }
+    let scene = view::scene(state, assets, now);
     if !state.pointer && state.overlay.is_none() && state.reveal_focus(&scene.controls) {
-        view::scene_with_pill(state, assets, pill, width, now)
+        view::scene(state, assets, now)
     } else {
         scene
+    }
+}
+
+fn release_memory(renderer: &mut renderer::Renderer) {
+    // Keep what the home needs to come back instantly (its textures, glyphs
+    // and decoded icons); free only what it does not show.
+    renderer.trim();
+    // Hand the freed heap back to the system rather than keeping it resident.
+    #[cfg(all(feature = "webos", unix))]
+    unsafe {
+        libc::malloc_trim(0);
     }
 }
 
@@ -301,10 +122,14 @@ fn weather_tick(state: &mut State, service: &weather_service::Service, visible: 
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let (command, changed) = state.weather.sync(
         &state.preferences,
-        visible && state.page == state::Page::Home,
+        visible && state.page == state::Page::Apps,
         now,
     );
     state.dirty |= changed;
+    if let Some(search) = state.weather.due_search() {
+        state.dirty = true;
+        service.send(search);
+    }
     service.generations(state.weather.generations());
     if let Some(command) = command {
         service.send(command);
@@ -325,51 +150,6 @@ fn weather_tick(state: &mut State, service: &weather_service::Service, visible: 
     }
 }
 
-fn scripted_click(
-    sdl: &sdl2::Sdl,
-    window: &sdl2::video::Window,
-    position: &str,
-) -> Result<(), String> {
-    let coordinates: Vec<f32> = position
-        .split(':')
-        .map(|value| value.parse::<f32>().map_err(|e| e.to_string()))
-        .collect::<Result<_, _>>()?;
-    let [x, y] = coordinates.as_slice() else {
-        return Err("click: expects logical x:y coordinates".into());
-    };
-    if !x.is_finite() || !y.is_finite() {
-        return Err("Pointer coordinates must be finite".into());
-    }
-    let (w, h) = window.size();
-    let scale = (w as f32 / 1920.).min(h as f32 / 1080.);
-    let x = (x * scale + (w as f32 - 1920. * scale) / 2.).round() as i32;
-    let y = (y * scale + (h as f32 - 1080. * scale) / 2.).round() as i32;
-    let events = sdl.event()?;
-    for event in [
-        Event::MouseButtonDown {
-            timestamp: 0,
-            window_id: window.id(),
-            which: SCRIPT_POINTER,
-            mouse_btn: MouseButton::Left,
-            clicks: 1,
-            x,
-            y,
-        },
-        Event::MouseButtonUp {
-            timestamp: 0,
-            window_id: window.id(),
-            which: SCRIPT_POINTER,
-            mouse_btn: MouseButton::Left,
-            clicks: 1,
-            x,
-            y,
-        },
-    ] {
-        events.push_event(event)?;
-    }
-    Ok(())
-}
-
 fn run() -> Result<(), String> {
     let startup = Instant::now();
     let mut options = Options::parse()?;
@@ -386,14 +166,7 @@ fn run() -> Result<(), String> {
         return Err("This desktop build cannot run on a TV. Build with --features webos.".into());
     }
     if webos {
-        if !options.webos_home && platform::redirect_to_home()? {
-            return Ok(());
-        }
-        let surface_id = if options.webos_home {
-            platform::HOME_ID
-        } else {
-            platform::APP_ID
-        };
+        let surface_id = platform::APP_ID;
         // SDL-webOS reads APPID for its shell surface and getenv (not a hint)
         // for WMCLASS. Set these before video init and before starting workers.
         // SAFETY: startup is still single-threaded here.
@@ -403,6 +176,13 @@ fn run() -> Result<(), String> {
         }
         eprintln!("Luma webOS surface: {surface_id}");
         sdl2::hint::set("SDL_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
+        if options.preload {
+            if !platform::preload_may_show() {
+                platform::status("preload at boot: an app was in front; stood aside");
+                return Ok(());
+            }
+            platform::status("preload at boot: LG Home in front; showing");
+        }
     }
     // Resolve the local offset before artwork, HTTP or platform workers start.
     let local_offset = OffsetDateTime::now_local()
@@ -440,6 +220,10 @@ fn run() -> Result<(), String> {
         storage::load(&preferences_path)?
     };
     let mut state = State::new(initial_preferences);
+    state.heroes = assets.heroes.clone();
+    // The owner's profile pictures, prepared once (crate::avatars).
+    let storage = preferences_path.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+    state.set_avatars(avatars::load(&storage));
     if options.test_extra_apps > 0 {
         eprintln!(
             "Luma scroll preview: explicit {}-app expansion; preferences {}",
@@ -456,12 +240,13 @@ fn run() -> Result<(), String> {
         weather_service::Client::new(options.weather_test_server.as_deref())?,
         weather_cache,
     );
-    let platform = Platform::new(webos);
+    let platform = Platform::new(webos, options.inventory.clone());
+    let mut writer = storage::Writer::new(preferences_path.clone());
     effects(
         vec![Effect::Refresh],
         &mut state,
         &platform,
-        &preferences_path,
+        &writer,
         &weather_service,
     );
     startup_stage("preferences and workers");
@@ -495,7 +280,8 @@ fn run() -> Result<(), String> {
     attributes.set_double_buffer(true);
     attributes.set_alpha_size(8);
     attributes.set_depth_size(0);
-    attributes.set_stencil_size(0);
+    // Stencil: opaque tiles mask out what lies behind them (renderer::find_occluders).
+    attributes.set_stencil_size(8);
     let requested = options.resolution.unwrap_or(if webos {
         Size::HD
     } else {
@@ -517,9 +303,17 @@ fn run() -> Result<(), String> {
     };
     let mut opened = None;
     let mut failures = Vec::new();
-    // Prefer true sample coverage of intact glyph outlines. Some TV EGL stacks
-    // have fewer configurations, so retain a usable non-MSAA fallback.
-    for samples in [4, 2, 0] {
+    // Shapes and text already blend their own edges (coverage in the shader),
+    // so the TV draws without multisampling: on its one-core Mali, 4x MSAA
+    // turned ~3 dropped frames per 1000 into ~14 while scrolling (3 runs of
+    // 1000, tools/tv-bench.sh). The desktop keeps 4x; --msaa overrides both.
+    let sample_choices: &[u8] = match options.msaa {
+        None if webos => &[0],
+        Some(4) | None => &[4, 2, 0],
+        Some(2) => &[2, 0],
+        Some(_) => &[0],
+    };
+    for &samples in sample_choices {
         attributes.set_multisample_buffers(u8::from(samples > 0));
         attributes.set_multisample_samples(samples);
         match create_window() {
@@ -542,21 +336,187 @@ fn run() -> Result<(), String> {
     if let Err(error) = video.gl_set_swap_interval(1) {
         eprintln!("VSync: {error}");
     }
-    let mut renderer = renderer::Renderer::new(&assets.root.join("font.ttf"), webos)?;
+    let mut renderer =
+        renderer::Renderer::new(&assets.root.join("font.ttf"), webos, options.medium_precision)?;
+    // Decode every home image off the render thread at startup, wallpaper
+    // first, so no icon pops in late and no slide stalls on a PNG decode.
+    // Images decode on a background worker and upload a few per frame, so
+    // the drawing thread never stalls on a PNG/JPEG decode. Requests come at
+    // startup (wallpaper, tiles, Settings thumbnails) and once the app list
+    // is known (each app's brand card).
+    let astc = renderer.takes_astc();
+    let (preload, preloaded) = {
+        let (requests, queue) = std::sync::mpsc::channel::<String>();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            background_priority();
+            let mut seen = std::collections::HashSet::new();
+            for path in queue {
+                if !seen.insert(path.clone()) {
+                    continue;
+                }
+                let loaded = if path.ends_with(".lvec") {
+                    std::fs::read(&path).ok().map(Preloaded::Vector)
+                } else if let Some(compressed) = astc.then(|| renderer::read_astc(&path)).flatten() {
+                    Some(Preloaded::Compressed(compressed))
+                } else {
+                    image::open(&path).ok().map(|image| Preloaded::Image(image.into_rgba8()))
+                };
+                if let Some(loaded) = loaded
+                    && sender.send((path, loaded)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (requests, receiver)
+    };
+    {
+        let background = &state.preferences.background;
+        for name in [
+            format!("wallpapers/{background}.jpg"),
+            format!("wallpapers/{background}-home-glass.png"),
+            format!("wallpapers/{background}-glass.png"),
+        ] {
+            let _ = preload.send(assets.path(name));
+        }
+        let order: Vec<String> = state
+            .preferences
+            .favorites(&state.inventory.apps)
+            .into_iter()
+            .chain(assets.tiles.keys().cloned())
+            .collect();
+        // Top Shelf art for the dock apps: decoded on first focus it froze the
+        // screen ~140 ms per app on the TV.
+        if state.preferences.top_shelf_art {
+            for id in order.iter().take(state::APPS_COLUMNS).filter(|id| assets.heroes.contains(*id)) {
+                let _ = preload.send(assets.path(format!("heroes/{id}.jpg")));
+                let _ = preload.send(assets.path(format!("heroes/{id}-glass.png")));
+            }
+        }
+        for id in order.iter().filter(|id| assets.tiles.contains_key(*id)) {
+            let _ = preload.send(assets.path(format!("tiles/{id}.png")));
+        }
+        for (id, _) in model::BACKGROUNDS {
+            let _ = preload.send(assets.path(format!("thumbnails/{id}.jpg")));
+        }
+        // Interface glyphs (menus, Settings).
+        if let Ok(entries) = std::fs::read_dir(assets.path("ui-icons")) {
+            for entry in entries.flatten() {
+                let _ = preload.send(entry.path().to_string_lossy().into_owned());
+            }
+        }
+    }
+    renderer.skip = options.skip.clone();
     startup_stage("renderer");
+    let mut last_counts = (0usize, 0usize);
     let mut profile = diagnostics::Profile::default();
     let mut presented = 0usize;
     let mut captured = None;
     let mut last_drawable = None;
     let mut events = sdl.event_pump()?;
     let mut press: Option<Press> = None;
-    let initial_nav = view::navigation(&assets, state.preferences.language);
-    let mut pill = initial_nav.items[0].x;
-    let mut pill_width = initial_nav.items[0].w;
-    let mut last_frame = Instant::now();
     let mut last_minute = None;
     let mut frame = 0u64;
     let mut visible = true;
+    let mut away = false;
+    // LG's own Home coming to the front (an app was closed) is answered by
+    // bringing Luma back, so the stock launcher never lingers. Push events when the hub allows them; otherwise poll while hidden.
+    let watching = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // When the watcher raises Luma it posts this event: a hidden Luma sleeps
+    // long, and webOS shows its window only once Luma answers, so the event
+    // wakes the loop at once and keeps it brisk while the window comes back.
+    // SAFETY: registering an SDL user event type has no preconditions.
+    let wake_type = unsafe { sdl.event()?.register_event()? };
+    let wake_sender = sdl.event()?.event_sender();
+    let wake: platform::Wake = std::sync::Arc::new(move || {
+        let _ = wake_sender.push_event(Event::User {
+            timestamp: 0,
+            window_id: 0,
+            type_: wake_type,
+            code: 0,
+            data1: std::ptr::null_mut(),
+            data2: std::ptr::null_mut(),
+        });
+    });
+    // The Home key, seen as Luma's own launch (see `watch_launches`).
+    // SAFETY: as above.
+    let home_type = unsafe { sdl.event()?.register_event()? };
+    let home_sender = sdl.event()?.event_sender();
+    let home: platform::Wake = std::sync::Arc::new(move || {
+        let _ = home_sender.push_event(Event::User {
+            timestamp: 0,
+            window_id: 0,
+            type_: home_type,
+            code: 0,
+            data1: std::ptr::null_mut(),
+            data2: std::ptr::null_mut(),
+        });
+    });
+    let mut returning_until = Instant::now();
+    let mut shown_at = Instant::now();
+    // Crash guard: if Luma crashed twice within two minutes, this run does
+    // not pull itself back over LG Home, so a broken build can never trap the
+    // TV in a relaunch loop. A clean exit clears the record.
+    let crash_guard = default_preferences.with_file_name("running.marker");
+    let safe_mode = webos && crash_guard::begin(&crash_guard);
+    if safe_mode {
+        eprintln!("Luma safe mode: two recent crashes; not taking over Home this run");
+    }
+    if webos {
+        platform::status_reset();
+    }
+    if webos && !safe_mode {
+        match platform::watch_foreground(watching.clone(), wake.clone()) {
+            Ok(()) => {
+                watching.store(true, std::sync::atomic::Ordering::Relaxed);
+                platform::status("foreground events: on");
+            }
+            Err(error) => platform::status(&format!("foreground events: {error}; polling instead")),
+        }
+    }
+    if webos {
+        match platform::watch_launches(home, !safe_mode) {
+            Ok(()) => platform::status("launch events (Home key): on"),
+            Err(error) => platform::status(&format!("launch events: {error}; Home only raises Luma")),
+        }
+        match platform::watch_running(platform.running.clone()) {
+            Ok(()) => platform::status("running events: on"),
+            Err(error) => platform::status(&format!("running events: {error}; asking on Back instead")),
+        }
+        if !safe_mode {
+            match platform::watch_power() {
+                Ok(()) => platform::status("power events (wake to Luma): on"),
+                Err(error) => platform::status(&format!("power events: {error}")),
+            }
+        }
+        if safe_mode {
+            platform::status("safe mode: two recent crashes");
+        }
+    }
+    // Developer flag: log every input event (stderr goes to /dev/null otherwise).
+    let log_events = webos && std::path::Path::new("/tmp/luma-events").exists();
+    let slow_log = webos && std::path::Path::new("/tmp/luma-debug").exists();
+    let mut last_faults = debug::major_faults();
+    let mut last_drawn: Vec<renderer::Draw> = Vec::new();
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    let egl = damage::Egl::current();
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    let mut damage_tracker = damage::Tracker::default();
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    eprintln!("Luma partial repaint: {}", if egl.is_some() { "on" } else { "off" });
+    let mut last_presented = Instant::now();
+    let mut was_animating = false;
+    let mut last_move = Instant::now();
+    let mut prefetched = false;
+    let mut held_uploads: std::collections::VecDeque<(String, Preloaded)> = Default::default();
+    // Back from an app: queue what the trim freed, after the first frame.
+    let mut rewarm = false;
+    let mut glyphs_warming = true;
+    let mut last_refresh = Instant::now();
+    let mut foreground_poll = Instant::now();
+    let mut foreground_pending = false;
+    let mut last_redirect: Option<Instant> = None;
     let mut running = true;
     let mut queued_event = None;
     let mut text_active = false;
@@ -565,11 +525,15 @@ fn run() -> Result<(), String> {
     let mut scene = compose(
         &mut state,
         &assets,
-        pill,
-        pill_width,
         options.time.unwrap_or_else(OffsetDateTime::now_utc),
+        None,
     );
     while running {
+        // A save that failed in the background is reported as before.
+        while let Ok(error) = writer.errors.try_recv() {
+            eprintln!("{error}");
+            state.notify(i18n::t("savedError"));
+        }
         let now = options
             .time
             .unwrap_or_else(|| OffsetDateTime::now_utc().to_offset(local_offset));
@@ -578,24 +542,57 @@ fn run() -> Result<(), String> {
             state.dirty = true;
         }
         state.tick();
+        // Upload decoded images a few per tick (idle or not), so each is on
+        // the GPU before it is first drawn and no frame pays for a batch.
+        // Idle and on screen: warm a few text glyphs ahead of need.
+        if glyphs_warming && visible && !state.dirty && !state.animating() {
+            glyphs_warming = renderer.warm_glyphs(3);
+        }
+        // GPU uploads: on the TV one 1080p image takes the GPU tens of ms, so
+        // while anything moves only one small image goes up per frame and
+        // large ones wait for a still screen (four at once froze ~140 ms).
+        let busy = visible && state.animating();
+        let mut budget = if busy { 1 } else { 4 };
+        while budget > 0 {
+            let next = if busy { None } else { held_uploads.pop_front() }
+                .or_else(|| preloaded.try_recv().ok());
+            let Some((path, loaded)) = next else {
+                break;
+            };
+            if busy && matches!(&loaded, Preloaded::Image(image) if image.width() * image.height() > 600_000) {
+                held_uploads.push_back((path, loaded));
+                continue;
+            }
+            match loaded {
+                Preloaded::Image(image) => renderer.adopt(path, image),
+                Preloaded::Compressed(image) => renderer.adopt_compressed(path, &image),
+                Preloaded::Vector(bytes) => renderer.adopt_vector(path, &bytes),
+            }
+            budget -= 1;
+        }
         state.dirty |= assets.artwork.poll();
         while let Ok(response) = platform.receiver.try_recv() {
             match response {
                 Response::Inventory(Ok((mut inventory, warning))) => {
-                    assets.artwork.reset();
-                    scroll_preview::append(
-                        &mut inventory,
-                        options.test_extra_apps,
-                        state.preferences.language,
-                    );
+                    assets.artwork.refresh();
+                    // Every app's icon is fetched in the background once the
+                    // first frame is up (see below), never competing with it.
+                    prefetched = false;
+                    scroll_preview::append(&mut inventory, options.test_extra_apps);
                     state.set_inventory(inventory, warning);
                     if initial_focus
                         && state.focus == Target::Nav(0)
-                        && state.page == state::Page::Home
+                        && state.page == state::Page::Apps
                     {
                         state.focus = state.first_content();
                     }
                     initial_focus = false;
+                }
+                Response::Profile(profile) => {
+                    if state.profile != profile {
+                        state.profile = profile;
+                        state.dirty = true;
+                    }
                 }
                 Response::Inventory(Err(error)) => {
                     state.loading = false;
@@ -606,12 +603,29 @@ fn run() -> Result<(), String> {
                         initial_focus = false;
                     }
                 }
+                Response::Running(ids) => state.open_switcher(platform::opened_only(ids, platform.webos)),
+                Response::Closed(id, result) => {
+                    if let Err(error) = result {
+                        eprintln!("Luma close {id}: {error}");
+                        state.notify(i18n::t("appCloseError"));
+                    }
+                }
+                Response::Foreground(id) => {
+                    foreground_pending = false;
+                    if !visible
+                        && id.as_deref() == Some(platform::HOME_ID)
+                        && last_redirect.is_none_or(|at| at.elapsed() >= Duration::from_secs(2))
+                    {
+                        last_redirect = Some(Instant::now());
+                        platform.send(Request::Launch(platform::APP_ID.into()));
+                    }
+                }
                 Response::Launched(result) => {
                     state.launching = false;
                     match result {
                         Err(error) => {
                             eprintln!("{error}");
-                            state.notify(state.preferences.language.t("appOpenError"));
+                            state.notify(i18n::t("appOpenError"));
                         }
                         Ok(()) => {
                             state.notice = None;
@@ -621,12 +635,28 @@ fn run() -> Result<(), String> {
                 }
             }
         }
+        if webos
+            && !watching.load(std::sync::atomic::Ordering::Relaxed)
+            && !visible
+            && !foreground_pending
+            && foreground_poll.elapsed() >= Duration::from_millis(250)
+        {
+            foreground_pending = true;
+            foreground_poll = Instant::now();
+            platform.send(Request::Foreground);
+        }
         weather_tick(&mut state, &weather_service, visible);
         // Rebuild hit regions before input whenever inventory/layout changed.
         if state.dirty {
-            scene = compose(&mut state, &assets, pill, pill_width, now);
+            scene = compose(&mut state, &assets, now, Some(&scene));
         }
-        for event in queued_event.take().into_iter().chain(events.poll_iter()) {
+        // Raw SDL events are decoded through sdl_events: rust-sdl2's own
+        // conversion transmutes TV-specific scancodes (undefined behaviour).
+        let mut pending_events = Vec::new();
+        while let Some(event) = sdl_events::poll(&mut events, webos) {
+            pending_events.push(event);
+        }
+        for event in queued_event.take().into_iter().chain(pending_events) {
             // Window-entry pointer events can arrive after a slow first upload.
             // Bounded scripted captures own input until their final frame; only
             // their explicitly injected SDL clicks may alter pointer focus.
@@ -636,7 +666,7 @@ fn run() -> Result<(), String> {
                     || !options.script.is_empty());
             let external_input = match &event {
                 Event::MouseButtonDown { which, .. } | Event::MouseButtonUp { which, .. } => {
-                    *which != SCRIPT_POINTER
+                    *which != script::SCRIPT_POINTER
                 }
                 Event::MouseMotion { .. }
                 | Event::MouseWheel { .. }
@@ -650,8 +680,33 @@ fn run() -> Result<(), String> {
                 continue;
             }
             let mut pending = vec![];
+            // Debug log only (stderr is /dev/null unless /tmp/luma-debug): which
+            // key codes the TV remote really sends.
+            if webos && log_events {
+                if !matches!(event, Event::MouseMotion { .. }) {
+                    eprintln!("Luma event: {event:?}");
+                }
+            } else if webos && let Event::KeyDown { keycode, scancode, repeat: false, .. } = &event {
+                eprintln!(
+                    "Luma key at {} ms: {keycode:?} ({:?}) scancode {scancode:?}",
+                    startup.elapsed().as_millis(),
+                    keycode.map(i32::from)
+                );
+            }
             match event {
                 Event::Quit { .. } => running = false,
+                Event::User { type_, .. } if type_ == wake_type => {
+                    returning_until = Instant::now() + Duration::from_secs(2);
+                }
+                Event::User { type_, .. } if type_ == home_type => {
+                    // The launch that brings Luma back from an app lands just
+                    // after its window shows: only a launch well after that is
+                    // Home pressed on Luma itself.
+                    press = None;
+                    let in_front = visible && shown_at.elapsed() > Duration::from_millis(800);
+                    platform::status(if in_front { "home key: back to the top" } else { "home key: returned from an app" });
+                    state.home_key(in_front);
+                }
                 Event::Window {
                     window_id,
                     win_event,
@@ -659,18 +714,41 @@ fn run() -> Result<(), String> {
                 } if window_id == window.id() => match win_event {
                     WindowEvent::Hidden | WindowEvent::Minimized => {
                         visible = false;
+                        save_order(&mut state, &writer);
+                        away = true;
+                        release_memory(&mut renderer);
                         press = None;
                         if matches!(state.overlay, Some(Overlay::SystemKeyboard)) {
                             state.finish_text_input();
                         }
                         profile.pause();
                     }
-                    WindowEvent::FocusLost => press = None,
+                    WindowEvent::FocusLost => {
+                        press = None;
+                        away = true;
+                        if state.launching {
+                            release_memory(&mut renderer);
+                        }
+                    }
                     WindowEvent::Shown | WindowEvent::Restored | WindowEvent::FocusGained => {
+                        // One return fires all three events: act once, on the
+                        // hidden-to-shown edge.
+                        let returned = std::mem::take(&mut away) || !visible;
                         visible = true;
+                        if returned {
+                            shown_at = Instant::now();
+                            rewarm = true;
+                            // Every buffer is stale after being hidden.
+                            last_drawn.clear();
+                        }
                         state.dirty = true;
-                        if webos {
-                            pending.push(Effect::Refresh);
+                        if returned {
+                            // Catch installs and input changes, at most every
+                            // 30 s rather than on every return.
+                            if webos && last_refresh.elapsed() >= INVENTORY_FRESH {
+                                last_refresh = Instant::now();
+                                pending.push(Effect::Refresh);
+                            }
                         }
                     }
                     WindowEvent::Resized(..)
@@ -692,10 +770,21 @@ fn run() -> Result<(), String> {
                     repeat,
                     ..
                 } => match key {
-                    Keycode::Up => pending = state.direction(Direction::Up, &scene.controls),
-                    Keycode::Down => pending = state.direction(Direction::Down, &scene.controls),
-                    Keycode::Left => pending = state.direction(Direction::Left, &scene.controls),
-                    Keycode::Right => pending = state.direction(Direction::Right, &scene.controls),
+                    // A held arrow moves at a steady cadence: repeats that
+                    // arrive faster are dropped, so focus glides evenly instead
+                    // of jumping when two land in one frame.
+                    Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right
+                        if repeat && last_move.elapsed() < HELD_MOVE => {}
+                    Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
+                        last_move = Instant::now();
+                        let direction = match key {
+                            Keycode::Up => Direction::Up,
+                            Keycode::Down => Direction::Down,
+                            Keycode::Left => Direction::Left,
+                            _ => Direction::Right,
+                        };
+                        pending = state.direction(direction, &scene.controls);
+                    }
                     Keycode::Return | Keycode::KpEnter
                         if matches!(state.overlay, Some(Overlay::SystemKeyboard)) =>
                     {
@@ -729,8 +818,23 @@ fn run() -> Result<(), String> {
                     }
                     Keycode::F5 if !repeat => pending.push(Effect::Refresh),
                     key if !repeat
+                        && state.overlay.is_none()
+                        && state.switcher.is_none()
+                        && !state.text_input_active()
+                        && quick_slot(key).is_some() =>
+                    {
+                        press = None;
+                        pending = state.quick_launch(quick_slot(key).unwrap_or(0));
+                    }
+                    key if !repeat && webos && i32::from(key) == WEBOS_KEY_RECENT => {
+                        press = None;
+                        pending = state.recent();
+                    }
+                    key if !repeat
                         && (i32::from(key) == 461
-                            || (webos && i32::from(key) == WEBOS_BACK_KEYCODE)) =>
+                            || (webos
+                                && [WEBOS_BACK_KEYCODE, WEBOS_KEY_BACK, WEBOS_KEY_EXIT, sdl_events::WEBOS_EXIT_KEYCODE]
+                                    .contains(&i32::from(key)))) =>
                     {
                         press = None;
                         pending = state.back();
@@ -857,7 +961,7 @@ fn run() -> Result<(), String> {
                 pending,
                 &mut state,
                 &platform,
-                &preferences_path,
+                &writer,
                 &weather_service,
             );
             if press
@@ -873,12 +977,12 @@ fn run() -> Result<(), String> {
             }
             // SDL may deliver several navigation events in a single poll.
             if state.dirty {
-                scene = compose(&mut state, &assets, pill, pill_width, now);
+                scene = compose(&mut state, &assets, now, Some(&scene));
             }
         }
         if let Some(held) = &mut press
             && !held.held
-            && held.start.elapsed() >= Duration::from_millis(600)
+            && held.start.elapsed() >= Duration::from_millis(500)
         {
             held.held = true;
             state.pressed = None;
@@ -887,20 +991,21 @@ fn run() -> Result<(), String> {
         if !state.loading
             && frame.is_multiple_of(3)
             && !options.script.front().is_some_and(|action| {
-                (action == "await-search" && state.weather.searching)
+                (action == "await-search"
+                    && (state.weather.searching || state.weather.search_pending()))
                     || (action == "await-weather" && state.weather.fetching())
             })
             && let Some(action) = options.script.pop_front()
         {
             if let Some(position) = action.strip_prefix("click:") {
-                scripted_click(&sdl, &window, position)?;
+                script::scripted_click(&sdl, &window, position)?;
             } else {
-                let pending = script(&action, &mut state, &scene.controls)?;
+                let pending = script::script(&action, &mut state, &scene.controls)?;
                 running &= effects(
                     pending,
                     &mut state,
                     &platform,
-                    &preferences_path,
+                    &writer,
                     &weather_service,
                 );
             }
@@ -915,7 +1020,14 @@ fn run() -> Result<(), String> {
             press = None;
             state.finish_text_input();
         }
-        let keyboard = state.text_input_active();
+        // On the TV, text input summons LG's on-screen keyboard: only when that
+        // keyboard is the one asked for, never over Luma's own (two keyboards
+        // at once). On the desktop it carries a real keyboard's typing to both.
+        let keyboard = if webos {
+            matches!(state.overlay, Some(Overlay::SystemKeyboard))
+        } else {
+            state.text_input_active()
+        };
         if keyboard != text_active {
             if keyboard {
                 video.text_input().start();
@@ -924,30 +1036,22 @@ fn run() -> Result<(), String> {
             }
             text_active = keyboard;
         }
-        let dt = last_frame.elapsed().as_secs_f32().min(0.1);
-        last_frame = Instant::now();
-        let navigation = view::navigation(&assets, state.preferences.language);
-        let target = navigation.items[state.page_index()].x;
-        let target_width = navigation.items[state.page_index()].w;
-        if state.preferences.reduced_motion
-            || ((pill - target).abs() < 0.2 && (pill_width - target_width).abs() < 0.2)
-        {
-            pill = target;
-            pill_width = target_width;
-        } else {
-            pill += (target - pill) * (1. - (-20. * dt).exp());
-            pill_width += (target_width - pill_width) * (1. - (-20. * dt).exp());
-            state.dirty = true;
-        }
+        // A profiling run ends after its frames, or after 90 s whatever
+        // happens: hidden behind another app it presents nothing, and must
+        // never linger beside the real Luma.
         let final_frame = options.frames.is_some_and(|limit| frame + 1 >= limit)
             || (visible
                 && options
                     .profile_frames
-                    .is_some_and(|limit| presented + 1 >= limit));
+                    .is_some_and(|limit| presented + 1 >= limit))
+            || (options.profile_frames.is_some() && startup.elapsed() > Duration::from_secs(90));
         if ((state.dirty || options.profile_frames.is_some()) && visible) || final_frame {
-            scene = compose(&mut state, &assets, pill, pill_width, now);
+            let composing = Instant::now();
+            scene = compose(&mut state, &assets, now, Some(&scene));
+            let compose_ms = composing.elapsed().as_secs_f64() * 1000.;
             let (width, height) = window.drawable_size();
             if width > 0 && height > 0 {
+                renderer.damage = None;
                 if final_frame && let Some(path) = &options.screenshot {
                     captured = Some(renderer.capture(
                         &scene.draw,
@@ -955,8 +1059,95 @@ fn run() -> Result<(), String> {
                         options.capture_size.unwrap_or(Size::HD),
                     )?);
                 }
+                // Back from an app: the tiles freed while it was in front
+                // decode again in the background, before any scroll reaches
+                // them. Only what is missing is queued.
+                if rewarm && presented > 0 {
+                    rewarm = false;
+                    if state.preferences.top_shelf_art {
+                        for app in state.apps().into_iter().take(state::APPS_COLUMNS) {
+                            if assets.heroes.contains(&app.id) {
+                                for name in [format!("heroes/{}.jpg", app.id), format!("heroes/{}-glass.png", app.id)] {
+                                    let path = assets.path(name);
+                                    if !renderer.has(&path) {
+                                        let _ = preload.send(path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    for app in &state.inventory.apps {
+                        let names = if assets.tiles.contains_key(&app.id) {
+                            vec![format!("tiles/{}.png", app.id)]
+                        } else if app.brand != "generic" {
+                            vec![format!("surfaces/{}.png", app.brand)]
+                        } else {
+                            vec![]
+                        };
+                        for name in names {
+                            let path = assets.path(name);
+                            if !renderer.has(&path) && std::path::Path::new(&path).is_file() {
+                                let _ = preload.send(path);
+                            }
+                        }
+                    }
+                }
+                // After the first frame: fetch every app's icon in the
+                // background, so no tile shows a placeholder on scrolling.
+                if !prefetched && presented > 0 {
+                    prefetched = true;
+                    // Only apps Luma ships no artwork for read their icon from
+                    // the TV; every other tile is complete from the first frame.
+                    for source in state
+                        .inventory
+                        .apps
+                        .iter()
+                        .filter(|app| {
+                            !assets.tiles.contains_key(&app.id)
+                                && branding::for_key(&app.brand).is_none()
+                                && !assets.icons.contains_key(&app.id)
+                        })
+                        .filter_map(|app| app.icon.as_ref())
+                    {
+                        let _ = assets.artwork.get(source);
+                    }
+                    // Brand cards for apps without their own tile art.
+                    for app in &state.inventory.apps {
+                        if !assets.tiles.contains_key(&app.id) && app.brand != "generic" {
+                            for name in [
+                                format!("surfaces/{}.png", app.brand),
+                                format!("logos/{}.lvec", app.brand),
+                            ] {
+                                let path = assets.path(name);
+                                if std::path::Path::new(&path).is_file() {
+                                    let _ = preload.send(path);
+                                }
+                            }
+                        }
+                    }
+                }
+                // Repaint only what changed since the buffer was last drawn
+                // (EGL partial update); anything uncertain repaints it all.
+                #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+                {
+                    let mut region = None;
+                    if let Some(egl) = &egl {
+                        let change = if last_drawn.is_empty() {
+                            None
+                        } else {
+                            damage::diff(&last_drawn, &scene.draw)
+                        };
+                        region = damage_tracker.region(change, egl.buffer_age());
+                        if !egl.declare(region, width, height) {
+                            region = None;
+                        }
+                        damage_tracker.presented(change);
+                    }
+                    renderer.damage = region;
+                }
                 renderer.render(&scene.draw, width, height);
                 window.gl_swap_window();
+                last_drawn.clone_from(&scene.draw);
                 if presented == 0 {
                     startup_stage("first frame");
                     if webos {
@@ -971,16 +1162,65 @@ fn run() -> Result<(), String> {
                     }
                 }
                 presented += 1;
+                // TV debug log: every frame that misses the panel's refresh.
+                if slow_log {
+                    let now = Instant::now();
+                    let interval = now.duration_since(last_presented).as_secs_f64() * 1000.;
+                    // The first frame after an idle gap is not slow: Luma sat
+                    // still (correctly) until the next key arrived.
+                    // In Move every frame is logged, with the memory pages read
+                    // back from swap since the last one, to tell a drawing
+                    // stall from a paging one.
+                    let slow = interval > 30. && interval < 1000. && state.animating() && was_animating;
+                    if slow || state.moving.is_some() {
+                        let stats = renderer.stats();
+                        let faults = debug::major_faults();
+                        eprintln!(
+                            "Luma {} at {} ms: {interval:.1} ms (compose {compose_ms:.1}, cpu {:.1}, build {:.1}, draws {}, uploads {}, page faults +{}) page {:?} overlay {}",
+                            if slow { "slow frame" } else { "move frame" },
+                            startup.elapsed().as_millis(),
+                            stats.cpu_submission_ms,
+                            stats.cpu_build_ms,
+                            stats.draw_calls,
+                            stats.texture_uploads,
+                            faults.saturating_sub(last_faults),
+                            state.page,
+                            state.overlay.is_some(),
+                        );
+                        last_faults = faults;
+                    }
+                    last_presented = now;
+                    was_animating = state.animating();
+                }
                 if options.profile_frames.is_some() {
-                    profile.record(
+                    profile.record_split(
                         Instant::now(),
                         renderer.stats().cpu_submission_ms,
+                        renderer.stats().cpu_build_ms,
+                        compose_ms,
                         final_frame && options.screenshot.is_some(),
                     );
+                    let stats = renderer.stats();
+                    let (uploads, tessellations) = (stats.texture_uploads, stats.glyph_tessellations);
+                    if let Some(interval) = profile.last_interval()
+                        && interval > 30.
+                    {
+                        profile.note_slow(format!(
+                            "frame {presented}: {interval:.1} ms, cpu {:.1}, uploads +{}, glyphs +{}, draws {}, scroll {:.0}/{:.0}, focus {:?}",
+                            stats.cpu_submission_ms,
+                            uploads - last_counts.0,
+                            tessellations - last_counts.1,
+                            stats.draw_calls,
+                            state.scroll,
+                            state.shown_scroll,
+                            state.focus,
+                        ));
+                    }
+                    last_counts = (uploads, tessellations);
                 }
                 let drawable = Size::new(width, height);
                 if last_drawable != Some(drawable) {
-                    if options.diagnostics.is_some() || options.resolution.is_some() {
+                    if options.diagnostics.is_some() || options.resolution.is_some() || slow_log {
                         eprintln!(
                             "Luma drawable: {}x{}, density {:.3}x, 4K buffer: {}",
                             width,
@@ -1001,10 +1241,16 @@ fn run() -> Result<(), String> {
         // Block until input instead of polling at frame rate on idle screens.
         // VSync paces animation; holds and scripted checks need short timed wakes.
         let timeout = if !visible {
-            250
-        } else if pill != target
-            || pill_width != target_width
-            || state.animating()
+            // Hidden behind an app: push events need no polling, so sleep long,
+            // except while being raised (see `wake`): then answer webOS fast.
+            if Instant::now() < returning_until {
+                16
+            } else if watching.load(std::sync::atomic::Ordering::Relaxed) {
+                2000
+            } else {
+                250
+            }
+        } else if state.animating()
             || options.profile_frames.is_some()
         {
             0
@@ -1013,8 +1259,12 @@ fn run() -> Result<(), String> {
         } else {
             100
         };
-        queued_event = events.wait_event_timeout(timeout);
+        queued_event = sdl_events::wait(&mut events, timeout, webos);
     }
+    save_order(&mut state, &writer);
+    // Every save queued so far reaches the disk before Luma exits.
+    writer.finish();
+    crash_guard::end(&crash_guard);
     if text_active {
         video.text_input().stop();
     }
@@ -1023,7 +1273,7 @@ fn run() -> Result<(), String> {
     }
     if let Some(path) = options.dump {
         let state = serde_json::json!({ "page": state.page, "focus": state.focus, "query": state.query,
-            "filter": state.filter, "preferences": state.preferences, "apps": state.apps().iter().map(|a| &a.id).collect::<Vec<_>>(),
+            "preferences": state.preferences, "apps": state.apps().iter().map(|a| &a.id).collect::<Vec<_>>(),
             "error": state.error, "scroll": state.scroll, "home_scroll": state.home_scroll, "subpage": state.subpage, "modal": state.overlay.is_some(), "weather": state.weather,
             "inventory": state.inventory.apps,
             "ui_text": scene.draw.iter().filter_map(|draw| match draw { renderer::Draw::Text(value, ..) => Some(value), _ => None }).collect::<Vec<_>>() });
@@ -1053,41 +1303,4 @@ fn run() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
     Ok(())
-}
-
-fn pointer_position(window: &sdl2::video::Window, x: i32, y: i32) -> Option<(f32, f32)> {
-    let (width, height) = window.size();
-    let scale = (width as f32 / 1920.).min(height as f32 / 1080.);
-    if scale <= 0. {
-        return None;
-    }
-    Some((
-        (x as f32 - (width as f32 - 1920. * scale) / 2.) / scale,
-        (y as f32 - (height as f32 - 1080. * scale) / 2.) / scale,
-    ))
-}
-
-fn hit(
-    controls: &[state::Control],
-    window: &sdl2::video::Window,
-    x: i32,
-    y: i32,
-    state: &State,
-) -> Option<Target> {
-    let (x, y) = pointer_position(window, x, y)?;
-    controls
-        .iter()
-        .rev()
-        .find(|control| {
-            control.rect.contains(x, y)
-                && (!control.scrollable
-                    || ((64. ..1856.).contains(&x)
-                        && y >= 108.8
-                        && y < if state.page == state::Page::Home && state.moving.is_none() {
-                            1053.6
-                        } else {
-                            994.4
-                        }))
-        })
-        .map(|control| control.target.clone())
 }

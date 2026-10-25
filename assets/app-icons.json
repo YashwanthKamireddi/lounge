@@ -176,5 +176,7 @@
   "com.webos.app.igallery": "./app-icons/174.png",
   "com.webos.app.roomconnect": "./app-icons/175.png",
   "google.assistant": "./app-icons/176.png",
-  "google.assistant.promo": "./app-icons/177.png"
+  "google.assistant.promo": "./app-icons/177.png",
+  "com.zee5.app": "./app-icons/178.png",
+  "org.rchalaaa.webos.custom-screensaver": "./app-icons/179.png"
 }

@@ -39,6 +39,15 @@ unsafe extern "C" {
         token: *mut c_ulong,
         error: *mut Error,
     ) -> bool;
+    fn LSCall(
+        handle: *mut c_void,
+        uri: *const c_char,
+        payload: *const c_char,
+        callback: extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> bool,
+        userdata: *mut c_void,
+        token: *mut c_ulong,
+        error: *mut Error,
+    ) -> bool;
     fn LSCallCancel(handle: *mut c_void, token: c_ulong, error: *mut Error) -> bool;
     fn LSMessageGetPayload(message: *mut c_void) -> *const c_char;
 }
@@ -207,4 +216,83 @@ impl Drop for Connection {
 
 pub fn call(uri: &str, payload: &Value) -> Result<Value, String> {
     Connection::open()?.request(uri, payload)
+}
+
+type Listener = Box<dyn FnMut(Value) + Send>;
+
+extern "C" fn stream(_handle: *mut c_void, message: *mut c_void, userdata: *mut c_void) -> bool {
+    if message.is_null() || userdata.is_null() {
+        return true;
+    }
+    // SAFETY: userdata is the leaked listener of a subscription that lives for
+    // the process; LS2 dispatches only on that subscription's own thread.
+    unsafe {
+        let payload = LSMessageGetPayload(message);
+        if payload.is_null() {
+            return true;
+        }
+        let size = libc::strnlen(payload, MAX_REPLY + 1);
+        if size > MAX_REPLY {
+            return true;
+        }
+        let bytes = std::slice::from_raw_parts(payload.cast::<u8>(), size);
+        if let Ok(value) = serde_json::from_slice::<Value>(bytes) {
+            let listener = &mut *userdata.cast::<Listener>();
+            // A panic must never unwind into LS2's C frames (undefined
+            // behaviour, in practice an abort of the whole launcher).
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| listener(value))).is_err() {
+                eprintln!("Luna subscription: handler panicked; reply dropped");
+            }
+        }
+    }
+    true
+}
+
+/// Long-lived subscription on its own thread and GLib context. Returns once
+/// the hub accepted the call; replies then stream to `listener` until exit.
+pub fn subscribe(
+    uri: &str,
+    payload: &Value,
+    listener: impl FnMut(Value) + Send + 'static,
+) -> Result<(), String> {
+    let uri = CString::new(uri).map_err(|_| "Invalid Luna URI")?;
+    let payload = CString::new(payload.to_string()).map_err(|_| "Invalid Luna payload")?;
+    let (ready, accepted) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let connection = match Connection::open() {
+            Ok(connection) => connection,
+            Err(error) => {
+                let _ = ready.send(Err(error));
+                return;
+            }
+        };
+        let listener: *mut Listener = Box::into_raw(Box::new(Box::new(listener)));
+        let mut error = Error::new();
+        let mut token = 0;
+        // SAFETY: the listener is intentionally leaked for the process lifetime,
+        // and the connection never drops while this thread iterates it.
+        if !unsafe {
+            LSCall(
+                connection.handle,
+                uri.as_ptr(),
+                payload.as_ptr(),
+                stream,
+                listener.cast(),
+                &mut token,
+                &mut error,
+            )
+        } {
+            let _ = ready.send(Err(error.describe("subscription")));
+            return;
+        }
+        let _ = ready.send(Ok(()));
+        loop {
+            // SAFETY: only this thread drives this private context; blocking
+            // iteration sleeps until the hub delivers the next reply.
+            unsafe { g_main_context_iteration(connection.context, 1) };
+        }
+    });
+    accepted
+        .recv_timeout(Duration::from_secs(5))
+        .map_err(|_| "Subscription setup timed out".to_string())?
 }

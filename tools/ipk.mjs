@@ -83,24 +83,16 @@ export function normalizeAndVerifyPackage(bytes, manifest) {
     manifest.main,
     manifest.icon,
     manifest.largeIcon,
-    'autostart.sh',
-    'home.sh',
-    'home.cjs',
     'lib/libSDL2-2.0.so.0',
     'licenses/sdl2.txt',
     'licenses/lucide.txt',
     'assets/font-metrics.json',
     'assets/font-license.txt',
-    'assets/font-cjk-license.txt',
     'assets/version.txt',
     ...[350, 400, 450, 500, 550, 600, 650, 800].flatMap((weight) => [
       `assets/font-${weight}.ttf`,
       `assets/font-display-${weight}.ttf`,
     ]),
-    'assets/font-cjk-400.ttf',
-    'assets/font-cjk-500.ttf',
-    'assets/font-kr-400.ttf',
-    'assets/font-kr-500.ttf',
     ...[
       'dunes',
       'midnight',
@@ -159,10 +151,7 @@ export function normalizeAndVerifyPackage(bytes, manifest) {
     if (!['', '0', '5'].includes(file.type))
       throw new Error(`Unexpected package entry type: ${file.name}`);
     const executable =
-      file.type === '5' ||
-      file.name.endsWith('/autostart.sh') ||
-      file.name.endsWith('/home.sh') ||
-      file.name.endsWith(`/${manifest.main}`);
+      file.type === '5' || file.name.endsWith(`/${manifest.main}`);
     file.header.write(executable ? '0000755\0' : '0000644\0', 100, 8, 'ascii');
     file.header.fill(32, 148, 156);
     const sum = file.header.reduce((total, byte) => total + byte, 0);

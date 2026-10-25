@@ -14,6 +14,12 @@ impl Mesh {
     pub fn load(path: &Path) -> Result<Self, String> {
         let bytes =
             fs::read(path).map_err(|e| format!("Vector artwork {}: {e}", path.display()))?;
+        Self::from_bytes(path, &bytes)
+    }
+
+    /// Parse and upload a mesh whose file was read elsewhere (a background
+    /// worker), so the drawing thread never waits on storage.
+    pub fn from_bytes(path: &Path, bytes: &[u8]) -> Result<Self, String> {
         if bytes.len() < 20 || &bytes[..8] != b"LUMAVEC1" {
             return Err(format!("Invalid vector artwork header: {}", path.display()));
         }
@@ -36,8 +42,10 @@ impl Mesh {
             ));
         }
         let vertices: Vec<f32> = bytes[20..]
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| f32::from_le_bytes(*chunk))
             .collect();
         if vertices.iter().any(|value| !value.is_finite()) {
             return Err(format!(

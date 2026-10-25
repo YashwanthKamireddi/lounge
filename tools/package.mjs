@@ -88,12 +88,9 @@ await fs.copyFile(
   path.join(out, 'assets/app-icon-large.png'),
   path.join(stage, 'app-icon-large.png'),
 );
-await fs.copyFile(path.join(root, 'tv/autostart.sh'), path.join(stage, 'autostart.sh'));
-await fs.chmod(path.join(stage, 'autostart.sh'), 0o755);
-for (const file of ['home.sh', 'home.cjs']) {
-  await fs.copyFile(path.join(root, 'tv', file), path.join(stage, file));
-  await fs.chmod(path.join(stage, file), file.endsWith('.sh') ? 0o755 : 0o644);
-}
+// No boot hooks or Home-takeover scripts ship: Home and Back reach Luma
+// through webOS itself (the compositor key filter and settings
+// general.defaultApps), so nothing runs at boot or mounts over LG's files.
 await fs.copyFile(path.join(root, 'license'), path.join(stage, 'LICENSE'));
 await fs.copyFile(path.join(root, 'assets.md'), path.join(stage, 'ASSETS.md'));
 await fs.mkdir(path.join(stage, 'lib'));

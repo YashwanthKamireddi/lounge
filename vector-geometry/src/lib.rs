@@ -86,7 +86,7 @@ pub fn tessellate(path: &Path, tolerance: f32, rule: FillRule) -> Result<Vec<Ver
         .collect();
     let mut triangles = Vec::new();
     let mut edges: BTreeMap<(usize, usize), (usize, usize, usize)> = BTreeMap::new();
-    for triangle in geometry.indices.chunks_exact(3) {
+    for triangle in geometry.indices.as_chunks::<3>().0 {
         let [a, mut b, mut c] = [
             mapping[triangle[0] as usize],
             mapping[triangle[1] as usize],

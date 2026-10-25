@@ -129,8 +129,14 @@ fn weather_failure_keeps_valid_cache_labels_it_saved_and_retries_later() {
     weather.accept_forecast(id, &location.key(), Err("offline".into()), 2000);
     assert!(weather.failed);
     assert!(weather.reading(&place()).is_some());
-    assert!(weather.sync(&preferences, true, 2299).0.is_none());
-    assert!(weather.sync(&preferences, true, 2300).0.is_some());
+    // Retries back off: a minute after the first failure, then doubling.
+    assert!(weather.sync(&preferences, true, 2059).0.is_none());
+    let Some(Command::Forecast { id, location }) = weather.sync(&preferences, true, 2060).0 else {
+        panic!("Expected the first retry after a minute");
+    };
+    weather.accept_forecast(id, &location.key(), Err("offline".into()), 2060);
+    assert!(weather.sync(&preferences, true, 2179).0.is_none());
+    assert!(weather.sync(&preferences, true, 2180).0.is_some());
     assert!(cache(1000).age(999).is_none());
     assert!(cache(1000).age(1001 + MAX_CACHE_AGE).is_none());
     weather.sync(&preferences, true, 1001 + MAX_CACHE_AGE);
@@ -208,13 +214,13 @@ fn returning_home_retries_stale_weather_without_waiting_for_the_old_retry_timer(
 fn editing_query_invalidates_old_results_and_short_queries_do_not_search() {
     let mut weather = Weather::default();
     weather.edit("V".into());
-    assert!(weather.search(Language::En).is_none());
+    assert!(weather.search().is_none());
     assert!(weather.message.is_some());
     weather.edit("Vienna".into());
-    let Some(Command::Search { id, .. }) = weather.search(Language::En) else {
+    let Some(Command::Search { id, .. }) = weather.search() else {
         panic!();
     };
-    assert!(weather.search(Language::En).is_none());
+    assert!(weather.search().is_none());
     weather.edit("Paris".into());
     assert!(!weather.accept_search(id, Ok(vec![place()])));
     assert!(weather.results.is_empty());
@@ -233,4 +239,61 @@ fn malformed_weather_preferences_do_not_lose_existing_favorites() {
     let old: Preferences = serde_json::from_value(json!({"background":"forest"})).unwrap();
     assert!(old.show_weather);
     assert!(old.weather_location.is_none());
+}
+
+#[test]
+fn typing_searches_on_its_own_once_typing_pauses() {
+    let mut weather = Weather::default();
+    weather.edit("G".into());
+    assert!(!weather.search_pending(), "one letter never searches");
+    weather.edit("Gajuwaka".into());
+    assert!(weather.search_pending());
+    assert!(weather.due_search().is_none(), "not while still typing");
+    std::thread::sleep(crate::weather::SEARCH_PAUSE + std::time::Duration::from_millis(20));
+    let Some(Command::Search { id, query, .. }) = weather.due_search() else {
+        panic!("a paused query searches");
+    };
+    assert_eq!(query, "Gajuwaka");
+    assert!(weather.searching && !weather.search_pending());
+    assert!(weather.accept_search(id, Ok(vec![])));
+    // Typing more keeps what is shown until the next answer arrives.
+    weather.results = vec![];
+    weather.edit("Gajuwaka ".into());
+    weather.edit("Gajuwak".into());
+    assert!(weather.search_pending() && !weather.searching);
+}
+
+#[test]
+fn openstreetmap_places_name_postcodes_by_their_district() {
+    let places = parse_places(&json!([
+        {
+            "name": "530045", "lat": "17.7865", "lon": "83.3695", "addresstype": "postcode",
+            "address": {"postcode": "530045", "state_district": "Visakhapatnam District",
+                        "state": "Andhra Pradesh", "country": "India"}
+        },
+        {
+            "name": "Bengaluru", "lat": "12.9767", "lon": "77.5900", "addresstype": "city",
+            "address": {"city": "Bengaluru", "state": "Karnataka", "country": "India"}
+        },
+        {"name": "Nowhere", "lat": "not a number", "lon": "1"}
+    ]))
+    .unwrap();
+    assert_eq!(places.len(), 2);
+    assert_eq!(places[0].name, "530045 · Visakhapatnam");
+    assert_eq!(places[0].detail(), "Andhra Pradesh, India");
+    assert_eq!(places[1].name, "Bengaluru");
+    assert!(parse_places(&json!({"error": "x"})).is_err());
+}
+
+#[test]
+fn an_empty_search_message_does_not_outlive_its_page() {
+    let mut weather = Weather::default();
+    assert!(weather.search().is_none());
+    assert_eq!(weather.message.as_deref(), Some("enterCity"));
+    // Typing nothing new is no edit, so it keeps the message; reopening
+    // the page cancels the search, which clears it.
+    weather.edit(String::new());
+    assert!(weather.message.is_some());
+    weather.cancel_search();
+    assert!(weather.message.is_none() && weather.results.is_empty());
 }

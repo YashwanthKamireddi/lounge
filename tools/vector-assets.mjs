@@ -101,10 +101,12 @@ export async function generateVectorAssets() {
     }),
   );
   // These directories contain generated artwork only. Do not package stale raster
-  // versions alongside the meshes when reusing an older native asset cache.
+  // versions, or meshes whose source is gone, when reusing an older native asset cache.
+  const generated = new Set(assets.map((asset) => asset.output));
   for (const directory of ['logos', 'ui-icons']) {
     for (const file of await fs.readdir(path.join(out, directory))) {
-      if (file.endsWith('.png')) await fs.rm(path.join(out, directory, file));
+      const output = path.join(out, directory, file);
+      if (!generated.has(output)) await fs.rm(output);
     }
   }
 }

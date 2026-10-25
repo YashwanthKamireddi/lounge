@@ -5,13 +5,11 @@
 ```text
 Cargo.toml / Cargo.lock       Rust workspace and pinned dependencies
 src/                         Rust launcher, platform adapter and GLES2 shaders
-assets/                      Editable SVGs, fonts, wallpapers, translations and artwork metadata
+assets/                      Editable SVGs, fonts, wallpapers, UI strings and artwork metadata
 vector-geometry/             Shared fill tessellation and vector boundary coverage
 tools/vector-assets/         Host-only SVG compiler
 tools/                       Asset preparation, SDK/runtime setup, packaging and release feed
 tests/                       Desktop rendering and mocked HTTP smoke scripts
-tv/autostart.sh              Optional cold-boot launch hook
-tv/home.sh / home.cjs         Optional root-only native Home integration
 dist/                        Generated ARM IPK, checksum and Homebrew feed
 .build/                      Generated assets, SDK/runtime caches and rendering diagnostics
 ```
@@ -40,7 +38,6 @@ including `armv7-unknown-linux-gnueabi` for TV builds. No browser installation i
 | `pnpm assets [--4k]`      | Prepare fonts, vector artwork and raster backgrounds       |
 | `pnpm screenshots`        | Capture native Home, Apps, General and Inputs into `docs/` |
 | `pnpm assets:vector`      | Recompile bundled SVG icon/logo meshes                     |
-| `pnpm assets:fonts`       | Restore checksum-pinned Noto font source if needed         |
 | `pnpm sdk`                | Download/relocate a pinned host webOS SDK                  |
 | `pnpm runtime`            | Prepare checksum-pinned SDL-webOS                          |
 | `pnpm build`              | Release ARM cross-build using `WEBOS_NDK`                  |
@@ -177,8 +174,8 @@ such as Hulu, Joyn and Plex closer to the visual weight of Apple TV, YouTube, Da
 
 Text reads the bundled TTF's advances, kerning and line metrics lazily. Only needed glyph outlines
 are tessellated in font-em coordinates. Complete text runs are cached in static GPU buffers,
-independent of position/color/drawable density, avoiding a draw call per letter. CJK fonts open
-only when needed; there are no glyph bitmap atlases or full-font mesh exports.
+independent of position/color/drawable density, avoiding a draw call per letter. Weights open only when
+needed; there are no glyph bitmap atlases or full-font mesh exports.
 
 The window requests 4× MSAA, with 2×/single-sample fallbacks if EGL rejects a configuration.
 Multisampled text draws intact glyph fills without inward offsets/fringe triangles, which can
@@ -246,42 +243,11 @@ reply limit. Errors include URI and the bus refusal. Fixed inventory commands ru
 Homebrew Channel `exec`, parsing complete multi-line `luna-send -n 1` JSON replies. Input-read
 failures preserve the last valid inputs. No failed inventory read substitutes demo apps on TV.
 
-### Optional native Home integration
+### Home integration
 
-`tv/home.sh` and `tv/home.cjs` are packaged beside `luma`. They are a root-only, explicit integration
-for webOS 10/25 and 11/26. `enable` stages a native manifest with ID `com.webos.app.home` and
-symlinks to the installed executable, libraries and assets under `/var/lib/luma-home/app`, then
-bind-mounts it over `/usr/palm/applications/com.webos.app.home`. SAM rereads that one app through
-`blockSystemApp` followed by `releaseBlockSystemApp`, including `forceBlockSystemApp: false` when
-the TV schema requires it. The script verifies the reported manifest before stopping the previous
-Home process. It attempts to restore LG Home if applying the mount or refreshing SAM fails.
-
-Root-shell calls use `luna-send -n 1` on both firmware versions, with bounded stdout/stderr
-capture and operation-specific diagnostics for empty or invalid replies. `-t 1` is timing mode:
-it logs the payload to stderr and writes timing summaries to stdout, not a JSON response.
-
-The `enable` shell entry point prints the change summary and requires a `y`/`n` confirmation
-before creating the state directory, acquiring the lock or invoking the installer. Only `y`/`Y`
-proceeds. `n`/`N` or end-of-input cancels, and other input repeats the prompt. The boot hook and
-`apply` remain non-interactive, and `disable`/`restore` remain available without confirmation.
-
-The native CLI accepts SAM's Home `nid` and gives SDL the matching Home surface identity. The
-executable itself stays at its installed path for LS2 authentication, `$ORIGIN/lib`, asset discovery
-and preference selection. Opening Luma's normal tile while the Home mount is active redirects to
-the Home instance. The scripts do not create a browser wrapper or change the package's app ID.
-
-`64-luma-home` reapplies the mount from a detached boot hook. The existing TV Home Auto Launch
-and Quick Start+ settings determine whether power-on opens Home. Until the hook applies, LG Home
-can still appear. This integration does not change those settings or install a remote-key filter.
-`disable` (also `restore`) removes the mount, refreshes LG's manifest, stops the native Home
-instance and removes the boot hook. The copied restore scripts remain in `/var/lib/luma-home`
-even if the installed package is removed. Disable the standalone `65-luma` cold-boot hook before
-enabling this integration.
-
-Build and script checks cannot establish native Home compatibility. Manually verify Home, Back
-out of the last app, standby wake with the TV's chosen Quick Start+ setting, a full cold boot,
-saved preferences and restoring LG Home. The broader webOS 6+ app compatibility statement does
-not establish Home-replacement support on older firmware.
+Luma becomes Home through webOS itself, with no scripts: settings `general.defaultApps.home`
+for Back out of an app, the compositor key-filter chain for the Home button, and LG's memory
+manager override for residency. See [the readme](readme.md#making-luma-the-home-app).
 
 ## Manual extra-app preview
 
@@ -296,7 +262,7 @@ initialized from normal choices once. Favoriting test cards exercises long Home 
 changing normal favorites. Ctrl+C then a normal launch restores real inventory/preferences.
 The placeholder cards are never a fallback for an inventory failure.
 
-## Storage, weather and languages
+## Storage, weather and strings
 
 TV preferences live in an app-owned persistent directory outside the installed executable's
 payload. Startup probes `/media/developer/<appid>/`, `/media/developer/temp/<appid>/` and
@@ -322,10 +288,9 @@ failure retries after five minutes. Unit changes convert unrounded cached Celsiu
 Removing a city clears its cache. The `.weather.json` sidecar uses Unix-seconds timestamps.
 Mock servers accept only literal loopback HTTP origins and are refused in TV builds.
 
-`assets/messages.json` supplies English/German/Spanish/Simplified Chinese, including locale formatting
-and weather labels. App/device names and saved city names remain real data. No geolocation,
-runtime font/translation services or telemetry are used. Weather attribution: Open-Meteo,
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+`assets/messages.json` supplies the English UI strings, including weather labels. App/device
+names and saved city names remain real data. No geolocation, runtime font/string services or
+telemetry are used. Weather attribution: Open-Meteo, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## Compatibility
 
@@ -343,9 +308,9 @@ prerelease than the pinned `.5` library, not a full Luma compatibility guarantee
 
 ## Checks and CI
 
-Rust behavior tests cover navigation, preferences, localization, rendering geometry and weather
+Rust behavior tests cover navigation, preferences, UI strings, rendering geometry and weather
 state without a TV. `tests/` scripts exercise actual desktop framebuffers and mock HTTP responses
-for navigation, persistence, pointer input, translations/CJK, weather limits/cache/races and
+for navigation, persistence, pointer input, weather limits/cache/races and
 profiling. They contact no live weather APIs or television. On Linux:
 
 ```sh
@@ -417,6 +382,6 @@ to `dist/description.html` and sets the package's `fullDescriptionUrl` to that v
 asset. Homebrew Channel prefers this HTML description when the URL is present. CI uploads the
 HTML alongside the feed and IPK, so the feed and its description must be published together.
 
-Key modules: `state.rs` focus/preferences, `view.rs` geometry, `renderer.rs` GPU caches/draws,
+Key modules: `state.rs` focus/preferences, `view/` geometry (home, settings, switcher, overlays, tiles, glass), `renderer.rs` GPU caches/draws,
 `font.rs` lazy metrics/outlines, `vector.rs` GPU mesh upload, `platform.rs` worker/inventory,
 `luna.rs` LS2, `weather*.rs` scheduling/HTTPS/cache, `storage.rs` atomic JSON, and `main.rs` SDL loop.

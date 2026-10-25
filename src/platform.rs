@@ -6,73 +6,373 @@ use crate::{
     model::{App, Input, Inventory, demo_inventory, valid_app_id},
 };
 use serde_json::{Value, json};
-use std::{collections::HashSet, sync::mpsc, thread};
+use std::{collections::HashSet, path::PathBuf, sync::mpsc, thread};
 
 pub const APP_ID: &str = "com.ecklf.luma";
 pub const HOME_ID: &str = "com.webos.app.home";
 
-pub fn redirect_to_home() -> Result<bool, String> {
-    // The root-only integration mounts this marker with its native Home
-    // manifest. A normal tile launch then opens that same instance instead of
-    // starting a second renderer writing the same preferences.
-    if std::fs::read_to_string("/usr/palm/applications/com.webos.app.home/.luma-home")
-        .is_ok_and(|marker| marker.trim() == APP_ID)
-    {
-        thread::spawn(|| {
-            call(
-                "luna://com.webos.applicationManager/launch",
-                json!({"id": HOME_ID}),
-            )
-        })
-        .join()
-        .map_err(|_| "Home launch worker failed".to_string())??;
-        return Ok(true);
-    }
-    Ok(false)
+/// While Luma is hidden, LG's stock Home surfacing (an app was closed, or the
+/// TV woke) is answered at once by bringing Luma forward. Push-based: no polling.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_foreground(
+    alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    wake: Wake,
+) -> Result<(), String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    // webOS's own foreground event decides, not Luma's window flag: SDL
+    // reports visibility late and out of order, and trusting it left LG Home
+    // on screen after quitting some system apps.
+    let returning = std::sync::Arc::new(AtomicBool::new(false));
+    let mut previous = String::new();
+    crate::luna::subscribe(
+        "luna://com.webos.applicationManager/getForegroundAppInfo",
+        &json!({"subscribe": true}),
+        move |reply| {
+            // A denied or dropped subscription replies returnValue:false: hand
+            // back to polling rather than silently stop watching.
+            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                status(&format!("foreground events ended: {reply}; polling meanwhile"));
+                alive.store(false, Ordering::Relaxed);
+                let (alive, wake) = (alive.clone(), wake.clone());
+                resubscribe("foreground events", move || {
+                    watch_foreground(alive.clone(), wake.clone())?;
+                    alive.store(true, Ordering::Relaxed);
+                    Ok(())
+                });
+                return;
+            }
+            let front = reply.get("appId").and_then(Value::as_str).unwrap_or_default().to_owned();
+            eprintln!("Luma foreground: {front:?} at {} ms", clock_ms());
+            note_opened(&front);
+            let closed = std::mem::replace(&mut previous, front.clone());
+            // An app closing leaves nothing in front for a moment before
+            // webOS raises LG Home: act then, so LG Home never shows. LG Home
+            // itself in front is the fallback. Luma launching an app (it was
+            // in front) is not a close.
+            let app_closed = front.is_empty() && !closed.is_empty() && closed != APP_ID && closed != HOME_ID;
+            if (front != HOME_ID && !app_closed) || returning.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            let returning = returning.clone();
+            let wake = wake.clone();
+            thread::spawn(move || {
+                let front_now = || {
+                    call(
+                        "luna://com.webos.applicationManager/getForegroundAppInfo",
+                        json!({}),
+                    )
+                    .ok()
+                    .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
+                    .unwrap_or_default()
+                };
+                // A gap between two apps (one launching another) also leaves
+                // nothing in front: wait a beat and stand aside if an app came.
+                if app_closed {
+                    thread::sleep(std::time::Duration::from_millis(120));
+                    let now = front_now();
+                    if !now.is_empty() && now != HOME_ID {
+                        returning.store(false, Ordering::Release);
+                        return;
+                    }
+                }
+                // Raising an already-running Luma is cheap, so re-assert
+                // often: LG Home loses the race within a frame or two.
+                for _ in 0..12 {
+                    let _ = call(
+                        "luna://com.webos.applicationManager/launch",
+                        json!({"id": APP_ID, "params": self_launch()}),
+                    );
+                    wake();
+                    thread::sleep(std::time::Duration::from_millis(250));
+                    let now = front_now();
+                    eprintln!("Luma return: front is now {now:?} at {} ms", clock_ms());
+                    if now != HOME_ID && !now.is_empty() {
+                        break;
+                    }
+                }
+                returning.store(false, Ordering::Release);
+            });
+        },
+    )
 }
+
+/// Wall-clock milliseconds, for timing foreground events in the debug log.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+fn clock_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |time| time.as_millis())
+}
+
+/// Waking from standby (LG's Quick Start+) is a power-on as far as anyone
+/// watching knows: Luma comes to the front, as it does after a cold start.
+/// Only a wake counts; the screen coming back from Screen Off or the
+/// screensaver leaves whatever was playing in front.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_power() -> Result<(), String> {
+    let mut previous = String::new();
+    crate::luna::subscribe(
+        "luna://com.webos.service.tvpower/power/getPowerState",
+        &json!({"subscribe": true}),
+        move |reply| {
+            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                status(&format!("power events ended: {reply}"));
+                resubscribe("power events", watch_power);
+                return;
+            }
+            let Some(state) = reply.get("state").and_then(Value::as_str) else {
+                return;
+            };
+            let woke = state == "Active" && (previous.contains("Standby") || previous.contains("Suspend"));
+            if woke {
+                status("woke from standby: Luma to the front");
+                thread::spawn(|| {
+                    let _ = call(
+                        "luna://com.webos.applicationManager/launch",
+                        json!({"id": APP_ID, "params": self_launch()}),
+                    );
+                });
+            }
+            previous = state.to_owned();
+        },
+    )
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_power() -> Result<(), String> {
+    Err("Power events need an ARM webOS build".into())
+}
+
+/// Subscribes again after a stream ended (LG's service restarted, say), so
+/// Luma never stops listening until a relaunch: after 3 s, then 10, then
+/// every 30 s until the bus takes it.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + Send + 'static) {
+    thread::spawn(move || {
+        for (attempt, wait) in [3, 10].into_iter().chain(std::iter::repeat(30)).enumerate() {
+            thread::sleep(std::time::Duration::from_secs(wait));
+            match subscribe() {
+                Ok(()) => {
+                    status(&format!("{what}: on again (attempt {})", attempt + 1));
+                    return;
+                }
+                Err(error) => eprintln!("Luma {what}: {error}; trying again"),
+            }
+        }
+    });
+}
+
+/// Keep `cache` holding webOS's open apps, pushed on every change, so the app
+/// switcher opens at once from memory instead of asking the bus on Back.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_running(cache: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>>) -> Result<(), String> {
+    let again = cache.clone();
+    crate::luna::subscribe(
+        "luna://com.webos.applicationManager/running",
+        &json!({"subscribe": true}),
+        move |reply| {
+            let ids = reply.get("running").map(card_ids);
+            if ids.is_none() && reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                status(&format!("running events ended: {reply}"));
+                let cache = again.clone();
+                resubscribe("running events", move || watch_running(cache.clone()));
+            }
+            // A dropped subscription clears the cache: Back then asks directly.
+            if let Ok(mut cache) = cache.lock() {
+                *cache = ids;
+            }
+        },
+    )
+}
+
+/// The remote's Home key launches Luma (Glasshouse's key filter). When Luma
+/// is already in front, LG's SDL swallows that launch, so no window event
+/// arrives; webOS still reports it as a lifecycle "launch", which calls `home`.
+///
+/// LG Home being launched (LG ThinQ's Home button and others go straight to
+/// it, past the remote's key filter) is answered the same moment, before it
+/// draws, by raising Luma: `take_home` is false in safe mode.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_launches(home: Wake, take_home: bool) -> Result<(), String> {
+    crate::luna::subscribe(
+        "luna://com.webos.applicationManager/getAppLifeEvents",
+        &json!({"subscribe": true}),
+        move |reply| {
+            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                status(&format!("launch events ended: {reply}"));
+                let home = home.clone();
+                resubscribe("launch events", move || watch_launches(home.clone(), take_home));
+                return;
+            }
+            if reply.get("event").and_then(Value::as_str) != Some("launch") {
+                return;
+            }
+            match reply.get("appId").and_then(Value::as_str) {
+                Some(APP_ID) => home(),
+                Some(HOME_ID) if take_home => {
+                    // Off the bus thread: a call from inside its callback
+                    // would wait on itself.
+                    thread::spawn(|| {
+                        let _ = call(
+                            "luna://com.webos.applicationManager/launch",
+                            json!({"id": APP_ID, "params": self_launch()}),
+                        );
+                    });
+                }
+                _ => {}
+            }
+        },
+    )
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_launches(_home: Wake, _take_home: bool) -> Result<(), String> {
+    Err("Launch events need an ARM webOS build".into())
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_running(_cache: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>>) -> Result<(), String> {
+    Err("Running-app events need an ARM webOS build".into())
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_foreground(
+    _alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    _wake: Wake,
+) -> Result<(), String> {
+    Err("Foreground events need an ARM webOS build".into())
+}
+
+/// Marks Luma's own launches of itself (bringing itself back over LG Home),
+/// so the relaunch webOS reports for them is not taken for the Home key.
+fn self_launch() -> Value {
+    json!({"luma": "self"})
+}
+
+/// Wakes Luma's event loop from another thread (see main's `wake`).
+pub type Wake = std::sync::Arc<dyn Fn() + Send + Sync>;
 
 pub enum Request {
     Refresh,
     Launch(String),
+    /// Which app webOS currently shows (read while Luma is hidden).
+    Foreground,
+    Running,
+    Close(String),
 }
 pub enum Response {
     Inventory(Result<(Inventory, Option<String>), String>),
+    Profile(Option<crate::model::Profile>),
     Launched(Result<(), String>),
+    Foreground(Option<String>),
+    Running(Vec<String>),
+    Closed(String, Result<(), String>),
 }
 
 pub struct Platform {
     sender: mpsc::Sender<Request>,
     pub receiver: mpsc::Receiver<Response>,
     pub webos: bool,
+    /// Open apps as webOS last pushed them (None until the first event, or
+    /// once the subscription drops).
+    pub running: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>>,
 }
 
 impl Platform {
-    pub fn new(webos: bool) -> Self {
+    /// `fixture` (desktop only) is a directory holding a TV's raw `listApps.json`
+    /// and `inputs.json` replies, parsed exactly as the TV parses them.
+    pub fn new(webos: bool, fixture: Option<PathBuf>) -> Self {
         let (sender, requests) = mpsc::channel();
         let (responses, receiver) = mpsc::channel();
         thread::spawn(move || {
             while let Ok(request) = requests.recv() {
                 let response = match request {
-                    Request::Refresh => Response::Inventory(if webos {
-                        inventory()
+                    // Reading the app list (through Homebrew's elevated exec)
+                    // can take seconds: run it beside this worker so a launch,
+                    // close or setting pressed meanwhile never waits behind it.
+                    // State's `loading` flag keeps it to one read at a time.
+                    Request::Refresh => {
+                        let responses = responses.clone();
+                        let fixture = fixture.clone();
+                        thread::spawn(move || {
+                            let inventory = if webos {
+                                inventory()
+                            } else if let Some(directory) = &fixture {
+                                fixture_inventory(directory)
+                            } else {
+                                Ok((demo_inventory(), None))
+                            };
+                            let _ = responses.send(Response::Inventory(inventory));
+                            let profile = if webos {
+                                read_profile().unwrap_or_else(|error| {
+                                    eprintln!("Luma profile: {error}");
+                                    None
+                                })
+                            } else {
+                                crate::model::Profile::from_fields("Luma", Some("#7360E7"))
+                            };
+                            let _ = responses.send(Response::Profile(profile));
+                        });
+                        continue;
+                    }
+                    Request::Running => Response::Running(if webos {
+                        running_apps().unwrap_or_default()
                     } else {
-                        Ok((demo_inventory(), None))
+                        fixture
+                            .as_ref()
+                            .and_then(|dir| std::fs::read(dir.join("running.json")).ok())
+                            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                            .and_then(|value| value.get("running").map(card_ids))
+                            .unwrap_or_else(|| {
+                                ["netflix", "hotstar", "youtube.leanback.v4", "amazon"]
+                                    .map(str::to_owned)
+                                    .to_vec()
+                            })
                     }),
-                    Request::Launch(id) => Response::Launched(if webos {
-                        if crate::scroll_preview::is_placeholder(&id) {
-                            Err("Scroll preview cards cannot be launched".into())
+                    Request::Close(id) => {
+                        let result = if !webos {
+                            Ok(())
                         } else if !valid_app_id(&id) {
                             Err("Invalid application identifier".into())
                         } else {
-                            call(
-                                "luna://com.webos.applicationManager/launch",
-                                json!({"id": id}),
-                            )
-                            .map(|_| ())
-                        }
+                            elevated_close(&id)
+                        };
+                        Response::Closed(id, result)
+                    }
+                    Request::Foreground => Response::Foreground(if webos {
+                        call(
+                            "luna://com.webos.applicationManager/getForegroundAppInfo",
+                            json!({}),
+                        )
+                        .ok()
+                        .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
                     } else {
-                        Ok(())
+                        None
                     }),
+                    // A launch never queues behind a slower request (closing
+                    // an app through elevated exec, reading settings): it
+                    // goes to the bus at once on its own thread.
+                    Request::Launch(id) => {
+                        let responses = responses.clone();
+                        thread::spawn(move || {
+                            let result = if !webos {
+                                Ok(())
+                            } else if crate::scroll_preview::is_placeholder(&id) {
+                                Err("Scroll preview cards cannot be launched".into())
+                            } else if !valid_app_id(&id) {
+                                Err("Invalid application identifier".into())
+                            } else {
+                                let payload = if id == APP_ID {
+                                    json!({"id": id, "params": self_launch()})
+                                } else {
+                                    json!({"id": id})
+                                };
+                                call("luna://com.webos.applicationManager/launch", payload).map(|_| ())
+                            };
+                            let _ = responses.send(Response::Launched(result));
+                        });
+                        continue;
+                    }
                 };
                 if responses.send(response).is_err() {
                     break;
@@ -83,12 +383,47 @@ impl Platform {
             sender,
             receiver,
             webos,
+            running: std::sync::Arc::default(),
         }
     }
 
     pub fn send(&self, request: Request) {
         let _ = self.sender.send(request);
     }
+}
+
+/// What Luma's TV connections are doing, one line each, in /tmp (memory,
+/// gone at reboot): readable on the TV without a debug restart.
+const STATUS: &str = "/tmp/luma-status";
+
+pub fn status_reset() {
+    let _ = std::fs::remove_file(STATUS);
+}
+
+/// Records `line` (also on stderr). Only a handful are written per run.
+pub fn status(line: &str) {
+    eprintln!("Luma {line}");
+    use std::io::Write;
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(STATUS)
+        .and_then(|mut file| {
+            let at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |time| time.as_secs());
+            writeln!(file, "{at} {line}")
+        });
+}
+
+/// LG's preloader starts Luma once at boot (a one-shot entry in its
+/// supportAppList). Luma comes forward only over the boot screen, LG Home; with
+/// an app in front, or no answer, it stands aside before any window exists.
+pub fn preload_may_show() -> bool {
+    call("luna://com.webos.applicationManager/getForegroundAppInfo", json!({}))
+        .ok()
+        .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
+        .is_some_and(|front| front.is_empty() || front == HOME_ID || front == APP_ID)
 }
 
 fn call(uri: &str, payload: Value) -> Result<Value, String> {
@@ -119,6 +454,27 @@ fn checked_response(value: Value) -> Result<Value, String> {
     Ok(value)
 }
 
+/// The signed-in LG profile, read as LG Home reads it (its account data is
+/// private to system apps, so through Homebrew's elevated service). The
+/// command is fixed and filters on the TV: only the nickname and avatar
+/// colour ever leave it, never the account's e-mail or numbers.
+fn read_profile() -> Result<Option<crate::model::Profile>, String> {
+    let command = r#"if [ "$(id -u)" != 0 ]; then echo '{"returnValue":false}'; exit 0; fi
+U=$(/usr/bin/luna-send -n 1 -w 4000 luna://com.webos.service.accountmanager/getLoginID '{"serviceName":"LGE"}' | sed -n 's/.*"lastSignInUserNo":"\([A-Za-z0-9]*\)".*/\1/p')
+[ -n "$U" ] || { echo '{"returnValue":true,"profile":{}}'; exit 0; }
+F=$(/usr/bin/luna-send -n 1 -w 4000 luna://com.webos.service.accountmanager/getAccountData "{\"serviceName\":\"LGE\",\"userNo\":\"$U\",\"keys\":[\"userData\"]}" | grep -oE '"profile(Nick|Bg)":"[^"\\]*"' | tr '\n' ',' | sed 's/,$//')
+echo "{\"returnValue\":true,\"profile\":{$F}}""#;
+    let envelope = call(
+        "luna://org.webosbrew.hbchannel.service/exec",
+        json!({"command": command}),
+    )?;
+    let profile = inventory_payload(&envelope, "profile")?;
+    Ok(crate::model::Profile::from_fields(
+        profile.get("profileNick").and_then(Value::as_str).unwrap_or_default(),
+        profile.get("profileBg").and_then(Value::as_str),
+    ))
+}
+
 fn inventory_read(uri: &str, field: &str) -> Result<Value, String> {
     // Only these fixed inventory commands use Homebrew's elevated service.
     // Use the same one-reply invocation as the web launcher, without guessing
@@ -140,6 +496,48 @@ fn inventory_read(uri: &str, field: &str) -> Result<Value, String> {
 pub fn read_app_icons(source: &app_artwork::Source) -> Result<Vec<Vec<u8>>, String> {
     if !cfg!(feature = "webos") {
         return Err("Installed artwork is only read on TV builds".into());
+    }
+    // Fast path: the app list already names the icon file. One elevated
+    // `od` dump of it answers in milliseconds, where starting node on this
+    // TV takes seconds (and can time out under load). Paths are validated
+    // in Rust and limited to plain filename characters before they reach
+    // the shell.
+    let plain = |path: &str| {
+        !path.is_empty()
+            && path
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"/._-".contains(&b))
+    };
+    let files: Vec<String> = source
+        .listed_icon_paths()
+        .into_iter()
+        .filter_map(|path| path.to_str().map(str::to_owned))
+        .filter(|path| plain(path))
+        .collect();
+    if !files.is_empty() {
+        let tries = files
+            .iter()
+            .map(|file| {
+                format!(
+                    "if [ -f {file} ] && [ $(wc -c < {file}) -le {limit} ]; then od -An -v -tx1 {file} | tr -d ' \\n'; exit 0; fi",
+                    limit = app_artwork::MAX_FILE
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        let command = format!(
+            "printf '{{\"returnValue\":true,\"icons\":[\"'; ( {tries} ); printf '\"]}}'"
+        );
+        if let Ok(envelope) = call(
+            "luna://org.webosbrew.hbchannel.service/exec",
+            json!({"command": command}),
+        ) && let Ok(icons) = inventory_payload(&envelope, "icons")
+            && let Some(hex) = icons.get(0).and_then(Value::as_str)
+            && !hex.is_empty()
+            && let Ok(bytes) = decode_hex(hex)
+        {
+            return Ok(vec![bytes]);
+        }
     }
     let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
     let command = format!(
@@ -164,7 +562,9 @@ pub fn read_app_icons(source: &app_artwork::Source) -> Result<Vec<Vec<u8>>, Stri
             }
             remaining -= hex.len() / 2;
             hex.as_bytes()
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| {
                     let digit = |b: u8| {
                         (b as char)
@@ -184,6 +584,21 @@ fn output_excerpt(output: &str) -> String {
         .map(|c| if c.is_whitespace() { ' ' } else { c })
         .filter(|c| !c.is_control())
         .take(320)
+        .collect()
+}
+
+fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
+    if !hex.len().is_multiple_of(2) || hex.len() / 2 > app_artwork::MAX_FILE {
+        return Err("Installed icon reply exceeds its size limit".into());
+    }
+    hex.as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| {
+            let digit = |b: u8| (b as char).to_digit(16).ok_or("Invalid installed icon encoding");
+            Ok((digit(pair[0])? * 16 + digit(pair[1])?) as u8)
+        })
         .collect()
 }
 
@@ -242,6 +657,98 @@ fn inventory_payload(envelope: &Value, field: &str) -> Result<Value, String> {
         .get(field)
         .cloned()
         .ok_or_else(|| format!("Missing TV inventory field: {field}"))
+}
+
+/// Apps someone brought to the front since the TV started, one id per line.
+/// /tmp is memory, so the list starts empty at every boot and outlives a
+/// restart of Luma itself.
+const OPENED: &str = "/tmp/luma-opened";
+
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+fn note_opened(id: &str) {
+    if id.is_empty() || id == APP_ID || id == HOME_ID || !valid_app_id(id) {
+        return;
+    }
+    let known = std::fs::read_to_string(OPENED).unwrap_or_default();
+    if known.lines().any(|line| line == id) {
+        return;
+    }
+    use std::io::Write;
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(OPENED)
+        .and_then(|mut file| writeln!(file, "{id}"));
+}
+
+/// The open apps the switcher shows: on the TV only those someone opened.
+/// LG's preloader starts apps (Netflix, YouTube, inputs) nobody asked for;
+/// they run, but they were never open in any sense a viewer would recognise.
+pub fn opened_only(mut ids: Vec<String>, webos: bool) -> Vec<String> {
+    if webos {
+        let known = std::fs::read_to_string(OPENED).unwrap_or_default();
+        ids.retain(|id| known.lines().any(|line| line == id));
+    }
+    ids
+}
+
+/// App IDs of open full-screen ("card") apps from a `running` reply.
+fn card_ids(running: &Value) -> Vec<String> {
+    running
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|entry| entry.get("defaultWindowType").and_then(Value::as_str) == Some("card"))
+        .filter_map(|entry| entry.get("id")?.as_str())
+        .filter(|id| valid_app_id(id))
+        .map(str::to_owned)
+        .collect()
+}
+
+fn running_apps() -> Result<Vec<String>, String> {
+    // The direct bus call avoids a shell spawn; elevated exec is the fallback
+    // where this executable's role may not read the running list.
+    let started = std::time::Instant::now();
+    match call("luna://com.webos.applicationManager/running", json!({})) {
+        Ok(reply) if reply.get("running").is_some() => {
+            eprintln!("Luma running: bus {:?}", started.elapsed());
+            return Ok(card_ids(&reply["running"]));
+        }
+        Ok(reply) => eprintln!("Luma running: bus reply without list: {reply}"),
+        Err(error) => eprintln!("Luma running: bus refused ({error})"),
+    }
+    let ids = card_ids(&inventory_read(
+        "luna://com.webos.applicationManager/running",
+        "running",
+    )?);
+    eprintln!("Luma running: elevated {:?}", started.elapsed());
+    Ok(ids)
+}
+
+fn elevated_close(id: &str) -> Result<(), String> {
+    // `id` passed valid_app_id: only ASCII alphanumerics and . _ - reach the shell.
+    let command = format!(
+        "/usr/bin/luna-send -n 1 -w 4000 luna://com.webos.applicationManager/closeByAppId '{{\"id\":\"{id}\"}}'"
+    );
+    let envelope = call(
+        "luna://org.webosbrew.hbchannel.service/exec",
+        json!({"command": command}),
+    )?;
+    inventory_payload(&envelope, "returnValue").map(|_| ())
+}
+
+fn fixture_inventory(directory: &std::path::Path) -> Result<(Inventory, Option<String>), String> {
+    let read = |file: &str, field: &str| -> Result<Value, String> {
+        let bytes = std::fs::read(directory.join(file)).map_err(|e| format!("{file}: {e}"))?;
+        let value: Value = serde_json::from_slice(&bytes).map_err(|e| format!("{file}: {e}"))?;
+        value
+            .get(field)
+            .cloned()
+            .ok_or_else(|| format!("{file}: missing {field}"))
+    };
+    let apps = normalize_apps(&read("listApps.json", "apps")?)?;
+    let inputs = normalize_inputs(&read("inputs.json", "devices")?)?;
+    Ok((Inventory { apps, inputs }, None))
 }
 
 fn inventory() -> Result<(Inventory, Option<String>), String> {
@@ -369,7 +876,12 @@ pub fn normalize_inputs(raw: &Value) -> Result<Vec<Input>, String> {
             id: id.into(),
             title: title(entry.get("label").and_then(Value::as_str), &port),
             port,
-            connected: entry.get("connected").and_then(Value::as_bool),
+            // Some firmware reports `connected: true` for every existing port;
+            // `hdmiPlugIn` is the actual cable state where it is provided.
+            connected: entry
+                .get("hdmiPlugIn")
+                .and_then(Value::as_bool)
+                .or_else(|| entry.get("connected").and_then(Value::as_bool)),
         });
     }
     Ok(inputs)

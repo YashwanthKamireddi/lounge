@@ -1,6 +1,5 @@
 //! Open-Meteo data and request scheduling. API/cache temperatures remain Celsius;
 //! presentation units never change the request or invalidate a cached reading.
-use crate::i18n::Language;
 use crate::model::Preferences;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -8,7 +7,10 @@ use std::collections::HashSet;
 
 pub const REFRESH_SECONDS: i64 = 15 * 60;
 pub const MAX_CACHE_AGE: i64 = 6 * 60 * 60;
-const RETRY_SECONDS: i64 = 5 * 60;
+/// After a failed fetch: retry in a minute (a Wi-Fi blip recovers fast),
+/// doubling up to half an hour while the TV stays offline.
+const RETRY_FIRST: i64 = 60;
+const RETRY_MAX: i64 = 30 * 60;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Location {
@@ -171,6 +173,45 @@ pub fn parse_locations(value: &Value) -> Result<Vec<Location>, String> {
         .collect())
 }
 
+/// OpenStreetMap's Nominatim answer, for what Open-Meteo does not know
+/// (India's PIN codes, older names such as Bangalore). A postcode reads as
+/// the code and the district it covers: "530045 · Visakhapatnam".
+pub fn parse_places(value: &Value) -> Result<Vec<Location>, String> {
+    let list = value
+        .as_array()
+        .ok_or("The location service returned an unreadable response.")?;
+    let mut seen = HashSet::new();
+    Ok(list
+        .iter()
+        .take(20)
+        .filter_map(|place| {
+            let number = |key: &str| place.get(key)?.as_str()?.parse::<f64>().ok();
+            let field = |key: &str| label(place.get("address").and_then(|address| address.get(key)));
+            let mut name = label(place.get("name"));
+            if place.get("addresstype").and_then(Value::as_str) == Some("postcode") {
+                let area = ["city", "town", "state_district", "county"]
+                    .into_iter()
+                    .map(field)
+                    .find(|area| !area.is_empty())
+                    .unwrap_or_default();
+                let area = area.trim_end_matches(" District").trim();
+                if !area.is_empty() {
+                    name = format!("{name} · {area}");
+                }
+            }
+            Location::parse(&serde_json::json!({
+                "name": name,
+                "latitude": number("lat")?,
+                "longitude": number("lon")?,
+                "region": field("state"),
+                "country": field("country"),
+            }))
+        })
+        .filter(|place| seen.insert(place.key()))
+        .take(6)
+        .collect())
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Cache {
     pub key: String,
@@ -210,7 +251,6 @@ pub enum Command {
     Search {
         id: u64,
         query: String,
-        language: Language,
     },
     Forecast {
         id: u64,
@@ -241,7 +281,17 @@ pub struct Weather {
     next_fetch: i64,
     #[serde(skip)]
     active_home: bool,
+    /// Consecutive failed fetches, for the retry backoff.
+    #[serde(skip)]
+    failures: u32,
+    /// When the query was last typed into: a search follows once typing
+    /// pauses, as tvOS searches while you type.
+    #[serde(skip)]
+    typed_at: Option<std::time::Instant>,
 }
+
+/// How long typing must pause before the search runs.
+pub const SEARCH_PAUSE: std::time::Duration = std::time::Duration::from_millis(350);
 impl Weather {
     pub fn generations(&self) -> (u64, u64) {
         (self.search_id, self.forecast_id)
@@ -250,12 +300,39 @@ impl Weather {
         self.pending.is_some()
     }
     pub fn edit(&mut self, query: String) {
-        self.query = query
+        let query: String = query
             .chars()
             .filter(|c| !c.is_control())
             .take(120)
             .collect();
-        self.cancel_search();
+        if query == self.query {
+            return;
+        }
+        self.query = query;
+        // Whatever is in flight is for older text: drop its answer, but keep
+        // the results on screen until the new ones arrive, so the list never
+        // flashes empty between keystrokes.
+        self.search_id += 1;
+        self.searching = false;
+        self.message = None;
+        if self.query.trim().chars().count() >= 2 {
+            self.typed_at = Some(std::time::Instant::now());
+        } else {
+            self.typed_at = None;
+            self.results.clear();
+        }
+    }
+    /// The search typing asks for, once it has paused.
+    pub fn due_search(&mut self) -> Option<Command> {
+        if self.typed_at.is_some_and(|at| at.elapsed() >= SEARCH_PAUSE) {
+            self.typed_at = None;
+            return self.search();
+        }
+        None
+    }
+    /// A search is waiting on a pause in typing (the loop keeps ticking).
+    pub fn search_pending(&self) -> bool {
+        self.typed_at.is_some()
     }
     pub fn cancel_search(&mut self) {
         self.search_id += 1;
@@ -263,13 +340,16 @@ impl Weather {
         self.searching = false;
         self.message = None;
     }
-    pub fn search(&mut self, language: Language) -> Option<Command> {
+    pub fn search(&mut self) -> Option<Command> {
         if self.searching {
             return None;
         }
-        self.cancel_search();
+        self.typed_at = None;
+        self.search_id += 1;
+        self.message = None;
         let query = self.query.trim().to_owned();
         if query.chars().count() < 2 {
+            self.results.clear();
             self.message = Some("enterCity".into());
             return None;
         }
@@ -277,7 +357,6 @@ impl Weather {
         Some(Command::Search {
             id: self.search_id,
             query,
-            language,
         })
     }
     pub fn accept_search(&mut self, id: u64, result: Result<Vec<Location>, String>) -> bool {
@@ -303,6 +382,7 @@ impl Weather {
         self.next_fetch = 0;
         self.loading = false;
         self.failed = false;
+        self.failures = 0;
     }
     pub fn remove_location(&mut self) {
         self.cancel_search();
@@ -409,12 +489,15 @@ impl Weather {
                 };
                 self.cache = Some(cache.clone());
                 self.failed = false;
+                self.failures = 0;
                 self.next_fetch = now + REFRESH_SECONDS;
                 (true, Some(Command::Persist(cache)))
             }
             _ => {
                 self.failed = true;
-                self.next_fetch = now + RETRY_SECONDS;
+                let backoff = RETRY_FIRST << self.failures.min(5);
+                self.failures = self.failures.saturating_add(1);
+                self.next_fetch = now + backoff.min(RETRY_MAX);
                 if self
                     .cache
                     .as_ref()

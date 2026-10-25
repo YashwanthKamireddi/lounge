@@ -1,7 +1,6 @@
 //! Dedicated latest-job HTTP workers and an ordered cache writer. No request,
 //! DNS/TLS work or cache write blocks the SDL thread.
-use crate::i18n::Language;
-use crate::weather::{Cache, Command, Location, Reading, parse_locations, parse_reading};
+use crate::weather::{Cache, Command, Location, Reading, parse_locations, parse_places, parse_reading};
 use serde_json::Value;
 use std::{
     fs,
@@ -24,10 +23,11 @@ pub struct Client {
     agent: ureq::Agent,
     geocoding: String,
     forecast: String,
+    places: String,
 }
 impl Client {
     pub fn new(test_server: Option<&str>) -> Result<Self, String> {
-        let (geocoding, forecast) = if let Some(server) = test_server {
+        let (geocoding, forecast, places) = if let Some(server) = test_server {
             let uri: ureq::http::Uri = server
                 .parse()
                 .map_err(|e| format!("Invalid weather test server: {e}"))?;
@@ -48,11 +48,13 @@ impl Client {
             (
                 format!("http://{address}/v1/search"),
                 format!("http://{address}/v1/forecast"),
+                format!("http://{address}/places"),
             )
         } else {
             (
                 "https://geocoding-api.open-meteo.com/v1/search".into(),
                 "https://api.open-meteo.com/v1/forecast".into(),
+                "https://nominatim.openstreetmap.org/search".into(),
             )
         };
         let agent = ureq::Agent::config_builder()
@@ -65,6 +67,7 @@ impl Client {
             agent,
             geocoding,
             forecast,
+            places,
         })
     }
     fn request(&self, endpoint: &str, query: &[(&str, &str)]) -> Result<Value, String> {
@@ -95,20 +98,40 @@ impl Client {
         serde_json::from_slice(&bytes)
             .map_err(|_| "The weather service returned unreadable data".into())
     }
-    pub fn search(&self, query: &str, language: Language) -> Result<Vec<Location>, String> {
+    pub fn search(&self, query: &str) -> Result<Vec<Location>, String> {
         let query = query.trim();
         if query.chars().count() < 2 {
             return Err("Enter at least two characters.".into());
         }
-        parse_locations(&self.request(
+        let found = parse_locations(&self.request(
             &self.geocoding,
             &[
                 ("name", query),
                 ("count", "6"),
-                ("language", language.code()),
+                ("language", "en"),
                 ("format", "json"),
             ],
-        )?)
+        )?)?;
+        if !found.is_empty() {
+            return Ok(found);
+        }
+        // Open-Meteo knows place names, and postcodes only in some countries.
+        // OpenStreetMap also knows India's PIN codes and older names; asked
+        // only when Open-Meteo has nothing, and its outage is just no match.
+        Ok(self
+            .request(
+                &self.places,
+                &[
+                    ("q", query),
+                    ("format", "jsonv2"),
+                    ("limit", "6"),
+                    ("addressdetails", "1"),
+                    ("accept-language", "en"),
+                ],
+            )
+            .ok()
+            .and_then(|places| parse_places(&places).ok())
+            .unwrap_or_default())
     }
     pub fn forecast(&self, location: &Location) -> Result<Reading, String> {
         let latitude = location.latitude.to_string();
@@ -195,13 +218,9 @@ impl Service {
                         continue;
                     }
                     let response = match job {
-                        Command::Search {
+                        Command::Search { id, query } => Response::Search {
                             id,
-                            query,
-                            language,
-                        } => Response::Search {
-                            id,
-                            result: client.search(&query, language),
+                            result: client.search(&query),
                         },
                         Command::Forecast { id, location } => Response::Forecast {
                             id,

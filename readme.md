@@ -49,67 +49,33 @@ luna-send -i luna://com.webos.appInstallService/dev/install \
   '{"id":"com.ecklf.luma","ipkUrl":"/tmp/luma.ipk","subscribe":true}'
 ```
 
-## Replacing LG Home
+## Making Luma the Home app
 
-### Takeover Method
+Luma replaces LG Home through webOS's own mechanisms: nothing runs at boot and nothing is
+mounted over LG's files. Verified on webOS 7.6 (UQ80); each step is one setting and undoes
+cleanly. Run in the TV's root SSH shell.
 
-> [!WARNING]
-> Home replacement is experimental.\
-> Confirmed working on **webOS 26**.\
-> Ensure to disable takeover before uninstalling Luma.
-
-Install Luma and verify that it opens normally. Disable any Home mapping e.g.
-[LG Input Hook](https://repo.webosbrew.org/apps/org.webosbrew.inputhook/) and any other Home
-replacement, then run in the TV's root SSH shell:
+**Back out of an app opens Luma.** webOS opens the app registered as the default Home. On
+webOS 7 the setting does not exist until written:
 
 ```sh
-APP=/media/developer/apps/usr/palm/applications/com.ecklf.luma
-# If you enabled Lumas autostart method earlier, disable it first
-# sh "$APP/autostart.sh" disable
-sh "$APP/home.sh" enable
+luna-send -n 1 luna://com.webos.settingsservice/setSystemSettings \
+  '{"category":"general","settings":{"defaultApps":{"home":"com.ecklf.luma"}}}'
 ```
 
-Takeover mounts Luma over the system Home app and reapplies the mount at cold boot.
-LG Home's original files remain underneath, using the same approach as
-[Glasshouse Home](https://github.com/rorygallagher2024/glasshouse/blob/main/server/lib/home-takeover.js).
+Leaving an app then shows Luma directly, without LG Home in between. To undo, set
+`defaultApps` back to `{}`.
 
-To see the status or disable the home override use:
+**The Home button opens Luma.** The remote's Home key is handled by the compositor's key-filter
+chain (configd `com.webos.surfacemanager.keyFilters`), loaded at boot. A filter that maps Home to
+`com.ecklf.luma`, such as [Glasshouse](https://github.com/rorygallagher2024/glasshouse)'s remote
+keys, sends every press straight to Luma.
 
-```sh
-sh /var/lib/luma-home/home.sh status
-sh /var/lib/luma-home/home.sh disable
-```
-
-`restore` is an alias for `disable`.
-
-Boot log: `/var/lib/luma-home/boot.log`. See the
-[development guide](development.md#optional-native-home-integration) for implementation details.
-
-### Autostart Method
-
-Open Luma 25 seconds after a full cold boot. Run in the TV's root SSH shell:
-
-```sh
-sh /media/developer/apps/usr/palm/applications/com.ecklf.luma/autostart.sh enable
-```
-
-Use this when takeover is disabled. It launches Luma as a regular app and does not remap the Home button.
-
-Disable before enabling takeover or uninstalling Luma:
-
-```sh
-sh /media/developer/apps/usr/palm/applications/com.ecklf.luma/autostart.sh disable
-```
-
-### LG Input Hook Method
-
-You can use [LG Input Hook](https://repo.webosbrew.org/apps/org.webosbrew.inputhook/), configure an Execute action with this one-line command:
-
-```sh
-/usr/bin/luna-send -n 1 -w 5000 luna://com.webos.service.applicationmanager/launch '{"id":"com.ecklf.luma"}'
-```
-
-Test on a spare button first. Disable the mapping in Input Hook to restore normal Home behavior.
+**Luma stays resident, LG Home does not.** LG's memory manager (`memchute`) reads
+`/home/root/memorymanager-conf.json` before its built-in `/etc/palm` copy. Adding
+`com.ecklf.luma` to `KeepOnLaunchEx`, and taking `com.webos.app.home` out of it, keeps Luma
+loaded behind apps while LG Home is freed when an app opens. Takes effect after a restart; keep a
+copy of the original file to undo.
 
 ## Development
 

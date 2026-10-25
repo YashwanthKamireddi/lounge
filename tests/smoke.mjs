@@ -61,18 +61,19 @@ try {
     );
     return state;
   };
+  // Home opens on the first dock favourite; Down enters the grid below.
   const home = await scenario('home', 'down');
-  assert.deepEqual(home.focus, { App: 'netflix' });
+  assert.deepEqual(home.focus, { App: 'com.webos.app.livetv' });
   const hidden = await scenario('apps', 'apps,down,menu,down,enter');
-  assert.ok(hidden.preferences.hidden.includes('netflix'));
-  assert.deepEqual(hidden.focus, { App: 'youtube.leanback.v4' });
-  // Reload from disk, find Netflix in Hidden, and restore it.
+  assert.ok(hidden.preferences.hidden.includes('com.webos.app.livetv'));
+  assert.deepEqual(hidden.focus, { App: 'luma.settings' });
+  // Reload from disk and show Live TV again from Settings › General › Hidden apps.
   const restored = await scenario(
     'restored',
-    'apps,down,up,right,right,right,right,enter,down,menu,down,enter',
+    'settings,wait,right,down,down,down,down,enter,enter',
   );
   assert.deepEqual(restored.preferences.hidden, []);
-  const searched = await scenario('search', 'apps,type:YouTube,back');
+  const searched = await scenario('search', 'apps,type:YouTube');
   assert.equal(searched.query, 'YouTube');
   assert.deepEqual(searched.apps, ['youtube.leanback.v4']);
   for (const [id, title] of [
@@ -82,23 +83,23 @@ try {
     ['com.cmb.rainbowtv', 'Rainbow TV'],
     ['com.lgtvod.kr.app', 'LG TV VOD'],
   ]) {
-    const koreanApp = await scenario(`korean-${id}`, `apps,type:${title},back`);
+    const koreanApp = await scenario(`korean-${id}`, `apps,type:${title}`);
     assert.deepEqual(koreanApp.apps, [id]);
     assert.ok(koreanApp.ui_text.includes(title));
   }
-  const settings = await scenario('settings', 'settings,down,down,enter,down,enter');
+  const settings = await scenario('settings', 'settings,down,enter,down,enter');
   assert.equal(settings.preferences.background, 'forest');
-  const saved = await scenario('saved', 'down,hold,right,back');
+  const saved = await scenario('saved', 'hold,right,back');
   assert.equal(saved.preferences.background, 'forest');
   assert.deepEqual(saved.preferences.favorites.slice(0, 2), ['youtube.leanback.v4', 'netflix']);
-  const clock = await scenario('clock', 'settings,click:900:284');
+  const clock = await scenario('clock', 'settings,click:1300:200,click:1300:284');
   assert.equal(clock.subpage, 'Clock');
-  const input = await scenario('inputs', 'settings,down,down,down,down,enter,enter,up,enter');
+  const input = await scenario('inputs', 'settings,down,down,down,enter,enter,up,enter');
   assert.equal(input.preferences.input_modes['com.webos.app.hdmi1'], 'Off');
   assert.equal(input.subpage, null);
   const closed = await scenario('dialog-closed', 'apps,down,menu,click:100:900');
   assert.equal(closed.modal, false);
-  assert.deepEqual(closed.focus, { App: 'youtube.leanback.v4' });
+  assert.deepEqual(closed.focus, { App: 'com.webos.app.livetv' });
   const fixedTime = ['--time', '2026-10-21T20:41:00+02:00'];
   const one = await scenario('density-1x', 'home,down', fixedTime);
   const two = await scenario('density-2x', 'home,down', [...fixedTime, '--capture-scale', '2']);

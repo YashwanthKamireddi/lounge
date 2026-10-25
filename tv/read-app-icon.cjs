@@ -53,7 +53,10 @@ if (
     directories.splice(directories.indexOf(source.directory), 1);
   directories.unshift(source.directory);
 }
+// The first readable icon in preference order is enough (the launcher uses
+// the first that decodes); stopping there keeps each elevated read small.
 directories.forEach(function (directory) {
+  if (icons.length) return;
   var manifest = {};
   var bytes = read(path.join(directory, 'appinfo.json'), 64 * 1024);
   if (bytes) {
@@ -67,6 +70,7 @@ directories.forEach(function (directory) {
   }
   [source.large_icon, manifest.largeIcon, source.icon, manifest.icon, 'icon.png'].forEach(
     function (icon) {
+      if (icons.length) return;
       if (
         typeof icon !== 'string' ||
         !icon ||

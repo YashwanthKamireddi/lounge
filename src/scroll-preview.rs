@@ -1,5 +1,5 @@
 //! Explicit manual scroll preview. Never used as a TV inventory fallback.
-use crate::{i18n::Language, model::Inventory};
+use crate::{i18n, model::Inventory};
 
 const PREFIX: &str = "com.luma.scroll-preview.";
 
@@ -7,7 +7,7 @@ pub fn is_placeholder(id: &str) -> bool {
     id.starts_with(PREFIX)
 }
 
-pub fn append(inventory: &mut Inventory, count: usize, language: Language) {
+pub fn append(inventory: &mut Inventory, count: usize) {
     if count == 0 {
         return;
     }
@@ -26,7 +26,7 @@ pub fn append(inventory: &mut Inventory, count: usize, language: Language) {
         app.id = id;
         app.title = format!(
             "{} {:03} · {}",
-            language.t("scrollTestApp"),
+            i18n::t("scrollTestApp"),
             index + 1,
             app.title
         );
