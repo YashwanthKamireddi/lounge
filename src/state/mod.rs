@@ -546,7 +546,7 @@ impl State {
                     .as_ref()
                     .is_some_and(|(_, start)| {
                         let age = start.elapsed().as_secs_f32();
-                        age < 0.12 || age > NOTICE_SECONDS - 0.25
+                        !(0.12..=NOTICE_SECONDS - 0.25).contains(&age)
                     }))
     }
 
