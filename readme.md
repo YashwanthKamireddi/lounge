@@ -81,9 +81,9 @@ It also knows when to step back. The moment an app opens, Lounge stops drawing a
 memory back: on the TV it was built on, it keeps about 16 MB of its own memory behind a playing app, so YouTube, Netflix and the rest have the TV to themselves. Press Home and it is back in under a second, usually about a tenth of one.
 
 Taking over Home is done the way LG does it, not around it. Lounge sets the TV's own default-Home
-setting and works with a compositor key filter for the Home button. It runs no boot scripts of
-its own and mounts nothing over LG's files, so turning it off is one setting, and the TV is
-exactly as it was. Power-on, the Home button and backing out of an app all land on Lounge.
+setting and adds a small key filter of its own to LG's compositor for the Home button. It runs
+no boot scripts and mounts nothing over LG's files, so turning it off is one switch in Settings,
+and the TV is exactly as it was. Power-on, the Home button and backing out of an app all land on Lounge.
 
 And it stays small on purpose: no screensaver, no video wallpapers, no background services.
 What it does have, it does carefully, from the focus lift on every tile to a context menu that
@@ -121,31 +121,30 @@ well. Open **Lounge** from the TV's app list.
 
 ## Make Lounge your Home
 
-Lounge replaces LG Home through webOS's own mechanisms: nothing runs at boot and nothing is
-mounted over LG's files. Verified on webOS 7.6 (UQ80); each step is one setting and undoes
-cleanly. Run in the TV's root SSH shell.
+Open Lounge and go to **Settings › General › Home Button**, and set it to **Lounge**. From then
+on the Home button, backing out of an app and turning the TV on all land on Lounge, with no LG
+Home in between. Set it back to **LG Home** and the TV is exactly as it was.
 
-**Back out of an app opens Lounge.** webOS opens the app registered as the default Home. On
-webOS 7 the setting does not exist until written:
+The switch uses LG's own mechanisms and nothing else:
 
-```sh
-luna-send -n 1 luna://com.webos.settingsservice/setSystemSettings \
-  '{"category":"general","settings":{"defaultApps":{"home":"io.github.yashwanthkamireddi.lounge"}}}'
-```
+- **The TV's default Home** is set to Lounge, so leaving an app opens it.
+- **A small key filter** goes into the compositor's own list of filters (configd
+  `com.webos.surfacemanager.keyFilters`). LG's compositor otherwise always opens LG Home for the
+  Home key, and this list is the one supported way to change that. The filter
+  ([`tv/home-key-filter.js`](tv/home-key-filter.js)) catches Home only and passes every other key
+  on untouched; if Lounge ever cannot open, it opens LG Home instead. If
+  [Glasshouse](https://github.com/rorygallagher2024/glasshouse) already maps the Home key, its
+  filter runs first and keeps it.
 
-Leaving an app then shows Lounge directly, without LG Home in between. To undo, set
-`defaultApps` back to `{}`.
+Nothing runs at boot that LG's compositor does not already load, and nothing is mounted over LG's
+files. The switch needs the Homebrew Channel to be elevated (root); turn it back to LG Home before
+uninstalling Lounge.
 
-**The Home button opens Lounge.** The remote's Home key is handled by the compositor's key-filter
-chain (configd `com.webos.surfacemanager.keyFilters`), loaded at boot. A filter that maps Home to
-`io.github.yashwanthkamireddi.lounge`, such as [Glasshouse](https://github.com/rorygallagher2024/glasshouse)'s remote
-keys, sends every press straight to Lounge.
-
-**Lounge stays resident, LG Home does not.** LG's memory manager (`memchute`) reads
-`/home/root/memorymanager-conf.json` before its built-in `/etc/palm` copy. Adding
-`io.github.yashwanthkamireddi.lounge` to `KeepOnLaunchEx`, and taking `com.webos.app.home` out of it, keeps Lounge
-loaded behind apps while LG Home is freed when an app opens. Takes effect after a restart; keep a
-copy of the original file to undo.
+**Optional: keep Lounge loaded behind apps** so Home is instant. LG's memory manager (`memchute`)
+reads `/home/root/memorymanager-conf.json` before its built-in `/etc/palm` copy. Adding
+`io.github.yashwanthkamireddi.lounge` to `KeepOnLaunchEx`, and taking `com.webos.app.home` out of
+it, keeps Lounge loaded while LG Home is freed when an app opens. It takes effect after a restart;
+keep a copy of the original file to undo.
 
 ## Make it yours
 
