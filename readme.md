@@ -44,26 +44,18 @@ Native, fast and quiet, so the only thing you notice is what you came to watch.
   </tr>
   <tr>
     <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app shows Move and Hide as glass pills against it"></td>
-    <td width="50%"><img src="docs/readme/move.jpg" alt="Moving an app along the dock"></td>
+    <td width="50%"><img src="docs/readme/move.jpg" alt="YouTube lifted and moved one place along the dock"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Hold OK</b> on an app to move or hide it</sub></td>
+    <td align="center"><sub><b>Hold OK</b>: the app stays lit, its actions appear beside it</sub></td>
     <td align="center"><sub><b>Move</b>: the app lifts and slides where you want it</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/readme/settings.jpg" alt="Settings, tinted by the wallpaper"></td>
     <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings in the Light appearance"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub><b>Settings</b>, tinted by the wallpaper behind it</sub></td>
-    <td align="center"><sub><b>Light</b>, <b>Dark</b> or <b>Automatic</b> by time of day</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/readme/light-menu.jpg" alt="App actions in the Light appearance"></td>
     <td width="50%"><img src="docs/readme/search.jpg" alt="Search with a one-row keyboard"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Glass that follows the appearance</sub></td>
+    <td align="center"><sub><b>Light</b>, <b>Dark</b> or <b>Automatic</b> by time of day</sub></td>
     <td align="center"><sub><b>Search</b> finds any app as you type</sub></td>
   </tr>
 </table>
