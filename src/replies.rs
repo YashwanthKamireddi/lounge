@@ -86,6 +86,28 @@ impl Replies {
                 state.open_switcher(platform::opened_only(ids, platform.webos))
             }
             Response::Running(_) => {}
+            Response::Home(result) => {
+                let asked = std::mem::take(&mut state.home_button_busy);
+                match result {
+                    Ok(on) => {
+                        if asked {
+                            state.notify(i18n::t(if on {
+                                "homeButtonLounge"
+                            } else {
+                                "homeButtonLg"
+                            }));
+                        }
+                        state.home_button = Some(on);
+                    }
+                    Err(error) => {
+                        eprintln!("Lounge Home button: {error}");
+                        if asked {
+                            state.notify(i18n::t("homeButtonError"));
+                        }
+                    }
+                }
+                state.dirty = true;
+            }
             Response::Closed(id, result) => {
                 if let Err(error) = result {
                     eprintln!("Lounge close {id}: {error}");

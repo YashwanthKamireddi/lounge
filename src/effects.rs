@@ -31,6 +31,7 @@ pub(crate) fn effects(
                 }
             }
             Effect::Close(id) => platform.send(Request::Close(id)),
+            Effect::HomeButton(set) => platform.send(Request::Home(set)),
             Effect::Launch(id) => {
                 if scroll_preview::is_placeholder(&id) {
                     state.notify(i18n::t("scrollTestOnly"));

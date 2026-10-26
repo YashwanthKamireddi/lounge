@@ -218,6 +218,22 @@ fn luma_preferences_keep_settings_and_search_in_place() {
 }
 
 #[test]
+fn the_home_button_switch_flips_once_per_answer_from_the_tv() {
+    let mut state = State::new(Preferences::default());
+    state.focus = Target::Setting(10);
+    // Unknown until the TV has said: nothing to flip.
+    assert!(state.activate().is_empty());
+    state.home_button = Some(false);
+    assert_eq!(state.activate(), vec![Effect::HomeButton(Some(true))]);
+    assert!(state.home_button_busy);
+    // A second press while the TV is still changing it does nothing.
+    assert!(state.activate().is_empty());
+    state.home_button_busy = false;
+    state.home_button = Some(true);
+    assert_eq!(state.activate(), vec![Effect::HomeButton(Some(false))]);
+}
+
+#[test]
 fn icon_collector_visibility_cases_match_the_launcher_inventory() {
     let cases: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("../tests/fixtures/app-visibility.json")).unwrap();

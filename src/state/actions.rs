@@ -172,6 +172,16 @@ impl State {
                         self.expanded = false;
                     }
                     5 => return vec![Effect::Quit],
+                    10 => {
+                        if let Some(on) = self.home_button
+                            && !self.home_button_busy
+                        {
+                            self.home_button_busy = true;
+                            self.dirty = true;
+                            return vec![Effect::HomeButton(Some(!on))];
+                        }
+                        return vec![];
+                    }
                     8 => {
                         self.subpage = Some(Subpage::Avatar);
                         if !self.preferences.reduced_motion {

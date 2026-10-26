@@ -257,7 +257,11 @@ fn run() -> Result<(), String> {
     let platform = Platform::new(webos, options.inventory.clone());
     let writer = storage::Writer::new(preferences_path.clone());
     effects(
-        vec![Effect::Refresh],
+        if webos {
+            vec![Effect::Refresh, Effect::HomeButton(None)]
+        } else {
+            vec![Effect::Refresh]
+        },
         &mut state,
         &platform,
         &writer,

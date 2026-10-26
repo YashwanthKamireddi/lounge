@@ -175,6 +175,9 @@ pub enum Effect {
     Close(String),
     Quit,
     Weather(weather::Command),
+    /// Give the remote's Home key to Lounge (true) or back to LG, or (None)
+    /// read which it is.
+    HomeButton(Option<bool>),
 }
 
 pub const KEYS: [&str; 40] = [
@@ -194,6 +197,11 @@ pub struct State {
     pub avatar: Option<String>,
     /// The owner's pictures (crate::avatars), and which one shows.
     pub avatars: Vec<crate::avatars::Picture>,
+    /// Whether the remote's Home key opens Lounge; None until the TV has
+    /// said (and always on the desktop, which has no Home key to set).
+    pub home_button: Option<bool>,
+    /// A Home key change is on its way to the TV.
+    pub home_button_busy: bool,
     avatar_index: usize,
     /// When the shown picture last changed, and the one it replaced (it
     /// crossfades out).
@@ -325,6 +333,8 @@ impl State {
             profile: None,
             avatar: None,
             avatars: Vec::new(),
+            home_button: None,
+            home_button_busy: false,
             avatar_index: 0,
             avatar_since: crate::clock::now(),
             avatar_from: None,

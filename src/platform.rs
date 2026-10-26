@@ -383,6 +383,9 @@ pub enum Request {
     Foreground,
     Running,
     Close(String),
+    /// The remote's Home key: Some(true/false) to give it to Lounge or back
+    /// to LG, None to read which it is.
+    Home(Option<bool>),
 }
 pub enum Response {
     Inventory(Result<(Inventory, Option<String>), String>),
@@ -391,6 +394,8 @@ pub enum Response {
     Foreground(Option<String>),
     Running(Vec<String>),
     Closed(String, Result<(), String>),
+    /// Whether the Home key opens Lounge, after the request.
+    Home(Result<bool, String>),
 }
 
 pub struct Platform {
@@ -463,6 +468,17 @@ impl Platform {
                         };
                         Response::Closed(id, result)
                     }
+                    Request::Home(set) => Response::Home(if webos {
+                        let result = home_button(set);
+                        status(&match &result {
+                            Ok(true) => "home button: opens Lounge".to_owned(),
+                            Ok(false) => "home button: opens LG Home".to_owned(),
+                            Err(error) => format!("home button: {error}"),
+                        });
+                        result
+                    } else {
+                        Err("The Home button is set on the TV".into())
+                    }),
                     Request::Foreground => Response::Foreground(if webos {
                         call(
                             "luna://com.webos.applicationManager/getForegroundAppInfo",
@@ -871,6 +887,35 @@ fn running_apps() -> Result<Vec<String>, String> {
     )?);
     eprintln!("Lounge running: elevated {:?}", started.elapsed());
     Ok(ids)
+}
+
+/// Settings › General › Home Button. LG's compositor opens LG Home for the
+/// Home key whatever the default Home is; a key filter in its chain is the
+/// one native way to change that. Lounge's (`tv/home-key-filter.js`) and the
+/// helper that puts it in or takes it out (`tv/home-button.js`) are written
+/// to /var/lib/lounge and run as root through Homebrew Channel's exec.
+fn home_button(set: Option<bool>) -> Result<bool, String> {
+    const HELPER: &str = include_str!("../tv/home-button.js");
+    const FILTER: &str = include_str!("../tv/home-key-filter.js");
+    let mode = match set {
+        Some(true) => "on",
+        Some(false) => "off",
+        None => "status",
+    };
+    let command = format!(
+        "if [ \"$(id -u)\" != 0 ]; then echo '{{\"returnValue\":false,\"errorText\":\"Homebrew Channel needs root access\"}}'; exit 0; fi\n\
+         mkdir -p /var/lib/lounge\n\
+         cat > /var/lib/lounge/home-button.js <<'LOUNGE_EOF'\n{HELPER}LOUNGE_EOF\n\
+         cat > /var/lib/lounge/home-key-filter.next <<'LOUNGE_EOF'\n{FILTER}LOUNGE_EOF\n\
+         /usr/bin/node /var/lib/lounge/home-button.js {mode}"
+    );
+    let envelope = call(
+        "luna://org.webosbrew.hbchannel.service/exec",
+        json!({"command": command}),
+    )?;
+    inventory_payload(&envelope, "on")?
+        .as_bool()
+        .ok_or_else(|| "The TV did not say where Home goes".into())
 }
 
 fn elevated_close(id: &str) -> Result<(), String> {
