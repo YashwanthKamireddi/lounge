@@ -12,7 +12,7 @@ Native, fast and quiet, so the only thing you notice is what you came to watch.
 [![webOS](https://img.shields.io/badge/LG%20webOS-7.6%20verified-1a1f45.svg)](#requirements)
 [![Rust](https://img.shields.io/badge/Rust-OpenGL%20ES-1a1f45.svg)](#how-it-works)
 
-[Features](#features) · [Tour](#a-tour) · [Why Lounge](#how-lounge-differs) · [Install](#install) · [Make it your Home](#make-lounge-your-home) · [Make it yours](#make-it-yours) · [Build](#build-it-yourself)
+[Features](#features) · [Tour](#a-tour) · [Why Lounge](#why-lounge) · [Install](#install) · [Make it your Home](#make-lounge-your-home) · [Make it yours](#make-it-yours) · [Build](#build-it-yourself)
 
 <img src="docs/readme/home.jpg" alt="Lounge home screen: a glass dock of apps over the northern lights" width="100%">
 
@@ -52,46 +52,50 @@ Native, fast and quiet, so the only thing you notice is what you came to watch.
   </tr>
   <tr>
     <td width="50%"><img src="docs/readme/settings.jpg" alt="Settings, tinted by the wallpaper"></td>
-    <td width="50%"><img src="docs/readme/wallpapers.jpg" alt="Choosing a wallpaper"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub><b>Settings</b>, tinted by your wallpaper</sub></td>
-    <td align="center"><sub><b>Nine wallpapers</b>, each with its own glass</sub></td>
-  </tr>
-  <tr>
     <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings in the Light appearance"></td>
-    <td width="50%"><img src="docs/readme/light-menu.jpg" alt="App actions in the Light appearance"></td>
   </tr>
   <tr>
+    <td align="center"><sub><b>Settings</b>, tinted by the wallpaper behind it</sub></td>
     <td align="center"><sub><b>Light</b>, <b>Dark</b> or <b>Automatic</b> by time of day</sub></td>
-    <td align="center"><sub>Menus, banners and search follow the appearance</sub></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/readme/light-menu.jpg" alt="App actions in the Light appearance"></td>
     <td width="50%"><img src="docs/readme/search.jpg" alt="Search with a one-row keyboard"></td>
-    <td width="50%" valign="middle">
-      <b>Search</b> finds any app as you type, on a one-row keyboard made for the remote.<br><br>
-      <sub>Screenshots are the desktop preview, which renders exactly what the TV draws, with
-      sample apps.</sub>
-    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Glass that follows the appearance</sub></td>
+    <td align="center"><sub><b>Search</b> finds any app as you type</sub></td>
   </tr>
 </table>
 
-## How Lounge differs
+<sub>Screenshots are the desktop preview, which renders exactly what the TV draws, with sample
+apps.</sub>
 
-Most home-screen replacements for LG TVs are web pages running in the TV's built-in browser.
-Lounge is a native program, and it takes over Home with webOS's own settings rather than scripts.
+## Why Lounge
 
-|                      | **Lounge**                                                                                                         | Typical web-page launcher                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| Runs as              | Native Rust + OpenGL ES, drawing straight to the screen                                                            | HTML/CSS in LG's browser engine                                    |
-| Start-up             | About half a second on a fresh TV                                                                                  | A browser page has to load first                                   |
-| Behind a playing app | Draws nothing, hands memory back                                                                                   | The page and its engine stay in memory                             |
-| Taking over Home     | LG's default-Home setting and a compositor key filter: no boot scripts of its own, nothing mounted over LG's files | Boot scripts, a mount over LG Home, or a watcher on another device |
-| Power-on             | Lands on Lounge, verified with power cycles                                                                        | Varies by launcher                                                 |
-| Look                 | tvOS: glass dock, focus lift, a context menu that keeps its app lit                                                | Varies                                                             |
+Most home screens made for LG TVs are web pages: HTML and CSS running inside the TV's built-in
+browser. That is a fine way to build an app, but a heavy way to build the screen you see every
+time the TV turns on. A browser engine has to start before anything appears, it stays in memory
+while you watch, and a TV's small graphics chip struggles with the blur and layering a modern
+interface needs.
 
-Lounge also keeps itself small on purpose: no screensaver, no video wallpapers, no extra
-services. The TV's memory belongs to what you are watching.
+Lounge is a native program instead. It is written in Rust and draws straight to the screen with
+OpenGL ES, the same way a console's home screen does. On a freshly started TV it is up in about
+half a second. Every frame paints only what changed, and the effects that make it look like
+Apple TV, such as glass, the dim behind a menu and the fade into the app switcher, are folded
+into a single pass, so the TV's GPU never repaints the screen twice.
+
+It also knows when to step back. The moment an app opens, Lounge stops drawing and hands its
+memory back: on the TV it was built on, it keeps about 16 MB of its own memory behind a playing app, so YouTube, Netflix and the rest have the TV to themselves. Press Home and it is back in under a second, usually about a tenth of one.
+
+Taking over Home is done the way LG does it, not around it. Lounge sets the TV's own default-Home
+setting and works with a compositor key filter for the Home button. It runs no boot scripts of
+its own and mounts nothing over LG's files, so turning it off is one setting, and the TV is
+exactly as it was. Power-on, the Home button and backing out of an app all land on Lounge.
+
+And it stays small on purpose: no screensaver, no video wallpapers, no background services.
+What it does have, it does carefully, from the focus lift on every tile to a context menu that
+keeps its app lit while the rest of the screen steps back.
 
 ## Requirements
 

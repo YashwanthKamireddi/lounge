@@ -9,10 +9,10 @@ What Apple's Human Interface Guidelines say about tvOS, and how each rule applie
 - **Conventions:**
   - Plain bullets under **Apple says** restate the page.
   - **For Lounge** bullets apply those rules to this app.
-  - Anything Apple does not state is marked *(inference)*.
+  - Anything Apple does not state is marked _(inference)_.
   - "pt" means tvOS points. Apple supplies tvOS art at @1x and @2x, and its Top Shelf guidance describes a
     screen width of "1920 pixels at the 16:9 aspect ratio". So one tvOS point is one pixel on Lounge's
-    logical 1920×1080 UI plane *(inference)*, and every number below can be used directly in Lounge's
+    logical 1920×1080 UI plane _(inference)_, and every number below can be used directly in Lounge's
     layout units.
 - **Constraints that change how the rules apply:**
   1. **No Top Shelf content from apps.** LG apps can't supply Top Shelf content. Anything above the dock
@@ -59,6 +59,7 @@ What Apple's Human Interface Guidelines say about tvOS, and how each rule applie
 Source: https://developer.apple.com/design/human-interface-guidelines/designing-for-tvos
 
 **Apple says**
+
 - The platform has four defining traits:
   - **Display:** a very large, high-resolution screen.
   - **Ergonomics:** people sit "often 8 feet or more" away, and sometimes interact while moving around
@@ -76,6 +77,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/designing-
   - Make multiuser sign-in easy and infrequent, and switch profiles automatically.
 
 **For Lounge**
+
 - Design every screen for 8-foot viewing: large type, few items, and one obvious focused thing.
 - Focus is the entire navigation model. Every screen must always show exactly one clearly focused item
   (see §3).
@@ -91,6 +93,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/designing-
 Source: https://developer.apple.com/design/human-interface-guidelines/top-shelf
 
 ### What it is
+
 - Top Shelf is the area of the Apple TV Home Screen that "showcases your content in a rich, engaging way
   while also giving people access to their favorite apps in the Dock".
 - **Full-screen Top Shelf:** people can swipe through multiple full-screen content views, play trailers
@@ -100,6 +103,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/top-shelf
 - The system provides layout templates, which can be downloaded from Apple Design Resources.
 
 ### Best practices (Apple's wording, condensed)
+
 - **Help people jump right into your content.** The Carousel actions and Carousel details templates each
   have two default buttons:
   - a primary button that starts playback;
@@ -120,13 +124,14 @@ Source: https://developer.apple.com/design/human-interface-guidelines/top-shelf
 
 ### Static vs dynamic
 
-| | Static | Dynamic |
-|---|---|---|
-| Content | One image, 2320×720 pt | Carousel actions, carousel details, sectioned content row, or scrolling inset banner |
-| Focusable | No | Yes (row items and banners); carousels have buttons |
-| Apple's preference | Fallback only | Preferred |
+|                    | Static                 | Dynamic                                                                              |
+| ------------------ | ---------------------- | ------------------------------------------------------------------------------------ |
+| Content            | One image, 2320×720 pt | Carousel actions, carousel details, sectioned content row, or scrolling inset banner |
+| Focusable          | No                     | Yes (row items and banners); carousels have buttons                                  |
+| Apple's preference | Fallback only          | Preferred                                                                            |
 
 ### Dynamic layouts
+
 - **Carousel actions:** full-screen video and images, with a few unobtrusive controls. Good for content
   people already know (photos, a franchise).
   - Provide a succinct **title** (show, movie or album), plus an optional brief **subtitle**, such as a
@@ -148,21 +153,21 @@ Source: https://developer.apple.com/design/human-interface-guidelines/top-shelf
 
 ### Image sizes (sectioned content row and banners)
 
-| Shape | Actual size | Focused / safe zone | Unfocused |
-|---|---|---|---|
-| Poster 2:3 | 404×608 pt (808×1216 @2x) | 380×570 pt (760×1140 @2x) | 333×570 pt (666×1140 @2x) |
-| Square 1:1 | 608×608 pt (1216×1216 @2x) | 570×570 pt (1140×1140 @2x) | 500×500 pt (1000×1000 @2x) |
-| 16:9 | 908×512 pt (1816×1024 @2x) | 852×479 pt (1704×958 @2x) | 782×440 pt (1564×880 @2x) |
+| Shape                  | Actual size                 | Focused / safe zone         | Unfocused                   |
+| ---------------------- | --------------------------- | --------------------------- | --------------------------- |
+| Poster 2:3             | 404×608 pt (808×1216 @2x)   | 380×570 pt (760×1140 @2x)   | 333×570 pt (666×1140 @2x)   |
+| Square 1:1             | 608×608 pt (1216×1216 @2x)  | 570×570 pt (1140×1140 @2x)  | 500×500 pt (1000×1000 @2x)  |
+| 16:9                   | 908×512 pt (1816×1024 @2x)  | 852×479 pt (1704×958 @2x)   | 782×440 pt (1564×880 @2x)   |
 | Scrolling inset banner | 1940×692 pt (3880×1384 @2x) | 1740×620 pt (3480×1240 @2x) | 1740×560 pt (3480×1120 @2x) |
 
 - **Safe zones:**
   - The "actual" size is the full canvas. The "focused / safe zone" size is what stays visible when the
     item is focused.
   - Keep essential content inside the safe-zone rectangle. The extra margin is cropped or used for
-    parallax movement *(inference from the table structure)*.
+    parallax movement _(inference from the table structure)_.
 - **Mixed sizes:** images in one row scale up to the height of the tallest image. For example, a 16:9
   image becomes 500 px high in a row that also has posters or squares.
-- **Focused/unfocused ratios.** These ratios are computed from the table *(inference)*; Apple does not
+- **Focused/unfocused ratios.** These ratios are computed from the table _(inference)_; Apple does not
   publish a focus scale.
   - Square: 570/500 ≈ **1.14×**.
   - 16:9: 852/782 ≈ **1.09×**.
@@ -170,10 +175,12 @@ Source: https://developer.apple.com/design/human-interface-guidelines/top-shelf
 - Platform: Top Shelf is tvOS-only.
 
 ### What belongs in Top Shelf, in short
+
 New, featured, recommended or resumable content. Direct paths into it (Play, More Info). No ads, no
 prices up front. Prefer dynamic content; a static image is the fallback.
 
 ### For Lounge
+
 - **LG apps can't supply Top Shelf content**: there is no webOS API for per-app shelf media. So Lounge has
   no real Top Shelf, and must not fake one with stock imagery claiming to be an app's content.
 - The space above the dock belongs to the **wallpaper**. That matches the static fallback Apple
@@ -196,6 +203,7 @@ prices up front. Prefer dynamic content; a static image is the fallback.
 Source: https://developer.apple.com/design/human-interface-guidelines/focus-and-selection
 
 **Apple says**
+
 - **Focus and selection are separate.** tvOS separates focus from selection: people move focus to find
   an item, and "selection requires a separate gesture".
 - **Parallax is the focus treatment.** tvOS "generally uses the Parallax effect to give the focused item
@@ -214,20 +222,21 @@ Source: https://developer.apple.com/design/human-interface-guidelines/focus-and-
 - **Five focus states, each visually distinct.** Supply assets for the larger focused size so they stay
   sharp, and make sure the enlarged item doesn't crowd its neighbours.
 
-| State | Meaning |
-|---|---|
-| Unfocused | Less prominent than focused items |
-| Focused | Stands out through "elevation to the foreground, illumination, and animation" |
+| State       | Meaning                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| Unfocused   | Less prominent than focused items                                                              |
+| Focused     | Stands out through "elevation to the foreground, illumination, and animation"                  |
 | Highlighted | Instant feedback on press (for example a button "might briefly invert its colors and animate") |
-| Selected | Chosen or activated (for example a filled heart) |
-| Unavailable | Can't be focused or chosen; looks inactive |
+| Selected    | Chosen or activated (for example a filled heart)                                               |
+| Unavailable | Can't be focused or chosen; looks inactive                                                     |
 
 **For Lounge**
+
 - **Implement all five states** for dock tiles, grid tiles, HDMI tiles, menu rows and keyboard keys.
   Lounge's renderer can't do Apple's live parallax cheaply, so express focus with:
   - scale up;
-  - lift: a deeper shadow, plus a slight offset toward the viewer *(inference: Apple doesn't give a
-    shadow spec)*;
+  - lift: a deeper shadow, plus a slight offset toward the viewer _(inference: Apple doesn't give a
+    shadow spec)_;
   - illumination: a brighter rim or highlight.
 - **Pressed (highlighted):** an immediate, brief response on OK-down, such as a quick scale-down or
   brighten, before the launch. It must appear on the next frame, without waiting for the app to start.
@@ -237,8 +246,8 @@ Source: https://developer.apple.com/design/human-interface-guidelines/focus-and-
   - When Lounge returns from an app, restore focus to the tile that launched it (see §21, "restore
     previous state").
 - **No pointer**, even though LG Magic Remotes have one. If pointer events arrive, either map them to
-  focus or ignore them *(Lounge decision; HIG: "If your app requires a pointer, make sure it's highly
-  visible")*.
+  focus or ignore them _(Lounge decision; HIG: "If your app requires a pointer, make sure it's highly
+  visible")_.
 - **Text fields** (the search field) use a ring or outline; **tiles and menu rows** use a highlight with
   scale.
 - **Leave room for the focused size:** grid gaps must absorb the scale-up without overlapping (§5).
@@ -249,10 +258,12 @@ Source: https://developer.apple.com/design/human-interface-guidelines/focus-and-
 ## 4. Remotes and gestures
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/remotes
 - https://developer.apple.com/design/human-interface-guidelines/gestures
 
 **Apple says**
+
 - **Use standard gestures for standard actions.** Unless the app is a game, people expect the remote to
   behave the same in every app.
 - **Focus follows gestures:** always move focus in the same direction as the gesture.
@@ -273,14 +284,15 @@ Sources:
 - **Compatible remotes:** guide and page buttons should open or page through an EPG, and page up/down
   changes channel during playback.
 
-| Button | Expected in an app |
-|---|---|
-| Touch surface swipe | Navigates; changes focus |
-| Touch surface press | Activates a control or item; navigates deeper |
-| Back | Returns to previous screen; exits to Home Screen |
-| Play/Pause | Starts, pauses or resumes media playback |
+| Button              | Expected in an app                               |
+| ------------------- | ------------------------------------------------ |
+| Touch surface swipe | Navigates; changes focus                         |
+| Touch surface press | Activates a control or item; navigates deeper    |
+| Back                | Returns to previous screen; exits to Home Screen |
+| Play/Pause          | Starts, pauses or resumes media playback         |
 
 **For Lounge (LG remote: D-pad, OK, Back, Home, colour keys, Magic Remote wheel/pointer)**
+
 - **D-pad = swipe, OK = press.** Moves are discrete, one step per key, so the focus animation must keep
   up with key auto-repeat. Holding a direction should feel like Apple's "speed through items".
 - **Hold OK = "touch and hold"** reveals the context menu (Move / Hide). This matches Apple's gesture
@@ -288,13 +300,13 @@ Sources:
   launch the app.
 - **Back is hierarchical:**
   - Closes the menu → closes Settings or Search → leaves the grid for the dock.
-  - At Lounge's top level, Back opens the **app switcher**. This is a Lounge choice: Lounge *is* the Home
+  - At Lounge's top level, Back opens the **app switcher**. This is a Lounge choice: Lounge _is_ the Home
     Screen, so it has no parent to return to. The HIG doesn't cover a launcher's Back.
 - **Home always returns to Lounge's dock** with the wallpaper, like holding Back on Apple TV.
 - **Play/Pause:** Lounge plays no media, so it has no role here. Don't repurpose it for launcher actions
   (Apple: don't redefine standard behaviors).
-- **Colour keys / channel keys:** leave them alone unless Lounge adopts an obvious meaning *(inference
-  from "prefer standard gestures")*.
+- **Colour keys / channel keys:** leave them alone unless Lounge adopts an obvious meaning _(inference
+  from "prefer standard gestures")_.
 - **Give feedback for every key that does something,** and nothing for keys that don't. A press that
   does nothing silently is worse than a key Lounge ignores entirely.
 
@@ -305,6 +317,7 @@ Sources:
 Source: https://developer.apple.com/design/human-interface-guidelines/layout
 
 **Apple says (general)**
+
 - Order content by importance, top/leading first. Align elements to aid scanning.
 - Group related items with space or shapes. Use progressive disclosure.
 - Differentiate controls from content using Liquid Glass. "Instead of applying a solid or semi-opaque
@@ -315,6 +328,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/layout
 - When the aspect ratio changes, scale background art to fill. Don't change its aspect ratio.
 
 **Apple says (tvOS)**
+
 - **Safe area:** inset primary content **60 pt from top and bottom** and **80 pt from the sides**, so it
   survives overscan and TV compatibility settings.
 - **Padding between focusable elements:** elements grow when focused, so they must not overlap
@@ -322,15 +336,15 @@ Source: https://developer.apple.com/design/human-interface-guidelines/layout
 - **Grids** (unfocused width, 40 pt horizontal spacing, ≥100 pt vertical spacing):
 
 | Columns | Unfocused content width | Horizontal spacing | Min vertical spacing |
-|---|---|---|---|
-| 2 | 860 pt | 40 pt | 100 pt |
-| 3 | 560 pt | 40 pt | 100 pt |
-| 4 | 410 pt | 40 pt | 100 pt |
-| 5 | 320 pt | 40 pt | 100 pt |
-| 6 | 260 pt | 40 pt | 100 pt |
-| 7 | 217 pt | 40 pt | 100 pt |
-| 8 | 184 pt | 40 pt | 100 pt |
-| 9 | 160 pt | 40 pt | 100 pt |
+| ------- | ----------------------- | ------------------ | -------------------- |
+| 2       | 860 pt                  | 40 pt              | 100 pt               |
+| 3       | 560 pt                  | 40 pt              | 100 pt               |
+| 4       | 410 pt                  | 40 pt              | 100 pt               |
+| 5       | 320 pt                  | 40 pt              | 100 pt               |
+| 6       | 260 pt                  | 40 pt              | 100 pt               |
+| 7       | 217 pt                  | 40 pt              | 100 pt               |
+| 8       | 184 pt                  | 40 pt              | 100 pt               |
+| 9       | 160 pt                  | 40 pt              | 100 pt               |
 
 - **Titled rows** need extra vertical space:
   - between the previous row's bottom and the centre of the title;
@@ -339,10 +353,11 @@ Source: https://developer.apple.com/design/human-interface-guidelines/layout
 - **Partially hidden offscreen content** should show the same width on each side, so the layout looks
   symmetrical.
 
-*(Inference: the arithmetic works out exactly. For 2–6 columns, `cols × width + (cols−1) × 40 = 1760`,
-which is 1920 − 2 × 80. The grids are sized to fill the side safe area exactly.)*
+_(Inference: the arithmetic works out exactly. For 2–6 columns, `cols × width + (cols−1) × 40 = 1760`,
+which is 1920 − 2 × 80. The grids are sized to fill the side safe area exactly.)_
 
 **For Lounge**
+
 - **Safe area on the 1920×1080 plane:** x 80…1840, y 60…1020. The clock/weather pill, dock, grid and
   Settings content stay inside it. Only the wallpaper (and glass that extends it) bleeds to the edges.
 - **The app grid is six columns,** so use Apple's six-column spec as the baseline: **260 pt tiles,
@@ -366,12 +381,14 @@ which is 1920 − 2 × 80. The grids are sized to fill the side safe area exactl
 ## 6. Materials and Liquid Glass
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/materials
 - https://developer.apple.com/design/human-interface-guidelines/color (Liquid Glass color)
 - WWDC25 "Meet Liquid Glass": https://developer.apple.com/videos/play/wwdc2025/219/
 - WWDC25 "Get to know the new design system": https://developer.apple.com/videos/play/wwdc2025/356/
 
 **Apple says (HIG)**
+
 - There are two kinds of material. **Liquid Glass** is a functional layer for controls and navigation that
   floats above content. **Standard materials** separate things within the content layer.
 - **Don't use Liquid Glass in the content layer.** The exception is transient controls such as sliders
@@ -389,12 +406,12 @@ Sources:
   - "Certain interface elements, like image views and buttons, adopt Liquid Glass when they gain focus."
   - tvOS standard materials:
 
-| Material | Recommended for |
-|---|---|
-| ultraThin | Full-screen views that require a light color scheme |
-| thin | Overlays that partially obscure content, light scheme |
-| regular | Overlays that partially obscure content |
-| thick | Overlays that partially obscure content, dark scheme |
+| Material  | Recommended for                                       |
+| --------- | ----------------------------------------------------- |
+| ultraThin | Full-screen views that require a light color scheme   |
+| thin      | Overlays that partially obscure content, light scheme |
+| regular   | Overlays that partially obscure content               |
+| thick     | Overlays that partially obscure content, dark scheme  |
 
 - **Liquid Glass color:**
   - Glass has no colour of its own; it takes colour from what's behind it.
@@ -404,6 +421,7 @@ Sources:
     more opaque.
 
 **Apple says (WWDC25 talks)**
+
 - **Lensing:** glass is defined by lensing, which "bends, shapes, and concentrates light", rather than
   scattering it.
 - **Appearing and disappearing:** elements materialize in and out by modulating the lensing, instead of
@@ -435,6 +453,7 @@ Sources:
   - Express hierarchy "through layout and grouping" rather than decoration.
 
 **For Lounge (no live blur: glass = a pre-blurred wallpaper)**
+
 - **Glass is for the functional layer only:** the dock, the context menu, the Settings panel, the search
   field and keyboard, the profile/clock pill, and banners. App tiles and the wallpaper are content and
   are not glass.
@@ -446,8 +465,8 @@ Sources:
   - Sample the pre-blurred wallpaper texture at the same screen position (so it lines up with the sharp
     wallpaper).
   - Add a luminosity/tint adjustment and a thin specular rim.
-  - This approximates Apple's regular variant without a live blur pass *(inference: Apple specifies the
-    look, not the implementation)*.
+  - This approximates Apple's regular variant without a live blur pass _(inference: Apple specifies the
+    look, not the implementation)_.
 - **Every wallpaper ships with its own pre-blurred glass.** Because the blur is precomputed, glass can't
   show anything that moves behind it. Keep moving content out from under glass. That is already Apple's
   steady-state advice: avoid content–glass intersections at rest.
@@ -467,17 +486,19 @@ Sources:
     others concentrically.
 - **Focused element "adopts glass":** on tvOS, focused buttons and images gain a glass look. For Lounge
   that means a focus rim/highlight drawn as glass light (a specular edge), not a solid coloured ring
-  *(inference about how to emulate it)*.
+  _(inference about how to emulate it)_.
 
 ---
 
 ## 7. Motion
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/motion
 - https://developer.apple.com/design/human-interface-guidelines/accessibility (Reduce Motion)
 
 **Apple says**
+
 - **Add motion purposefully.** Gratuitous animation can distract or cause physical discomfort.
 - **Make motion optional:** never use it as the only way to convey information.
 - **Feedback motion should be realistic** and follow the gesture. What slides down shouldn't be
@@ -497,6 +518,7 @@ Sources:
   - avoid animating into and out of blur.
 
 **For Lounge**
+
 - **Focus moves are the most frequent interaction.** Keep them short and interruptible.
   - A new key press retargets the animation from its current value; it never queues.
   - Holding a direction must not build up a backlog.
@@ -514,7 +536,7 @@ Sources:
   - No blur-in/out transitions.
   - Move-mode "lift" becomes a static outline.
 - Aim for a steady frame rate over richer effects. On a one-core Mali, drop an effect before dropping
-  frames *(Lounge constraint; Apple: 30–60 fps "typically" smooth)*.
+  frames _(Lounge constraint; Apple: 30–60 fps "typically" smooth)_.
 
 ---
 
@@ -523,6 +545,7 @@ Sources:
 Source: https://developer.apple.com/design/human-interface-guidelines/color
 
 **Apple says**
+
 - **Don't use one colour for two meanings.**
 - **Make colours work in light, dark and increased-contrast contexts.** Custom colours need light and
   dark variants, each with an increased-contrast option, "even if your app ships in a single appearance
@@ -547,14 +570,15 @@ Source: https://developer.apple.com/design/human-interface-guidelines/color
     primary ways to denote interactivity when an element is in focus."
 
 **For Lounge**
+
 - Define the palette as **semantic tokens** (label, secondary label, glass fill, focus rim, destructive,
   and so on), each with Light, Dark and High-contrast variants.
 - **Focus = scale + light**, never just a colour change. A colour-only focus ring breaks Apple's rule
   and is unreadable to colour-blind viewers.
 - **Keep the palette small and neutral.** The wallpaper supplies the colour, and UI tints derive from it
   (as with wallpaper-tinted Settings).
-- **"Hide" in the context menu:** it isn't destructive (it's reversible), so don't make it red *(inference
-  from the Buttons role guidance: destructive means data loss)*.
+- **"Hide" in the context menu:** it isn't destructive (it's reversible), so don't make it red _(inference
+  from the Buttons role guidance: destructive means data loss)_.
 - **TV panels vary hugely** (LG OLED vs LCD; Vivid vs Cinema picture modes). Check every token on a real
   TV in at least two picture modes, plus the desktop preview. Avoid pure-white large areas on OLED (see
   §9 and the image-retention note in §23).
@@ -567,6 +591,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/color
 Source: https://developer.apple.com/design/human-interface-guidelines/dark-mode
 
 **Apple says**
+
 - **People choose Dark Mode as their default** on tvOS and other platforms, and expect every app to
   respect it.
 - **"Avoid offering an app-specific appearance setting"**: people would have to change two settings, and
@@ -583,17 +608,18 @@ Source: https://developer.apple.com/design/human-interface-guidelines/dark-mode
 - **tvOS:** no additional considerations.
 
 **For Lounge**
+
 - Lounge's Light / Dark / Auto setting **is** the system-level appearance on this TV, because webOS has no
   equivalent that Lounge reads. Apple's rule against app-specific settings targets apps running under a
-  system setting; it doesn't apply to a launcher acting as the system *(inference)*.
+  system setting; it doesn't apply to a launcher acting as the system _(inference)_.
   - If webOS ever exposes a system appearance, default to following it.
 - **Auto switches by time of day while Lounge is running.** The transition must be seamless: cross-fade
   the tokens; never flash or reload.
 - **Contrast target:** ≥4.5:1 for all text, 7:1 for small/secondary text. Check text over **glass over
   the brightest wallpaper** in each mode, as that is the worst case.
 - **Light mode on a TV:** large bright glass areas are fatiguing in a dark room. Prefer keeping the
-  wallpaper visible, so Light mode means lighter glass, not white sheets *(inference from Apple's
-  "colors appear bright and saturated in dark environments")*.
+  wallpaper visible, so Light mode means lighter glass, not white sheets _(inference from Apple's
+  "colors appear bright and saturated in dark environments")_.
 - **App icons with white backgrounds** can glow in Dark mode. Apple suggests slightly darkening such
   content images; consider a subtle dim on very bright icon art.
 
@@ -604,6 +630,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/dark-mode
 Source: https://developer.apple.com/design/human-interface-guidelines/typography
 
 **Apple says**
+
 - **Size:** tvOS default **29 pt**, minimum **23 pt**.
 - **Weight:** avoid Ultralight, Thin and Light. Prefer Regular, Medium, Semibold or Bold.
 - **Hierarchy:** use weight, size and colour. Keep the number of typefaces to a minimum.
@@ -613,23 +640,24 @@ Source: https://developer.apple.com/design/human-interface-guidelines/typography
   of placing side by side, keep the hierarchy.
 - **tvOS built-in text styles** (sizes at @1x; "72 ppi for @1x and 144 ppi for @2x"):
 
-| Style | Weight | Size (pt) | Leading (pt) | Emphasized |
-|---|---|---|---|---|
-| Title 1 | Medium | 76 | 96 | Bold |
-| Title 2 | Medium | 57 | 66 | Bold |
-| Title 3 | Medium | 48 | 56 | Bold |
-| Headline | Medium | 38 | 46 | Bold |
-| Subtitle 1 | Regular | 38 | 46 | Medium |
-| Callout | Medium | 31 | 38 | Bold |
-| Body | Medium | 29 | 36 | Bold |
-| Caption 1 | Medium | 25 | 32 | Bold |
-| Caption 2 | Medium | 23 | 30 | Bold |
+| Style      | Weight  | Size (pt) | Leading (pt) | Emphasized |
+| ---------- | ------- | --------- | ------------ | ---------- |
+| Title 1    | Medium  | 76        | 96           | Bold       |
+| Title 2    | Medium  | 57        | 66           | Bold       |
+| Title 3    | Medium  | 48        | 56           | Bold       |
+| Headline   | Medium  | 38        | 46           | Bold       |
+| Subtitle 1 | Regular | 38        | 46           | Medium     |
+| Callout    | Medium  | 31        | 38           | Bold       |
+| Body       | Medium  | 29        | 36           | Bold       |
+| Caption 1  | Medium  | 25        | 32           | Bold       |
+| Caption 2  | Medium  | 23        | 30           | Bold       |
 
 - **tvOS tracking** (excerpt, SF Pro). At 23 pt the tracking is −4/1000 em; at 24 pt, +3; at 29 pt,
   +14 (+0.40 pt); at 31 pt, +13; at 38 pt, +10. The full table on the page covers 6–79 pt.
 - **Custom fonts** must stay legible and support Bold Text and Dynamic Type.
 
 **For Lounge**
+
 - **Map Lounge text to these styles** on the 1080p plane (1 pt = 1 px):
   - **Clock:** Title 2–3 (57/48).
   - **Section titles** ("Apps", "Inputs"): Headline 38.
@@ -639,12 +667,12 @@ Source: https://developer.apple.com/design/human-interface-guidelines/typography
 - **Nothing on screen below 23 px.** That includes the keyboard's secondary labels and the HDMI source
   sub-labels.
 - **Use Medium as the base weight,** as tvOS does. Avoid Light weights entirely, which matters even more
-  after the 1080→4K upscale softens thin strokes *(inference)*.
+  after the 1080→4K upscale softens thin strokes _(inference)_.
 - **Apply the tvOS tracking table** if Lounge's font renderer supports per-size tracking. Body sizes get
   slightly positive tracking on tvOS, unlike iOS.
 - **Use a bundled open font, not SF Pro.** SF Pro may not be redistributed in a non-Apple product, so pick an
-  open font with a Medium weight and good numerals for the clock *(licensing is an inference; check the
-  SF licence)*.
+  open font with a Medium weight and good numerals for the clock _(licensing is an inference; check the
+  SF licence)_.
 - **Truncate app names with an ellipsis** and show the full name when the tile is focused, rather than
   shrinking text.
 
@@ -655,6 +683,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/typography
 Source: https://developer.apple.com/design/human-interface-guidelines/app-icons
 
 **Apple says**
+
 - **Layers and parallax:** tvOS icons use **2–5 layers**. When focused, the icon "elevates to the
   foreground in response to someone's finger movement on their remote, and gently sways while the surface
   illuminates". Layer separation and transparency create depth.
@@ -671,6 +700,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/app-icons
 - **Alternate app icons:** tvOS lets people choose them in the app's settings.
 
 **For Lounge**
+
 - **LG app icons arrive as flat images** (usually square, often with their own background), not layered.
   Lounge must present them in an Apple-like **landscape rounded rectangle**:
   - Place the icon on a backing plate derived from its dominant or edge colour, at **5:3** (800×480
@@ -682,7 +712,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/app-icons
   "almost unnoticeable", per §12.
 - **Size the tile texture for the focused size,** so it isn't upscaled blurry.
   - Six-column tile: 260 pt wide, about 156 tall at 5:3.
-  - At around 1.1× focus scale, rasterise at least 290 px wide *(inference)*.
+  - At around 1.1× focus scale, rasterise at least 290 px wide _(inference)_.
 - **HDMI and system tiles** (Live TV, Settings, Search) are Lounge's own art. Draw them as simple glyphs on
   a solid or gradient plate, consistent with each other. No photos, no text other than the name below the
   tile.
@@ -694,10 +724,12 @@ Source: https://developer.apple.com/design/human-interface-guidelines/app-icons
 ## 12. Images, layered images and parallax
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/images
 - https://developer.apple.com/design/human-interface-guidelines/image-views
 
 **Apple says**
+
 - **Scale factors:** tvOS uses **@1x and @2x**. Design at the lowest resolution and scale up. Align
   vector points to whole values.
 - **Formats:**
@@ -719,11 +751,12 @@ Sources:
 - **Text over images:** ensure contrast. Consider a text shadow or background layer.
 
 **For Lounge**
+
 - **Wallpapers:**
   - Ship at the plane size (1920×1080). Do the 4K variants only if the 4K plane ships.
   - Each has a **matching pre-blurred version** for glass, built offline from the same source.
   - JPEG for photos. Strip the progressive/interlaced encoding if the decoder prefers baseline (Apple:
-    "de-interlaced PNG" for bitmaps) *(inference that the same holds for Lounge's decoder)*.
+    "de-interlaced PNG" for bitmaps) _(inference that the same holds for Lounge's decoder)_.
 - **Idle dimming:** Apple's "after a period of inactivity, out-of-focus content dims and the focused
   element expands" is a cheap, faithful effect to copy. After a few seconds with no input, dim the
   unfocused dock tiles slightly. Wake instantly on any key.
@@ -737,10 +770,12 @@ Sources:
 ## 13. Collections and lockups
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/collections
 - https://developer.apple.com/design/human-interface-guidelines/lockups
 
 **Apple says**
+
 - **Use standard row or grid layouts,** not custom ones that draw attention to themselves.
 - **Use tables for text-heavy content.**
 - **Make items easy to reach,** with padding so focus effects are visible and items never overlap.
@@ -757,6 +792,7 @@ Sources:
     into focus".
 
 **For Lounge**
+
 - **Dock and grid are standard row and grid collections.** Don't invent a curved or carousel dock.
 - **App name labels follow the poster rule:** hidden until the tile is focused, then shown below it,
   scaling and moving with the tile as one lockup. This also cuts on-screen text (fewer labels at rest).
@@ -775,10 +811,12 @@ Sources:
 ## 14. Menus and context menus
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/menus
 - https://developer.apple.com/design/human-interface-guidelines/context-menus
 
 **Apple says (menus)**
+
 - **Labels:**
   - Use verbs ("View", "Close") in title-style capitalization.
   - Drop articles.
@@ -791,6 +829,7 @@ Sources:
 - **Toggled items:** use a changeable label ("Show Map" / "Hide Map"), or a checkmark for a state.
 
 **Apple says (context menus)**
+
 - **Contents:** only the commands most relevant in this context. Keep the number of items small.
 - **Consistency:** support context menus consistently everywhere, or people assume something is broken.
 - **Every item must also exist in the main interface.**
@@ -804,11 +843,12 @@ Sources:
 - **tvOS:** no additional considerations. Reveal context menus with "touch and hold" (gestures table, §4).
 
 **For Lounge (hold-OK menu: Move, Hide)**
+
 - **Labels:** "Move" and "Hide" are verbs, short, and title case. Don't add "App" or "the".
 - **Every action must also exist elsewhere,** per Apple's context-menu rule:
   - **Hide** must be reversible from Settings, with a Hidden Apps list that can un-hide.
-  - **Move** should also be reachable, for example via a "Rearrange" option in Settings *(inference: the
-    rule says main interface)*.
+  - **Move** should also be reachable, for example via a "Rearrange" option in Settings _(inference: the
+    rule says main interface)_.
 - **Only show what applies:**
   - HDMI tiles can't be uninstalled, so don't show an "Uninstall" there.
   - Fixed tiles can't be hidden, so hide "Hide" on those rather than dimming it.
@@ -819,7 +859,7 @@ Sources:
 - **Focus starts on the first item.** Back closes the menu and returns focus to the tile.
 - **Same gesture everywhere:** hold-OK must open a menu on every tile type (dock, grid, HDMI). If a tile
   has no actions, still respond, for example with a one-item menu or a brief shake. Apple: inconsistency
-  makes people "think there's a problem" *(the response choice is inference)*.
+  makes people "think there's a problem" _(the response choice is inference)_.
 - **Glass and growth:** the menu is regular glass, grows from the tile (§6), and has no title.
 
 ---
@@ -829,6 +869,7 @@ Sources:
 Source: https://developer.apple.com/design/human-interface-guidelines/buttons
 
 **Apple says**
+
 - **Space around buttons:** leave room around buttons. The general minimum is 44×44 pt, but tvOS
   controls are bigger: the Accessibility page lists tvOS **default 66×66 pt, minimum 56×56 pt**.
 - **Press state:** custom buttons must have one.
@@ -844,6 +885,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/buttons
 - **tvOS:** no additional considerations.
 
 **For Lounge**
+
 - **Size:**
   - Settings rows and keyboard keys: at least **66 pt tall** (absolute minimum 56).
   - Small round buttons (for example the clear-search key): at least 66×66.
@@ -857,12 +899,14 @@ Source: https://developer.apple.com/design/human-interface-guidelines/buttons
 ## 16. Search, text fields and keyboards
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/search-fields
 - https://developer.apple.com/design/human-interface-guidelines/virtual-keyboards
 - https://developer.apple.com/design/human-interface-guidelines/text-fields
 - https://developer.apple.com/design/human-interface-guidelines/keyboards
 
 **Apple says**
+
 - **Search field anatomy:** a Search icon, a Clear button and placeholder text.
   - Placeholder text says what can be searched.
   - **Start searching as people type.**
@@ -882,6 +926,7 @@ Sources:
 - **Focus ring:** text and search fields use a focus ring, not a highlight (§3).
 
 **For Lounge (one-row keyboard)**
+
 - Lounge's **one-row keyboard is Apple's linear keyboard:** a single row of letters, with results
   **beneath** it.
 - **Filter on every key,** with no Search button needed. Apple: "start search immediately".
@@ -897,19 +942,21 @@ Sources:
   - Include delete and clear (the field's Clear button), and a space key only if names need it.
   - Key focus = scale plus glass highlight. Each key is ≥56 pt (aim for 66).
 - **Clear:** Lounge has no keyboard click sound unless the TV's UI sounds are available; the HIG's
-  standard-click rule assumes a system sound exists *(inference)*.
+  standard-click rule assumes a system sound exists _(inference)_.
 
 ---
 
 ## 17. Alerts, sheets, action sheets and modality
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/alerts
 - https://developer.apple.com/design/human-interface-guidelines/sheets
 - https://developer.apple.com/design/human-interface-guidelines/action-sheets
 - https://developer.apple.com/design/human-interface-guidelines/modality
 
 **Apple says**
+
 - **Alerts:**
   - Use them sparingly, only for essential, actionable information.
   - Never use one just to inform, never for common undoable actions, and **never at app start**. Startup
@@ -935,6 +982,7 @@ Sources:
   - On tvOS, people expect the dismiss button "in the main content view".
 
 **For Lounge**
+
 - **No alert on launch, ever.** Weather offline or the TV not on the network: show the last cached
   weather (or nothing) plus a quiet indicator in the pill.
 - **Hide doesn't need an alert:** it's reversible.
@@ -952,20 +1000,22 @@ Sources:
 ## 18. Accessibility
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/accessibility
 - https://developer.apple.com/design/human-interface-guidelines/voiceover
 
 **Apple says**
+
 - **Text size:** support enlarging text by **at least 200%**. tvOS text: **29 pt default, 23 pt minimum**.
 - **Contrast** (WCAG AA, as used by Accessibility Inspector):
 
-  | Text | Weight | Minimum ratio |
-  |---|---|---|
-  | up to 17 pt | All | 4.5:1 |
-  | 18 pt and up | All | 3:1 |
-  | All | Bold | 3:1 |
-
+  | Text         | Weight | Minimum ratio |
+  | ------------ | ------ | ------------- |
+  | up to 17 pt  | All    | 4.5:1         |
+  | 18 pt and up | All    | 3:1           |
+  | All          | Bold   | 3:1           |
   - If the default scheme falls short, provide a higher-contrast scheme under Increase Contrast.
+
 - **Never use colour alone.** Describe the UI for VoiceOver.
 - **Control sizes:** tvOS default **66×66 pt**, minimum **56×56 pt**. Padding is about **12 pt** around
   bezelled elements and about **24 pt** around unbezelled ones.
@@ -981,6 +1031,7 @@ Sources:
 - **tvOS:** no additional considerations.
 
 **For Lounge**
+
 - **Reduce Transparency:** replace the glass sample with a nearly opaque fill tinted from the wallpaper.
   This is also cheaper to draw.
 - **Increase Contrast:**
@@ -994,7 +1045,7 @@ Sources:
   The move mode never times out.
 - **Holding OK is an extra gesture,** so the main interface also offers its actions (§14).
 - **Screen reader:** if webOS exposes its screen reader (Audio Guidance) to native apps, label every tile
-  with "App name, n of m" *(inference; HIG says describe UI for VoiceOver)*.
+  with "App name, n of m" _(inference; HIG says describe UI for VoiceOver)_.
 - **Read the TV's own accessibility flags where possible.** Apple: respect system settings rather than
   duplicating them (§22). Fall back to Lounge settings only if webOS doesn't expose them.
 
@@ -1005,6 +1056,7 @@ Sources:
 Source: https://developer.apple.com/design/human-interface-guidelines/branding
 
 **Apple says**
+
 - **Accent colour:** use it judiciously, only for primary actions and status. Move brand colour into the
   content layer.
 - **Custom fonts** must be legible. Custom headline fonts with system body text work well.
@@ -1014,6 +1066,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/branding
 - **Follow Apple's trademark guidelines.** Apple trademarks must not appear in the app name or images.
 
 **For Lounge**
+
 - **No Lounge logo on the home screen.** The wallpaper and the person's apps are the content.
 - **Lounge is "tvOS-style", not Apple.** No Apple logos, no "Apple TV", "tvOS" or SF Pro in the shipped
   UI or icon, and no Apple wallpapers. The README can describe the style, but the product must not
@@ -1027,6 +1080,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/branding
 Source: https://developer.apple.com/design/human-interface-guidelines/writing
 
 **Apple says**
+
 - **Voice and tone:** define a voice, match the tone to the situation, be clear, and use fewer words.
   Write for everyone (plain language, no jargon, not gendered).
 - **Buttons and links:** action-oriented labels, usually verbs. "Send" beats "Let's do it!"
@@ -1042,10 +1096,11 @@ Source: https://developer.apple.com/design/human-interface-guidelines/writing
   setting instead of describing where it is.
 
 **For Lounge**
+
 - **Terse labels:** "Move", "Hide", "Hidden Apps", "Wallpaper", "Appearance: Light / Dark / Automatic".
 - **No "my" or "your":** "Profile Picture", not "Your profile picture".
 - **Shared screen:** never show anything personal-sounding beyond the chosen profile picture. No
-  greetings with names, given the shared living room *(inference from Apple's TV note)*.
+  greetings with names, given the shared living room _(inference from Apple's TV note)_.
 - **Errors:** "Weather unavailable", not "We couldn't load the weather". An HDMI input with no signal
   shows "No Signal", which is factual and short.
 - **Empty Hidden Apps list:** one line ("Hidden apps appear here") with no extra instructions. This fits
@@ -1056,11 +1111,13 @@ Source: https://developer.apple.com/design/human-interface-guidelines/writing
 ## 21. Launching, loading and onboarding
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/launching
 - https://developer.apple.com/design/human-interface-guidelines/loading
 - https://developer.apple.com/design/human-interface-guidelines/onboarding
 
 **Apple says**
+
 - **Launch instantly.** People "sometimes … don't want to wait more than a couple of seconds".
 - **Launch screen:**
   - Nearly identical to the first screen.
@@ -1079,6 +1136,7 @@ Sources:
   - Postpone non-essential setup and provide good defaults.
 
 **For Lounge**
+
 - **Cold start (TV power-on) shows the dock over the wallpaper immediately:**
   - Decode the wallpaper and the cached icon atlas first.
   - Fill in weather, HDMI state and app list updates afterwards.
@@ -1100,6 +1158,7 @@ Sources:
 Source: https://developer.apple.com/design/human-interface-guidelines/settings
 
 **Apple says**
+
 - **Defaults:** choose defaults that are best for most people.
 - **Keep settings few;** too many makes the experience less approachable.
 - **Don't ask for what can be detected** (for example a connected controller, or Dark Mode).
@@ -1108,6 +1167,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/settings
 - **Task-specific options** (show/hide, reorder, filter) go where the task happens, not in Settings.
 
 **For Lounge**
+
 - **Keep Settings short:**
   - Appearance (Light / Dark / Automatic)
   - Wallpaper
@@ -1131,6 +1191,7 @@ Source: https://developer.apple.com/design/human-interface-guidelines/settings
 ## 23. Other tvOS notes
 
 Sources:
+
 - https://developer.apple.com/design/human-interface-guidelines/tab-bars
 - https://developer.apple.com/design/human-interface-guidelines/split-views
 - https://developer.apple.com/design/human-interface-guidelines/scroll-views
@@ -1143,6 +1204,7 @@ Sources:
 - https://developer.apple.com/design/human-interface-guidelines/live-viewing-apps
 
 **Apple says (tvOS-specific)**
+
 - **Tab bar:**
   - Height **68 pt**, top edge **46 pt** from the top of the screen; neither can be changed.
   - Translucent; only the selected tab is opaque.
@@ -1169,6 +1231,7 @@ Sources:
   sash or progress).
 
 **For Lounge**
+
 - **No scroll bars or indicators** in the grid or Settings. Focus drives scrolling, and the grid scrolls
   to keep the focused row visible with context above and below.
 - **Settings rows:** focused rows grow and round per the list rule. Lounge draws its own rounding (it has
@@ -1179,42 +1242,42 @@ Sources:
   - The clock/weather pill and dock are static, bright-edged elements on screen for hours when the TV
     idles on Home.
   - Keep them translucent and not pure white.
-  - Consider a subtle periodic shift or a dim-on-idle (§12) *(inference applying Apple's video-overlay
-    advice to a static home screen)*.
+  - Consider a subtle periodic shift or a dim-on-idle (§12) _(inference applying Apple's video-overlay
+    advice to a static home screen)_.
 - **Live TV tile:** if it shows a "live" badge, use a shape or label as well as colour (§8).
 
 ---
 
 ## 24. Numbers at a glance
 
-| Item | Value | Source page |
-|---|---|---|
-| Viewing distance | often 8 ft or more | designing-for-tvos |
-| Safe area | 60 pt top/bottom, 80 pt sides | layout |
-| Grid spacing | 40 pt horizontal, ≥100 pt vertical | layout |
-| 6-column grid tile | 260 pt wide | layout |
-| Other grids | 2:860, 3:560, 4:410, 5:320, 7:217, 8:184, 9:160 pt | layout |
-| Body text | 29 pt (Medium, 36 leading) | typography |
-| Minimum text | 23 pt | typography, accessibility |
-| Title 1 / 2 / 3 | 76 / 57 / 48 pt | typography |
-| Headline / Callout / Caption 1 | 38 / 31 / 25 pt | typography |
-| Control size | 66×66 default, 56×56 minimum | accessibility |
-| Control padding | ~12 pt (bezel), ~24 pt (no bezel) | accessibility |
-| Contrast | ≥4.5:1, aim 7:1 for small custom text | dark-mode, accessibility |
-| Text enlargement | support ≥200% | accessibility |
-| Clear-glass dimming | 35% dark layer over bright content | materials |
-| App icon | 800×480 px, landscape, 2–5 layers | app-icons |
-| Layered image | 2–5 layers, opaque background | images |
-| Scale factors | @1x and @2x | images |
-| Top Shelf static | 2320×720 pt (4640×1440 @2x) | top-shelf |
-| Top Shelf banner | 1940×692 actual / 1740×620 focused / 1740×560 unfocused | top-shelf |
-| Top Shelf banners count | 3–8 | top-shelf |
-| Tab bar | 68 pt tall, 46 pt from top | tab-bars |
-| Split view | ⅓ / ⅔ (or ½ / ½) | split-views |
-| Context menu groups | about 3 at most; submenus one level | context-menus |
-| Alert buttons | up to 3 | alerts |
-| Interactive video overlay delay | ≥0.5 s | playing-video |
-| Game frame rate | 30–60 fps typical | motion |
+| Item                            | Value                                                   | Source page               |
+| ------------------------------- | ------------------------------------------------------- | ------------------------- |
+| Viewing distance                | often 8 ft or more                                      | designing-for-tvos        |
+| Safe area                       | 60 pt top/bottom, 80 pt sides                           | layout                    |
+| Grid spacing                    | 40 pt horizontal, ≥100 pt vertical                      | layout                    |
+| 6-column grid tile              | 260 pt wide                                             | layout                    |
+| Other grids                     | 2:860, 3:560, 4:410, 5:320, 7:217, 8:184, 9:160 pt      | layout                    |
+| Body text                       | 29 pt (Medium, 36 leading)                              | typography                |
+| Minimum text                    | 23 pt                                                   | typography, accessibility |
+| Title 1 / 2 / 3                 | 76 / 57 / 48 pt                                         | typography                |
+| Headline / Callout / Caption 1  | 38 / 31 / 25 pt                                         | typography                |
+| Control size                    | 66×66 default, 56×56 minimum                            | accessibility             |
+| Control padding                 | ~12 pt (bezel), ~24 pt (no bezel)                       | accessibility             |
+| Contrast                        | ≥4.5:1, aim 7:1 for small custom text                   | dark-mode, accessibility  |
+| Text enlargement                | support ≥200%                                           | accessibility             |
+| Clear-glass dimming             | 35% dark layer over bright content                      | materials                 |
+| App icon                        | 800×480 px, landscape, 2–5 layers                       | app-icons                 |
+| Layered image                   | 2–5 layers, opaque background                           | images                    |
+| Scale factors                   | @1x and @2x                                             | images                    |
+| Top Shelf static                | 2320×720 pt (4640×1440 @2x)                             | top-shelf                 |
+| Top Shelf banner                | 1940×692 actual / 1740×620 focused / 1740×560 unfocused | top-shelf                 |
+| Top Shelf banners count         | 3–8                                                     | top-shelf                 |
+| Tab bar                         | 68 pt tall, 46 pt from top                              | tab-bars                  |
+| Split view                      | ⅓ / ⅔ (or ½ / ½)                                        | split-views               |
+| Context menu groups             | about 3 at most; submenus one level                     | context-menus             |
+| Alert buttons                   | up to 3                                                 | alerts                    |
+| Interactive video overlay delay | ≥0.5 s                                                  | playing-video             |
+| Game frame rate                 | 30–60 fps typical                                       | motion                    |
 
 ---
 
@@ -1224,7 +1287,7 @@ These were looked for and are **not** on the current pages, so any Lounge value 
 choice, not an Apple rule.
 
 - **Focus scale factor.** No number is given. The Top Shelf focused/unfocused sizes imply roughly
-  1.09–1.14× *(inference, §2)*.
+  1.09–1.14× _(inference, §2)_.
 - **Corner radii** for tvOS tiles, buttons, panels or icons. The pages say only "rounded corners" and
   "concentric edges". WWDC25 gives the rules (fixed, capsule = height / 2, concentric = parent −
   padding) but no tvOS values.
