@@ -23,7 +23,7 @@ pub struct Presence {
 
 impl Presence {
     pub fn new() -> Self {
-        let now = Instant::now();
+        let now = crate::clock::now();
         Self {
             visible: true,
             away: false,
@@ -52,24 +52,24 @@ impl Presence {
         let returned = std::mem::take(&mut self.away) || !self.visible;
         self.visible = true;
         if returned {
-            self.shown_at = Instant::now();
+            self.shown_at = crate::clock::now();
         }
         returned
     }
 
     /// Something is bringing Lounge back: answer webOS quickly for a while.
     pub fn raise(&mut self) {
-        self.raising_until = Instant::now() + RAISING;
+        self.raising_until = crate::clock::now() + RAISING;
     }
 
     pub fn raising(&self) -> bool {
-        Instant::now() < self.raising_until
+        crate::clock::now() < self.raising_until
     }
 
     /// On screen long enough that a Home launch is the Home key pressed on
     /// Lounge, not the launch that brought it back.
     pub fn settled(&self) -> bool {
-        self.visible && self.shown_at.elapsed() > SETTLE
+        self.visible && crate::clock::since(self.shown_at) > SETTLE
     }
 }
 

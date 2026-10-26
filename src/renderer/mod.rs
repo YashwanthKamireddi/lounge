@@ -1320,7 +1320,8 @@ impl Renderer {
         }
     }
 
-    pub fn screenshot(&self, path: &Path, width: u32, height: u32) -> Result<(), String> {
+    /// The bound framebuffer as RGBA rows from the top.
+    fn read_pixels(&self, width: u32, height: u32) -> Vec<u8> {
         let mut pixels = vec![0; width as usize * height as usize * 4];
         unsafe {
             gl::ReadPixels(
@@ -1333,19 +1334,17 @@ impl Renderer {
                 pixels.as_mut_ptr().cast(),
             );
         }
-        let mut image = image::RgbaImage::from_raw(width, height, pixels)
-            .ok_or("Invalid framebuffer dimensions")?;
-        image::imageops::flip_vertical_in_place(&mut image);
-        image.save(path).map_err(|e| e.to_string())
+        let row = width as usize * 4;
+        pixels.chunks_exact(row).rev().flatten().copied().collect()
     }
 
-    /// Capture the authored TV surface, independent of desktop HiDPI/window limits.
-    pub fn capture(
+    /// The authored TV surface rendered off-screen at `size`, as RGBA rows
+    /// from the top.
+    pub fn capture_pixels(
         &mut self,
         commands: &[Draw],
-        path: &Path,
         size: Size,
-    ) -> Result<RenderStats, String> {
+    ) -> Result<(Vec<u8>, RenderStats), String> {
         if size.width > self.info.max_texture_size
             || size.height > self.info.max_texture_size
             || size.width > self.info.max_viewport[0] as u32
@@ -1405,13 +1404,28 @@ impl Renderer {
         }
         self.render(commands, size.width, size.height);
         let stats = self.stats.clone();
-        let result = self.screenshot(path, size.width, size.height);
+        let pixels = self.read_pixels(size.width, size.height);
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             gl::DeleteFramebuffers(1, &framebuffer);
             gl::DeleteRenderbuffers(1, &stencil);
         }
-        result.map(|_| stats)
+        Ok((pixels, stats))
+    }
+
+    /// Capture the authored TV surface, independent of desktop HiDPI/window limits.
+    pub fn capture(
+        &mut self,
+        commands: &[Draw],
+        path: &Path,
+        size: Size,
+    ) -> Result<RenderStats, String> {
+        let (pixels, stats) = self.capture_pixels(commands, size)?;
+        image::RgbaImage::from_raw(size.width, size.height, pixels)
+            .ok_or("Invalid framebuffer dimensions")?
+            .save(path)
+            .map_err(|e| e.to_string())?;
+        Ok(stats)
     }
 }
 

@@ -28,7 +28,7 @@ impl State {
                 } else {
                     -1.
                 };
-                self.settings_since = Some((Instant::now(), direction));
+                self.settings_since = Some((crate::clock::now(), direction));
             }
             self.dirty = true;
         }
@@ -97,7 +97,7 @@ impl State {
                 Direction::Up if index < switcher.apps.len() => {
                     // tvOS: swipe a window up to quit that app.
                     let id = switcher.apps.remove(index);
-                    let now = Instant::now();
+                    let now = crate::clock::now();
                     switcher
                         .closing
                         .push((id.clone(), now, index as f32 - switcher.shown));
@@ -166,7 +166,7 @@ impl State {
                                 offsets.remove(id);
                             }
                         }
-                        self.rearranged = Some((Instant::now(), offsets));
+                        self.rearranged = Some((crate::clock::now(), offsets));
                     }
                     for (slot, item) in slots.iter().zip(visible) {
                         ids[*slot] = item;

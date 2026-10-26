@@ -400,7 +400,7 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
     // 45% and the new one comes up from 20%, so the two titles never sit
     // over each other at half strength. Movement keeps one smooth ease.
     let push = state.settings_since.map(|(since, direction)| {
-        let t = (since.elapsed().as_secs_f32() * 1000. / SETTINGS_PUSH_MS).min(1.);
+        let t = (crate::clock::since(since).as_secs_f32() * 1000. / SETTINGS_PUSH_MS).min(1.);
         (t, 1. - (1. - t).powi(5), direction)
     });
     let smooth = |from: f32, to: f32, t: f32| {
@@ -569,7 +569,11 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
         if *subpage == Subpage::WeatherLocation {
             location_settings(out, state, assets);
             if let Some(opened) = state.panel_started {
-                out.fade(start, (opened.elapsed().as_secs_f32() / 0.15).min(1.), 1.);
+                out.fade(
+                    start,
+                    (crate::clock::since(opened).as_secs_f32() / 0.15).min(1.),
+                    1.,
+                );
             }
             return;
         }
@@ -671,7 +675,11 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
             );
         }
         if let Some(opened) = state.panel_started {
-            out.fade(start, (opened.elapsed().as_secs_f32() / 0.15).min(1.), 1.);
+            out.fade(
+                start,
+                (crate::clock::since(opened).as_secs_f32() / 0.15).min(1.),
+                1.,
+            );
         }
         return;
     }

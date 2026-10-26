@@ -35,7 +35,7 @@ impl State {
                     self.shelf_app = Some(id.clone());
                     self.shelf_pending = None;
                 } else {
-                    self.shelf_pending = Some((id.clone(), Instant::now()));
+                    self.shelf_pending = Some((id.clone(), crate::clock::now()));
                 }
             } else {
                 self.shelf_pending = None;
@@ -44,7 +44,7 @@ impl State {
             // already settled: webOS is animating Lounge's window in, and a
             // tile growing at the same time read as a second opening.
             let first = matches!(previous, Target::Nav(_)) && self.page == Page::Apps;
-            let now = (!self.preferences.reduced_motion && !first).then(Instant::now);
+            let now = (!self.preferences.reduced_motion && !first).then(crate::clock::now);
             self.focus_from = now.map(|now| (previous, now, level));
             self.focus_since = now;
             self.dirty = true;
@@ -52,20 +52,20 @@ impl State {
         if self
             .shelf_pending
             .as_ref()
-            .is_some_and(|(_, since)| since.elapsed().as_secs_f32() >= SHELF_REST)
+            .is_some_and(|(_, since)| crate::clock::since(since).as_secs_f32() >= SHELF_REST)
             && let Some((id, _)) = self.shelf_pending.take()
         {
             let previous = self.shelf_app.replace(id);
-            self.shelf_from = Some((previous, Instant::now()));
+            self.shelf_from = Some((previous, crate::clock::now()));
             self.dirty = true;
         }
         if let Some((_, start)) = &self.shelf_from {
-            if start.elapsed().as_secs_f32() >= SHELF_FADE {
+            if crate::clock::since(start).as_secs_f32() >= SHELF_FADE {
                 self.shelf_from = None;
             }
             self.dirty = true;
         }
-        let done = |start: &Instant| start.elapsed().as_secs_f32() * 1000. >= FOCUS_MS;
+        let done = |start: &Instant| crate::clock::since(start).as_secs_f32() * 1000. >= FOCUS_MS;
         if self.focus_since.is_some() || self.focus_from.is_some() {
             self.dirty = true;
             if self.focus_since.as_ref().is_none_or(done) {
@@ -82,7 +82,7 @@ impl State {
     }
 
     pub fn glide_scroll(&mut self) {
-        let now = Instant::now();
+        let now = crate::clock::now();
         // An idle home draws no frames, so the gap since the last one can be
         // seconds: then the first step counts as one frame, and the first press
         // after a pause glides like every other instead of jumping to its
@@ -164,7 +164,7 @@ impl State {
                 -SHELF_DROP
             } else if row == 0 {
                 if previous > 0. {
-                    self.shelf_since = Some(Instant::now());
+                    self.shelf_since = Some(crate::clock::now());
                 }
                 0.
             } else {

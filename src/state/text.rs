@@ -114,7 +114,7 @@ impl State {
         self.overlay = Some(Overlay::Keyboard);
         self.focus = Target::Key(0);
         if !self.preferences.reduced_motion {
-            self.panel_started = Some(Instant::now());
+            self.panel_started = Some(crate::clock::now());
         }
         self.dirty = true;
     }
@@ -127,7 +127,7 @@ impl State {
         self.focus = Target::WeatherQuery;
         self.scroll = 0.;
         if !self.preferences.reduced_motion {
-            self.panel_started = Some(Instant::now());
+            self.panel_started = Some(crate::clock::now());
         }
         self.dirty = true;
     }

@@ -508,7 +508,7 @@ fn shelf_chevron(out: &mut Scene, state: &State, assets: &Assets, dock_y: f32) {
         .shelf_since
         .filter(|_| !state.preferences.reduced_motion)
         .map_or(0., |since| {
-            let t = since.elapsed().as_secs_f32();
+            let t = crate::clock::since(since).as_secs_f32();
             if t >= SHELF_HINT {
                 0.
             } else {

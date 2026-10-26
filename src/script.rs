@@ -42,7 +42,11 @@ pub(crate) fn script(
             } else {
                 state::TextField::Apps
             };
-            state.open_keyboard(field);
+            // Typing into an open keyboard continues it (one letter at a
+            // time reads as typing); otherwise the keyboard opens first.
+            if !matches!(state.overlay, Some(state::Overlay::Keyboard)) {
+                state.open_keyboard(field);
+            }
             state.text(&action[5..]);
             vec![]
         }

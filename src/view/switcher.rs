@@ -15,9 +15,12 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
     let ease = |t: f32| 1. - (1. - t.clamp(0., 1.)).powi(3);
     // In over 0.28 s; Back fades it out over the live home, settling back.
     let leave = switcher.dismissed.map_or(0., |start| {
-        ease(start.elapsed().as_secs_f32() * 1000. / crate::state::SWITCHER_DISMISS_MS as f32)
+        ease(
+            crate::clock::since(start).as_secs_f32() * 1000.
+                / crate::state::SWITCHER_DISMISS_MS as f32,
+        )
     });
-    let appear = ease(switcher.opened.elapsed().as_secs_f32() / 0.28) * (1. - leave);
+    let appear = ease(crate::clock::since(switcher.opened).as_secs_f32() / 0.28) * (1. - leave);
     // tvOS: open apps as windows in a row over the dimmed, blurred home. While
     // it fades in or out the home cross-fades into the backdrop (in the
     // background's own pass where it can); once it covers the screen the
@@ -46,7 +49,7 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
     // After a close the cards right of the gap wait a beat (the thrown one
     // clears first), then glide in with a long, soft settle.
     let reflow = switcher.reflow.map(|(slot, start)| {
-        let ms = start.elapsed().as_secs_f32() * 1000.;
+        let ms = crate::clock::since(start).as_secs_f32() * 1000.;
         let t = ((ms - 90.) / (crate::state::SWITCHER_REFLOW_MS as f32 - 90.)).clamp(0., 1.);
         (slot, (1. - t).powi(5))
     });
@@ -99,7 +102,8 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         let Some(app) = state.inventory.apps.iter().find(|app| &app.id == id) else {
             continue;
         };
-        let t = (start.elapsed().as_secs_f32() * 1000. / crate::state::SWITCHER_CLOSE_MS as f32)
+        let t = (crate::clock::since(start).as_secs_f32() * 1000.
+            / crate::state::SWITCHER_CLOSE_MS as f32)
             .min(1.);
         // Thrown: one motion up and off the screen, accelerating, easing
         // back a touch in size; it only fades once nearly gone.

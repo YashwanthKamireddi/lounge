@@ -91,7 +91,7 @@ impl Remote {
     pub(crate) fn new() -> Self {
         Self {
             press: None,
-            last_move: Instant::now(),
+            last_move: crate::clock::now(),
         }
     }
 
@@ -110,9 +110,9 @@ impl Remote {
             // arrive faster are dropped, so focus glides evenly instead
             // of jumping when two land in one frame.
             Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right
-                if repeat && self.last_move.elapsed() < HELD_MOVE => {}
+                if repeat && crate::clock::since(self.last_move) < HELD_MOVE => {}
             Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
-                self.last_move = Instant::now();
+                self.last_move = crate::clock::now();
                 let direction = match key {
                     Keycode::Up => Direction::Up,
                     Keycode::Down => Direction::Down,
@@ -130,7 +130,7 @@ impl Remote {
             Keycode::Return | Keycode::KpEnter if !repeat => {
                 self.press = Some(Press {
                     target: state.focus.clone(),
-                    start: Instant::now(),
+                    start: crate::clock::now(),
                     held: false,
                     pointer: false,
                 });

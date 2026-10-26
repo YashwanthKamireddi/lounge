@@ -43,10 +43,10 @@ impl State {
             && next != self.avatar
             && let Some(previous) = self.avatar.clone()
         {
-            self.avatar_from = Some((previous, Instant::now()));
+            self.avatar_from = Some((previous, crate::clock::now()));
         }
         self.avatar = next;
-        self.avatar_since = Instant::now();
+        self.avatar_since = crate::clock::now();
         self.dirty = true;
     }
 
@@ -68,7 +68,7 @@ impl State {
         };
         match self.appearance_from {
             Some((from, start)) => {
-                let t = (start.elapsed().as_secs_f32() / APPEARANCE_FADE).min(1.);
+                let t = (crate::clock::since(start).as_secs_f32() / APPEARANCE_FADE).min(1.);
                 from + (target - from) * t * t * (3. - 2. * t)
             }
             None => target,
@@ -81,7 +81,7 @@ impl State {
         let wanted = self.wants_light();
         if self.light_shown.is_some_and(|shown| shown != wanted) && !self.preferences.reduced_motion
         {
-            self.appearance_from = Some((self.light(), Instant::now()));
+            self.appearance_from = Some((self.light(), crate::clock::now()));
         }
         if self.light_shown != Some(wanted) {
             self.light_shown = Some(wanted);
@@ -89,7 +89,7 @@ impl State {
         }
         if self
             .appearance_from
-            .is_some_and(|(_, start)| start.elapsed().as_secs_f32() >= APPEARANCE_FADE)
+            .is_some_and(|(_, start)| crate::clock::since(start).as_secs_f32() >= APPEARANCE_FADE)
         {
             self.appearance_from = None;
             self.dirty = true;
@@ -100,7 +100,7 @@ impl State {
     pub(super) fn rotate_avatar(&mut self) {
         if self.preferences.avatar.as_deref() == Some(AVATAR_ROTATE)
             && self.avatars.len() > 1
-            && self.avatar_since.elapsed().as_secs_f32() >= AVATAR_SECONDS
+            && crate::clock::since(self.avatar_since).as_secs_f32() >= AVATAR_SECONDS
         {
             self.avatar_index = (self.avatar_index + 1) % self.avatars.len();
             self.show_avatar(true);
@@ -108,7 +108,7 @@ impl State {
         if self
             .avatar_from
             .as_ref()
-            .is_some_and(|(_, since)| since.elapsed().as_secs_f32() >= AVATAR_FADE)
+            .is_some_and(|(_, since)| crate::clock::since(since).as_secs_f32() >= AVATAR_FADE)
         {
             self.avatar_from = None;
             self.dirty = true;

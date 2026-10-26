@@ -194,7 +194,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             [0.; 4],
         ));
     } else if let Some((previous, start)) = &state.previous_background {
-        let alpha = (start.elapsed().as_secs_f32() / 0.4).min(1.);
+        let alpha = (crate::clock::since(start).as_secs_f32() / 0.4).min(1.);
         let alpha = alpha * alpha * (3. - 2. * alpha);
         let current = &state.preferences.background;
         if state.page == Page::Settings {
@@ -243,7 +243,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         // Settings' dark screen fades in over the home's blurred backdrop, and
         // out again on the way back, rather than cutting.
         let page_t = state.page_since.map(|(start, direction)| {
-            let t = (start.elapsed().as_secs_f32() * 1000. / PAGE_MS).min(1.);
+            let t = (crate::clock::since(start).as_secs_f32() * 1000. / PAGE_MS).min(1.);
             (1. - (1. - t).powi(3), direction)
         });
         if state.page == Page::Settings {
@@ -373,7 +373,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         out.translate(content, 0., state.scroll - state.shown_scroll);
         // tvOS tab switch: the new page dissolves in, drifting from the travel direction.
         if let Some((start, direction)) = state.page_since {
-            let t = (start.elapsed().as_secs_f32() * 1000. / PAGE_MS).min(1.);
+            let t = (crate::clock::since(start).as_secs_f32() * 1000. / PAGE_MS).min(1.);
             let eased = 1. - (1. - t).powi(3);
             out.translate(content, direction * 40. * (1. - eased), 0.);
             out.fade(content, eased, 1.);
@@ -426,18 +426,23 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
     if state.overlay.is_none()
         && let Some(closed) = state.search_closed
     {
-        let t = (closed.elapsed().as_secs_f32() * 1000. / FADE_OUT_MS as f32).min(1.);
+        let t = (crate::clock::since(closed).as_secs_f32() * 1000. / FADE_OUT_MS as f32).min(1.);
         out.shape(
             Rect::new(0., 0., 1920., 1080.),
             0.,
-            c(0x2b2b2d, 1. - t * (2. - t)),
+            // The search page's own colour, so closing it never flashes dark
+            // in the light appearance.
+            {
+                let alpha = 1. - t * (2. - t);
+                out.theme.pick(c(0x2b2b2d, alpha), c(0xf2f2f7, alpha))
+            },
         );
     }
     // Closing: the context menu fades away beside its tile.
     if state.overlay.is_none()
         && let Some((id, closed)) = &state.options_closed
     {
-        let t = (closed.elapsed().as_secs_f32() * 1000. / FADE_OUT_MS as f32).min(1.);
+        let t = (crate::clock::since(closed).as_secs_f32() * 1000. / FADE_OUT_MS as f32).min(1.);
         let anchor = out
             .controls
             .iter()
@@ -465,7 +470,8 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         out.controls.clear();
         // Opening eases out: the screen dims as the menu rises into place.
         let opening = state.panel_started.map(|opened| {
-            let t = (opened.elapsed().as_secs_f32() * 1000. / crate::state::OVERLAY_OPEN_MS as f32)
+            let t = (crate::clock::since(opened).as_secs_f32() * 1000.
+                / crate::state::OVERLAY_OPEN_MS as f32)
                 .min(1.);
             1. - (1. - t).powi(3)
         });

@@ -88,7 +88,7 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     if let Some(picture) = &state.avatar {
         // A new picture (rotating, or just chosen) fades in over the last.
         let fade = state.avatar_from.as_ref().map(|(previous, since)| {
-            let t = (since.elapsed().as_secs_f32() / crate::state::AVATAR_FADE).min(1.);
+            let t = (crate::clock::since(since).as_secs_f32() / crate::state::AVATAR_FADE).min(1.);
             (previous, t * t * (3. - 2. * t))
         });
         if let Some((previous, t)) = fade {
@@ -457,7 +457,7 @@ fn notice_shown(state: &State) -> f32 {
     if state.preferences.reduced_motion {
         return 1.;
     }
-    let age = opened.elapsed().as_secs_f32();
+    let age = crate::clock::since(opened).as_secs_f32();
     let arrive = 1. - (1. - (age / 0.34).min(1.)).powi(4);
     let leave = ((crate::state::NOTICE_SECONDS - age) / 0.28).clamp(0., 1.);
     arrive.min(leave * leave * (3. - 2. * leave))

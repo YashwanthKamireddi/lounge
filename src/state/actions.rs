@@ -14,7 +14,7 @@ impl State {
             });
             self.focus = Target::Option(0);
             if !self.preferences.reduced_motion {
-                self.panel_started = Some(Instant::now());
+                self.panel_started = Some(crate::clock::now());
             }
             self.dirty = true;
         }
@@ -43,7 +43,7 @@ impl State {
         }
         self.preferences.favorites = Some(order);
         self.moving = Some(id.into());
-        self.moving_since = (!self.preferences.reduced_motion).then(Instant::now);
+        self.moving_since = (!self.preferences.reduced_motion).then(crate::clock::now);
         // Say how Move works, once, in the banner.
         self.notify(i18n::t("moveHint"));
         self.focus = Target::App(id.into());
@@ -111,7 +111,7 @@ impl State {
                     self.preferences.temperature_unit == Unit::Fahrenheit,
                 ));
                 if !self.preferences.reduced_motion {
-                    self.panel_started = Some(Instant::now());
+                    self.panel_started = Some(crate::clock::now());
                 }
             }
             Target::WeatherQuery => self.open_keyboard(TextField::Location),
@@ -149,7 +149,7 @@ impl State {
                     1 => {
                         self.subpage = Some(Subpage::Clock);
                         if !self.preferences.reduced_motion {
-                            self.panel_started = Some(Instant::now());
+                            self.panel_started = Some(crate::clock::now());
                         }
                         self.focus = Target::Choice(usize::from(self.preferences.hour_24));
                         return vec![];
@@ -158,7 +158,7 @@ impl State {
                     9 => {
                         self.subpage = Some(Subpage::Appearance);
                         if !self.preferences.reduced_motion {
-                            self.panel_started = Some(Instant::now());
+                            self.panel_started = Some(crate::clock::now());
                         }
                         let index = APPEARANCES
                             .iter()
@@ -175,7 +175,7 @@ impl State {
                     8 => {
                         self.subpage = Some(Subpage::Avatar);
                         if !self.preferences.reduced_motion {
-                            self.panel_started = Some(Instant::now());
+                            self.panel_started = Some(crate::clock::now());
                         }
                         let current = self.avatar_choice();
                         let index = self
@@ -189,7 +189,7 @@ impl State {
                     7 => {
                         self.subpage = Some(Subpage::Hidden);
                         if !self.preferences.reduced_motion {
-                            self.panel_started = Some(Instant::now());
+                            self.panel_started = Some(crate::clock::now());
                         }
                         self.focus = Target::Choice(0);
                         return vec![];
@@ -203,7 +203,7 @@ impl State {
                     && self.preferences.background != BACKGROUNDS[index].0
                 {
                     self.previous_background =
-                        Some((self.preferences.background.clone(), Instant::now()));
+                        Some((self.preferences.background.clone(), crate::clock::now()));
                 }
                 self.preferences.background = BACKGROUNDS[index].0.into();
                 return vec![Effect::Save];
@@ -217,7 +217,7 @@ impl State {
                     .unwrap_or_default();
                 self.subpage = Some(Subpage::Input(id));
                 if !self.preferences.reduced_motion {
-                    self.panel_started = Some(Instant::now());
+                    self.panel_started = Some(crate::clock::now());
                 }
                 self.focus = Target::Choice(match mode {
                     InputMode::On => 0,
@@ -282,7 +282,7 @@ impl State {
                 };
                 self.panel_started = None;
                 if !self.preferences.reduced_motion {
-                    self.options_closed = Some((id.clone(), Instant::now()));
+                    self.options_closed = Some((id.clone(), crate::clock::now()));
                 }
                 let old_ids: Vec<_> = self.apps().iter().map(|a| a.id.clone()).collect();
                 let old_index = old_ids.iter().position(|item| item == &id).unwrap_or(0);
@@ -333,7 +333,7 @@ impl State {
                     self.overlay = None;
                     self.panel_started = None;
                     self.focus = self.keyboard_return();
-                    self.search_closed = (!self.preferences.reduced_motion).then(Instant::now);
+                    self.search_closed = (!self.preferences.reduced_motion).then(crate::clock::now);
                 }
                 key => self.text(key),
             },
@@ -385,7 +385,7 @@ impl State {
             && switcher.dismissed.is_none()
         {
             // The home is live at once; the switcher fades away over it.
-            switcher.dismissed = Some(Instant::now());
+            switcher.dismissed = Some(crate::clock::now());
             self.focus = switcher.restore.clone();
             return vec![];
         }
@@ -398,14 +398,14 @@ impl State {
             if let Overlay::Options { id, .. } = &overlay
                 && !self.preferences.reduced_motion
             {
-                self.options_closed = Some((id.clone(), Instant::now()));
+                self.options_closed = Some((id.clone(), crate::clock::now()));
             }
             self.focus = match overlay {
                 Overlay::Options { restore, .. } => restore,
                 Overlay::Keyboard | Overlay::SystemKeyboard => {
                     self.search_closed = (!self.preferences.reduced_motion
                         && matches!(overlay, Overlay::Keyboard))
-                    .then(Instant::now);
+                    .then(crate::clock::now);
                     self.keyboard_return()
                 }
             };

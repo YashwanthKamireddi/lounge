@@ -53,7 +53,7 @@ pub(super) fn tile(
     // while it fades away, then hands back to focus with no dip.
     let held = matches!(&state.overlay, Some(Overlay::Options { id, .. }) if *id == app.id)
         || state.options_closed.as_ref().is_some_and(|(id, closed)| {
-            *id == app.id && closed.elapsed().as_millis() < u128::from(FADE_OUT_MS)
+            *id == app.id && crate::clock::since(closed).as_millis() < u128::from(FADE_OUT_MS)
         });
     let lift = if held {
         1.

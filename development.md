@@ -75,6 +75,20 @@ uses isolated temporary preferences, sample inventory and a fixed date/time, and
 It does not execute the test suites. A desktop display is required; on headless Linux use
 `xvfb-run -a pnpm screenshots`. These images document the native design, not TV hardware behavior.
 
+### Recording a video
+
+`--record PATH` writes every frame as raw 1920x1080 RGBA at exactly 60 fps: animations run on
+a stepped clock (`src/clock.rs`), so the capture is smooth however long each frame takes to
+render. `pause:SECONDS` in `--script` holds a shot. Pipe it straight into ffmpeg:
+
+```sh
+mkfifo /tmp/lounge.rgba
+ffmpeg -f rawvideo -pix_fmt rgba -s 1920x1080 -r 60 -i /tmp/lounge.rgba \
+  -c:v libx264 -crf 16 -pix_fmt yuv420p tour.mp4 &
+cargo run --release -- --record /tmp/lounge.rgba \
+  --script "pause:2,right,pause:0.6,down,pause:1.2,up,pause:1"
+```
+
 ### Input
 
 | Input                     | Action                                                 |

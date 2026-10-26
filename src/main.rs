@@ -1,6 +1,7 @@
 mod app_artwork;
 mod avatars;
 mod branding;
+mod clock;
 mod crash_guard;
 mod damage;
 mod debug;
@@ -394,6 +395,15 @@ fn run() -> Result<(), String> {
         .unwrap_or_else(|| OffsetDateTime::now_utc().to_offset(local_offset));
     state.hour = start.hour();
     let scene = compose(&mut state, &assets, start, None);
+    // A recording runs on a stepped clock: every frame is one 60th of a
+    // second of the capture, however long it took to render.
+    let record = match &options.record {
+        Some(path) => {
+            clock::record();
+            Some(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?)
+        }
+        None => None,
+    };
     Shell {
         startup,
         options,
@@ -438,6 +448,8 @@ fn run() -> Result<(), String> {
         replies,
         scripted_input,
         scene,
+        record,
+        script_resume: None,
     }
     .run()
 }
@@ -485,6 +497,10 @@ struct Shell {
     replies: replies::Replies,
     scripted_input: bool,
     scene: view::Scene,
+    /// A recording's raw frames (`--record`), and when a scripted
+    /// `pause:SECONDS` ends.
+    record: Option<std::fs::File>,
+    script_resume: Option<Instant>,
     // Last, in this order: fields drop top to bottom, and the renderer frees
     // GL objects as it drops, so the GL context, its window, the video
     // subsystem and SDL itself must outlive it.
@@ -906,6 +922,7 @@ impl Shell {
         }
         if !self.state.loading
             && self.frame.is_multiple_of(3)
+            && self.script_resume.is_none_or(|at| clock::now() >= at)
             && !self.options.script.front().is_some_and(|action| {
                 (action == "await-search"
                     && (self.state.weather.searching || self.state.weather.search_pending()))
@@ -913,7 +930,12 @@ impl Shell {
             })
             && let Some(action) = self.options.script.pop_front()
         {
-            if let Some(position) = action.strip_prefix("click:") {
+            if let Some(seconds) = action.strip_prefix("pause:") {
+                let seconds: f32 = seconds
+                    .parse()
+                    .map_err(|_| format!("Invalid pause: {action}"))?;
+                self.script_resume = Some(clock::now() + Duration::from_secs_f32(seconds));
+            } else if let Some(position) = action.strip_prefix("click:") {
                 script::scripted_click(&self.sdl, &self.window, position)?;
             } else {
                 let pending = script::script(&action, &mut self.state, &self.scene.controls)?;
@@ -990,11 +1012,15 @@ impl Shell {
                     .is_some_and(|limit| self.presented + 1 >= limit))
             || (self.options.profile_frames.is_some()
                 && self.startup.elapsed() > Duration::from_secs(90))
+            || (self.record.is_some()
+                && self.options.script.is_empty()
+                && self.script_resume.is_none_or(|at| clock::now() >= at))
     }
 
     /// Draws and presents a frame when anything changed.
     fn present(&mut self, now: OffsetDateTime, final_frame: bool) -> Result<(), String> {
-        if ((self.state.dirty || self.options.profile_frames.is_some()) && self.presence.visible)
+        if ((self.state.dirty || self.options.profile_frames.is_some() || self.record.is_some())
+            && self.presence.visible)
             || final_frame
         {
             let composing = Instant::now();
@@ -1011,6 +1037,18 @@ impl Shell {
                     path,
                     self.options.capture_size.unwrap_or(Size::HD),
                 )?);
+            }
+            if let Some(record) = &mut self.record {
+                use std::io::Write;
+                self.renderer.damage = None;
+                let (pixels, _) = self.renderer.capture_pixels(
+                    &self.scene.draw,
+                    self.options.capture_size.unwrap_or(Size::HD),
+                )?;
+                record
+                    .write_all(&pixels)
+                    .map_err(|e| format!("Recording: {e}"))?;
+                clock::step(Duration::from_secs(1) / 60);
             }
             if width > 0 && height > 0 {
                 self.renderer.damage = None;
@@ -1069,7 +1107,9 @@ impl Shell {
     /// Block until input instead of polling at frame rate on idle screens.
     /// VSync paces animation; holds and scripted checks need short timed wakes.
     fn wait(&mut self) {
-        let timeout = if !self.presence.visible {
+        let timeout = if self.record.is_some() {
+            0
+        } else if !self.presence.visible {
             // Hidden behind an app: push events need no polling, so sleep long,
             // except while being raised (see `wake`): then answer webOS fast.
             if self.presence.raising() {

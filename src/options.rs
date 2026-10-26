@@ -7,6 +7,8 @@ pub(crate) struct Options {
     pub(crate) assets: Option<PathBuf>,
     pub(crate) preferences: Option<PathBuf>,
     pub(crate) screenshot: Option<PathBuf>,
+    /// Every frame as raw 60 fps RGBA (for ffmpeg), on a stepped clock.
+    pub(crate) record: Option<PathBuf>,
     pub(crate) dump: Option<PathBuf>,
     pub(crate) frames: Option<u64>,
     pub(crate) script: VecDeque<String>,
@@ -50,7 +52,7 @@ impl Options {
         while let Some(arg) = args.next() {
             if arg == "--help" {
                 println!(
-                    "Lounge native\n\n  --assets PATH       Generated artwork directory\n  --preferences PATH  Isolated preferences file\n  --fullscreen        Fullscreen desktop preview\n  --resolution SIZE   Request 1080p, 4k, or WIDTHxHEIGHT; verify actual drawable\n  --frames N          Exit after N event-loop frames\n  --profile-frames N  Force N presentations (20+) and report pacing after warmup\n  --script ACTIONS    Comma-separated home/apps/settings/up/down/left/right/enter/back/menu/hold/type:TEXT/click:X:Y/wait\n  --time RFC3339      Fix the preview's clock and date\n  --screenshot PATH   Save an offscreen PNG\n  --capture-scale N   Capture at 1x/1080p (default) or 2x/4k\n  --diagnostics PATH  Save actual drawable, GPU, font-cache and timing information\n  --dump-state PATH   Save final UI state as JSON\n\nCompile with --features webos for the TV backend. Desktop builds never call TV services."
+                    "Lounge native\n\n  --assets PATH       Generated artwork directory\n  --preferences PATH  Isolated preferences file\n  --fullscreen        Fullscreen desktop preview\n  --resolution SIZE   Request 1080p, 4k, or WIDTHxHEIGHT; verify actual drawable\n  --frames N          Exit after N event-loop frames\n  --profile-frames N  Force N presentations (20+) and report pacing after warmup\n  --script ACTIONS    Comma-separated home/apps/settings/up/down/left/right/enter/back/menu/hold/type:TEXT/click:X:Y/wait\n  --time RFC3339      Fix the preview's clock and date\n  --screenshot PATH   Save an offscreen PNG\n  --record PATH       Write every frame as raw 60 fps RGBA (pause:SECONDS in --script)\n  --capture-scale N   Capture at 1x/1080p (default) or 2x/4k\n  --diagnostics PATH  Save actual drawable, GPU, font-cache and timing information\n  --dump-state PATH   Save final UI state as JSON\n\nCompile with --features webos for the TV backend. Desktop builds never call TV services."
                 );
                 println!(
                     "\n  --test-extra-apps N  Explicit scroll preview with up to 300 non-launchable extra cards; separate preferences"
@@ -68,6 +70,7 @@ impl Options {
                 "--assets" => result.assets = Some(value.into()),
                 "--preferences" => result.preferences = Some(value.into()),
                 "--screenshot" => result.screenshot = Some(value.into()),
+                "--record" => result.record = Some(value.into()),
                 "--dump-state" => result.dump = Some(value.into()),
                 "--resolution" => result.resolution = Some(value.parse()?),
                 "--capture-scale" => {

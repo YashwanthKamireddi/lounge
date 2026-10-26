@@ -32,14 +32,14 @@ impl State {
     /// first, settling softly, as tvOS raises it.
     pub fn move_raise(&self) -> f32 {
         self.moving_since.map_or(1., |since| {
-            let t = (since.elapsed().as_secs_f32() / 0.16).min(1.);
+            let t = (crate::clock::since(since).as_secs_f32() / 0.16).min(1.);
             1. - (1. - t).powi(3)
         })
     }
 
     /// Progress (0-1) of a Move glide that began at `at`: an ease-out cubic.
     pub fn glide_eased(at: Instant) -> f32 {
-        let t = (at.elapsed().as_secs_f32() * 1000. / REARRANGE_MS).min(1.);
+        let t = (crate::clock::since(at).as_secs_f32() * 1000. / REARRANGE_MS).min(1.);
         1. - (1. - t).powi(3)
     }
 }

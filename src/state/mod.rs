@@ -66,7 +66,7 @@ fn page_order(page: Page) -> f32 {
 }
 
 fn eased(start: &Instant) -> f32 {
-    let t = (start.elapsed().as_secs_f32() * 1000. / FOCUS_MS).min(1.);
+    let t = (crate::clock::since(start).as_secs_f32() * 1000. / FOCUS_MS).min(1.);
     1. - (1. - t).powi(3)
 }
 
@@ -326,7 +326,7 @@ impl State {
             avatar: None,
             avatars: Vec::new(),
             avatar_index: 0,
-            avatar_since: Instant::now(),
+            avatar_since: crate::clock::now(),
             avatar_from: None,
             hour: 12,
             light_shown: None,
@@ -358,7 +358,7 @@ impl State {
             shown_scroll: 0.,
             shown_home_scroll: 0.,
             shown_page: Page::Apps,
-            last_tick: Instant::now(),
+            last_tick: crate::clock::now(),
             page_since: None,
             switcher: None,
             settings_since: None,
@@ -370,7 +370,7 @@ impl State {
             options_closed: None,
             search_closed: None,
             expanded: false,
-            shelf_since: Some(Instant::now()),
+            shelf_since: Some(crate::clock::now()),
             shelf_app: None,
             shelf_pending: None,
             shelf_from: None,
@@ -379,7 +379,7 @@ impl State {
     }
 
     pub fn notify(&mut self, text: impl Into<String>) {
-        self.notice = Some((text.into(), Instant::now()));
+        self.notice = Some((text.into(), crate::clock::now()));
         self.dirty = true;
     }
 
@@ -390,11 +390,11 @@ impl State {
             // Keep presenting frames while the switcher fades in or a card is
             // being dismissed; otherwise the first frame would freeze on screen.
             let before = switcher.closing.len();
-            switcher
-                .closing
-                .retain(|(_, start, _)| start.elapsed() < Duration::from_millis(SWITCHER_CLOSE_MS));
+            switcher.closing.retain(|(_, start, _)| {
+                crate::clock::since(start) < Duration::from_millis(SWITCHER_CLOSE_MS)
+            });
             if switcher.reflow.is_some_and(|(_, start)| {
-                start.elapsed() >= Duration::from_millis(SWITCHER_REFLOW_MS)
+                crate::clock::since(start) >= Duration::from_millis(SWITCHER_REFLOW_MS)
             }) {
                 switcher.reflow = None;
             }
@@ -402,21 +402,20 @@ impl State {
                 || !switcher.closing.is_empty()
                 || switcher.reflow.is_some()
                 || switcher.dismissed.is_some()
-                || switcher.opened.elapsed() < Duration::from_millis(320)
+                || crate::clock::since(switcher.opened) < Duration::from_millis(320)
             {
                 self.dirty = true;
             }
-            if switcher
-                .dismissed
-                .is_some_and(|start| start.elapsed() >= Duration::from_millis(SWITCHER_DISMISS_MS))
-                && switcher.closing.is_empty()
+            if switcher.dismissed.is_some_and(|start| {
+                crate::clock::since(start) >= Duration::from_millis(SWITCHER_DISMISS_MS)
+            }) && switcher.closing.is_empty()
             {
                 self.switcher = None;
             }
         }
         if let Some((start, _)) = self.page_since {
             self.dirty = true;
-            if start.elapsed().as_secs_f32() >= PAGE_MS / 1000. {
+            if crate::clock::since(start).as_secs_f32() >= PAGE_MS / 1000. {
                 self.page_since = None;
             }
         }
@@ -424,7 +423,7 @@ impl State {
         // Move's glide and lift are drawn on every frame while they run (only
         // marking the end left the tiles frozen in place, then jumping).
         if let Some((at, _)) = &self.rearranged {
-            if at.elapsed().as_secs_f32() * 1000. >= REARRANGE_MS {
+            if crate::clock::since(at).as_secs_f32() * 1000. >= REARRANGE_MS {
                 self.rearranged = None;
             }
             self.dirty = true;
@@ -432,26 +431,23 @@ impl State {
         if self.moving.is_some() && self.move_raise() < 1. {
             self.dirty = true;
         }
-        if self
-            .settings_since
-            .is_some_and(|(start, _)| start.elapsed().as_secs_f32() * 1000. >= SETTINGS_PUSH_MS)
-        {
+        if self.settings_since.is_some_and(|(start, _)| {
+            crate::clock::since(start).as_secs_f32() * 1000. >= SETTINGS_PUSH_MS
+        }) {
             self.settings_since = None;
             self.settings_ghost = None;
             self.dirty = true;
         }
         if self
             .search_closed
-            .is_some_and(|start| start.elapsed() >= Duration::from_millis(FADE_OUT_MS))
+            .is_some_and(|start| crate::clock::since(start) >= Duration::from_millis(FADE_OUT_MS))
         {
             self.search_closed = None;
             self.dirty = true;
         }
-        if self
-            .options_closed
-            .as_ref()
-            .is_some_and(|(_, start)| start.elapsed() >= Duration::from_millis(FADE_OUT_MS))
-        {
+        if self.options_closed.as_ref().is_some_and(|(_, start)| {
+            crate::clock::since(start) >= Duration::from_millis(FADE_OUT_MS)
+        }) {
             self.options_closed = None;
             self.dirty = true;
         }
@@ -462,7 +458,8 @@ impl State {
             } else {
                 150
             };
-            if self.preferences.reduced_motion || start.elapsed() >= Duration::from_millis(duration)
+            if self.preferences.reduced_motion
+                || crate::clock::since(start) >= Duration::from_millis(duration)
             {
                 self.panel_started = None;
             }
@@ -470,21 +467,23 @@ impl State {
         if self
             .notice
             .as_ref()
-            .is_some_and(|(_, start)| start.elapsed() < Duration::from_millis(120))
+            .is_some_and(|(_, start)| crate::clock::since(start) < Duration::from_millis(120))
             && !self.preferences.reduced_motion
         {
             self.dirty = true;
         }
         if let Some((_, start)) = &self.previous_background {
             self.dirty = true;
-            if self.preferences.reduced_motion || start.elapsed() >= Duration::from_millis(400) {
+            if self.preferences.reduced_motion
+                || crate::clock::since(start) >= Duration::from_millis(400)
+            {
                 self.previous_background = None;
             }
         }
         if self
             .notice
             .as_ref()
-            .is_some_and(|(_, start)| start.elapsed().as_secs_f32() > NOTICE_SECONDS)
+            .is_some_and(|(_, start)| crate::clock::since(start).as_secs_f32() > NOTICE_SECONDS)
         {
             self.notice = None;
             self.dirty = true;
@@ -509,7 +508,7 @@ impl State {
 
     pub fn animating(&self) -> bool {
         let switcher_moving = self.switcher.as_ref().is_some_and(|switcher| {
-            switcher.opened.elapsed() < Duration::from_millis(300)
+            crate::clock::since(switcher.opened) < Duration::from_millis(300)
                 || !switcher.closing.is_empty()
                 || switcher.reflow.is_some()
                 || switcher.dismissed.is_some()
@@ -539,13 +538,13 @@ impl State {
                 && self.preferences.top_shelf_art
                 && self
                     .shelf_since
-                    .is_some_and(|since| since.elapsed().as_secs_f32() < SHELF_HINT))
+                    .is_some_and(|since| crate::clock::since(since).as_secs_f32() < SHELF_HINT))
             || (!self.preferences.reduced_motion
                 && self
                     .notice
                     .as_ref()
                     .is_some_and(|(_, start)| {
-                        let age = start.elapsed().as_secs_f32();
+                        let age = crate::clock::since(start).as_secs_f32();
                         !(0.12..=NOTICE_SECONDS - 0.25).contains(&age)
                     }))
     }

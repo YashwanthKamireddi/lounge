@@ -35,7 +35,7 @@ impl State {
         self.switcher = Some(Switcher {
             apps,
             shown: 0.,
-            opened: Instant::now(),
+            opened: crate::clock::now(),
             closing: vec![],
             reflow: None,
             dismissed: None,
@@ -67,7 +67,8 @@ impl State {
     /// not leaving. Nothing beneath it needs drawing then.
     pub fn switcher_covers(&self) -> bool {
         self.switcher.as_ref().is_some_and(|switcher| {
-            switcher.opened.elapsed().as_secs_f32() >= 0.3 && switcher.dismissed.is_none()
+            crate::clock::since(switcher.opened).as_secs_f32() >= 0.3
+                && switcher.dismissed.is_none()
         })
     }
 }
