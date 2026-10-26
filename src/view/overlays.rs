@@ -260,30 +260,41 @@ pub(super) fn options(
     };
     let panel = Rect::new(x, y.clamp(60., 1020. - h), w, h);
     out.modal = Some(panel);
-    // Liquid Glass: veil, top sheen and a light rim.
-    out.shadow(panel, 30., 40., 12., 0.35);
+    // Regular Liquid Glass, thicker than the dock's: the blurred backdrop
+    // lensed brighter at the top, a light veil so the scene's colour shows
+    // through, a top sheen, light gathered along the inner edge, one rim, and
+    // a deeper shadow.
+    out.shadow(panel, 30., 48., 18., 0.42);
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    out.glass_over(
+    let (top, bottom) = out.theme.lens();
+    out.draw.push(Draw::Glass(
         home_backdrop(state, assets),
         panel,
         30.,
-        out.theme.veil(0.42),
-    );
+        top,
+        bottom,
+    ));
+    out.shape(panel, 30., out.theme.veil(0.30));
     out.draw.push(Draw::RoundedGradient(
         panel,
         30.,
         c(0xffffff, 0.12),
         c(0xffffff, 0.02),
     ));
+    // Light gathered just inside the edge: the glass's thickness.
+    let (inner_top, inner_bottom) = out.theme.edge(0.12, 0.);
+    out.draw.push(Draw::GradientRing(
+        panel.inset(1.5),
+        28.5,
+        7.,
+        inner_top,
+        inner_bottom,
+    ));
     out.draw.push(Draw::Soft(None));
     // One specular rim, bright where light falls, as the pill's.
-    out.draw.push(Draw::GradientRing(
-        panel,
-        30.,
-        1.5,
-        c(0xffffff, 0.5),
-        c(0xffffff, 0.08),
-    ));
+    let (rim_top, rim_bottom) = out.theme.edge(0.55, 0.1);
+    out.draw
+        .push(Draw::GradientRing(panel, 30., 1.5, rim_top, rim_bottom));
     out.text(
         title,
         Rect::new(panel.x + 25., panel.y + 16., w - 50., 30.),

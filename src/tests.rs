@@ -198,6 +198,26 @@ fn an_input_is_in_use_by_whichever_report_means_something_on_this_firmware() {
 }
 
 #[test]
+fn luma_preferences_keep_settings_and_search_in_place() {
+    let mut preferences: Preferences = serde_json::from_value(json!({
+        "favorites": ["netflix", "luma.settings", "luma.search", "youtube.leanback.v4"],
+        "hidden": ["luma.search"],
+    }))
+    .unwrap();
+    preferences.sanitize();
+    assert_eq!(
+        preferences.favorites.unwrap(),
+        [
+            "netflix",
+            "lounge.settings",
+            "lounge.search",
+            "youtube.leanback.v4"
+        ]
+    );
+    assert_eq!(preferences.hidden, ["lounge.search"]);
+}
+
+#[test]
 fn icon_collector_visibility_cases_match_the_launcher_inventory() {
     let cases: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("../tests/fixtures/app-visibility.json")).unwrap();

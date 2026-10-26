@@ -221,6 +221,15 @@ impl Preferences {
             self.background = "dunes".into();
         }
         fn clean(ids: &mut Vec<String>) {
+            // Preferences carried over from Luma name the Settings and Search
+            // tiles by Luma's IDs; they keep their places under Lounge's.
+            for id in ids.iter_mut() {
+                match id.as_str() {
+                    "luma.settings" => *id = crate::state::SETTINGS_TILE.into(),
+                    "luma.search" => *id = crate::state::SEARCH_TILE.into(),
+                    _ => {}
+                }
+            }
             let mut seen = HashSet::new();
             ids.retain(|id| valid_app_id(id) && seen.insert(id.clone()));
             ids.truncate(1000);

@@ -160,7 +160,7 @@ Settings › General › Profile picture (several can take turns):
 ```sh
 D=/media/developer/io.github.yashwanthkamireddi.lounge
 mkdir -p $D/avatars && cp my-photo.jpg $D/avatars/
-chown -R --reference=$D $D/avatars    # Lounge must own its folder
+chown -R $(stat -c %u:%g $D) $D/avatars    # Lounge must own its folder
 ```
 
 Lounge reads the folder when it starts: quit it from Settings › General and open it again.
