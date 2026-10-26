@@ -112,6 +112,7 @@
   "moveHint": "Move with the arrows. Press OK when done.",
   "aboutSettings": "Choose how Lounge looks, what the weather shows, and which inputs appear.",
   "aboutInterface": "App names, the clock, appearance, motion and Top Shelf art.",
+  "aboutInterfaceNoArt": "App names, the clock, appearance and motion.",
   "aboutBackground": "The picture behind your apps. Settings, menus and the app switcher take on its colour.",
   "aboutWeather": "Where the weather beside the clock comes from.",
   "aboutInputs": "Which HDMI and TV inputs appear in Lounge, and what they are called.",

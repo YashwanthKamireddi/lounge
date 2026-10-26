@@ -14,6 +14,9 @@ pub struct Scene {
     pub settings_range: Option<std::ops::Range<usize>>,
     /// This frame's appearance (Light, Dark, or between while it changes).
     pub(super) theme: super::theme::Theme,
+    /// The draws of the tile a context menu acts on: dimming leaves them
+    /// lit, so that app stands out while the rest of the screen falls back.
+    pub(super) lit: Option<std::ops::Range<usize>>,
 }
 impl Scene {
     pub(super) fn new(theme: super::theme::Theme) -> Self {
@@ -23,6 +26,7 @@ impl Scene {
             controls: Vec::new(),
             modal: None,
             settings_range: None,
+            lit: None,
         }
     }
     pub(super) fn shape(&mut self, rect: Rect, radius: f32, fill: Color) {
@@ -172,10 +176,15 @@ impl Scene {
                 }
             }
         }
+        let lit = self.lit.clone().unwrap_or(0..0);
         if whole {
-            self.recolour(0..self.draw.len(), 1., brightness);
+            self.recolour(0..lit.start, 1., brightness);
+            self.recolour(lit.end..self.draw.len(), 1., brightness);
         } else {
             self.shape(Rect::new(0., 0., 1920., 1080.), 0., c(0, 1. - brightness));
+            // The veil covers everything; the lit tile is laid over it again.
+            let tile = self.draw[lit].to_vec();
+            self.draw.extend(tile);
         }
     }
     /// Lays a full-screen `veil` over the background, as a layer of that
@@ -368,5 +377,31 @@ mod tests {
         let mut out = scene(Draw::Dissolve("a".into(), "a".into(), 1., [1.; 4], [0.; 4]));
         out.veil([0., 0., 0., 0.4]);
         assert_eq!(out.draw.len(), 3);
+    }
+    #[test]
+    fn the_tile_a_menu_acts_on_stays_lit_while_the_screen_dims() {
+        // Background, then the held tile's face, then another tile.
+        let mut out = scene(Draw::Dissolve("a".into(), "a".into(), 1., [1.; 4], [0.; 4]));
+        out.shape(Rect::new(0., 0., 10., 10.), 0., [1., 1., 1., 1.]);
+        out.lit = Some(1..2);
+        out.dim(0.65);
+        let colour = |draw: &Draw| match draw {
+            Draw::Shape(_, _, _, color) => color[0],
+            _ => unreachable!(),
+        };
+        assert_eq!(colour(&out.draw[1]), 1., "the held tile keeps its light");
+        assert!((colour(&out.draw[2]) - 0.65).abs() < 1e-6, "the rest dims");
+        // Where only a veil can dim (a lifted backdrop mid-dissolve), the
+        // tile is laid over it again.
+        let mut out = scene(Draw::Dissolve(
+            "a".into(),
+            "b".into(),
+            0.5,
+            [1.; 4],
+            [0.9, 0.9, 0.9, 0.5],
+        ));
+        out.lit = Some(1..2);
+        out.dim(0.65);
+        assert!(matches!(out.draw.last(), Some(Draw::Shape(_, _, _, color)) if color[0] == 1.));
     }
 }

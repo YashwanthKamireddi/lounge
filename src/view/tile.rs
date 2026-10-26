@@ -10,7 +10,7 @@ use crate::{
     i18n,
     model::App,
     renderer::{Color, Draw, TextStyle, WHITE},
-    state::{Rect, State, Target},
+    state::{FADE_OUT_MS, Overlay, Rect, State, Target},
 };
 
 pub(super) fn tile(
@@ -49,7 +49,17 @@ pub(super) fn tile(
     }
     let start = out.draw.len();
     let focused = state.focus == Target::App(app.id.clone());
-    let lift = state.focus_amount(&Target::App(app.id.clone()));
+    // The app a context menu acts on stays lifted while the menu is open and
+    // while it fades away, then hands back to focus with no dip.
+    let held = matches!(&state.overlay, Some(Overlay::Options { id, .. }) if *id == app.id)
+        || state.options_closed.as_ref().is_some_and(|(id, closed)| {
+            *id == app.id && closed.elapsed().as_millis() < u128::from(FADE_OUT_MS)
+        });
+    let lift = if held {
+        1.
+    } else {
+        state.focus_amount(&Target::App(app.id.clone()))
+    };
     // Move, as tvOS: the app in hand rises further out of the grid, with a
     // deeper shadow. No outline, and the others stay as they are.
     let raise = if state.moving.as_ref() == Some(&app.id) {
@@ -103,6 +113,9 @@ pub(super) fn tile(
             [r, g, b, 0.6 + 0.4 * lift],
             true,
         );
+    }
+    if held {
+        out.lit = Some(start..out.draw.len());
     }
 }
 

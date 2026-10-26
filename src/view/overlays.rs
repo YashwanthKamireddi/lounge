@@ -243,13 +243,16 @@ pub(super) fn options(
     let (x, y) = match anchor {
         Some(tile) => {
             let x = (tile.x + tile.w / 2. - w / 2.).clamp(60., 1860. - w);
-            let below = tile.y + tile.h + 30.;
+            // Clear of the tile's focus lift, and above the dock of the
+            // dock's glass edge too.
+            let overhang = tile.h * super::FOCUS_SCALE / 2.;
+            let below = tile.y + tile.h + overhang + 30.;
             (
                 x,
                 if below + h <= 1020. {
                     below
                 } else {
-                    tile.y - 30. - h
+                    tile.y - overhang - 48. - h
                 },
             )
         }

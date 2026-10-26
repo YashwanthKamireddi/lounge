@@ -505,7 +505,14 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
     let (about, glyph) = match section {
         None => ("aboutSettings", "tv-bold"),
         Some(section) => [
-            ("aboutInterface", "gear"),
+            (
+                if state.heroes.is_empty() {
+                    "aboutInterfaceNoArt"
+                } else {
+                    "aboutInterface"
+                },
+                "gear",
+            ),
             ("aboutBackground", ""),
             ("aboutWeather", "weather-partly-cloudy"),
             ("aboutInputs", "input-hdmi-bold"),
@@ -670,6 +677,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
     }
     match state.section {
         0 => {
+            let mut shown = 0;
             for (position, (index, key, icon, value, chevron)) in [
                 (
                     0,
@@ -724,8 +732,12 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 ),
             ]
             .into_iter()
+            // Top Shelf art is pictures the owner adds; with none installed
+            // the switch would change nothing, so it is not offered.
+            .filter(|(index, ..)| *index != 6 || !state.heroes.is_empty())
             .enumerate()
             {
+                shown += 1;
                 row(
                     out,
                     state,
@@ -742,8 +754,9 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     },
                 );
             }
+            // The rows after the switches start below the last one shown.
+            let mut below = (shown as f32 - 5.) * 84.;
             // The profile picture, when the owner keeps any.
-            let mut below = 0.;
             if !state.avatars.is_empty() {
                 let shown = match state.preferences.avatar.as_deref() {
                     Some(AVATAR_ROTATE) => i18n::t("rotateAll"),
@@ -760,7 +773,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     assets,
                     Row {
                         target: Target::Setting(8),
-                        rect: Rect::new(LIST_X, 600.8 - s, LIST_W, 72.),
+                        rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
                         title: i18n::t("profilePicture"),
                         icon: None,
                         value: Some(shown),
