@@ -64,7 +64,7 @@ try {
   // Home opens on the first dock favourite; Down enters the grid below.
   const home = await scenario('home', 'down');
   assert.deepEqual(home.focus, { App: 'com.webos.app.livetv' });
-  const hidden = await scenario('apps', 'apps,down,menu,down,enter');
+  const hidden = await scenario('apps', 'apps,down,menu,right,enter');
   assert.ok(hidden.preferences.hidden.includes('com.webos.app.livetv'));
   assert.deepEqual(hidden.focus, { App: 'lounge.settings' });
   // Reload from disk and show Live TV again from Settings › General › Hidden apps.

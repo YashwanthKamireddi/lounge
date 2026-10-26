@@ -212,9 +212,11 @@ pub(super) fn footer(out: &mut Scene, state: &State, assets: &Assets) {
     }
 }
 
-/// tvOS context menu, from Apple's template: a 440-wide glass platter (r30)
-/// beside the item it acts on, a one-line header, then 70pt rows with the
-/// label at the left and its symbol at the right. Back closes it.
+/// The actions of the app in hand, as tvOS 26 controls: small glass
+/// capsules against the lifted tile (above a dock tile, below one in the
+/// grid), centred on it. No panel and no title: the lit tile says which app
+/// they act on. The focused capsule turns white with dark text. Back closes
+/// them.
 pub(super) fn options(
     out: &mut Scene,
     state: &State,
@@ -222,148 +224,96 @@ pub(super) fn options(
     id: &str,
     anchor: Option<Rect>,
 ) {
-    let title = state
-        .inventory
-        .apps
-        .iter()
-        .find(|app| app.id == id)
-        .map_or(id, |app| app.title.as_str());
+    const H: f32 = 58.;
+    const GAP: f32 = 14.;
+    const PAD: f32 = 24.;
+    const ICON: f32 = 24.;
+    const SPACE: f32 = 10.;
     let hidden = state.preferences.hidden.iter().any(|item| item == id);
-    let rows = [
+    let actions = [
         (i18n::t("move"), "grid-bold"),
         (
             i18n::t(if hidden { "showApp" } else { "hideApp" }),
             if hidden { "eye-bold" } else { "eye-off-bold" },
         ),
     ];
-    let (w, h) = (440., 59. + rows.len() as f32 * 70. + 10.);
-    // As tvOS: the menu hangs just below its tile, centred on it (clear of
-    // the tile's focus lift and name), or rises above it where the screen
-    // ends; it never sits over the tile itself.
-    let (x, y) = match anchor {
+    let style = text(24., 600, 0.);
+    let widths: Vec<f32> = actions
+        .iter()
+        .map(|(label, _)| PAD + ICON + SPACE + assets.width(label, style) + PAD)
+        .collect();
+    let total = widths.iter().sum::<f32>() + GAP * (widths.len() - 1) as f32;
+    let (centre, y) = match anchor {
         Some(tile) => {
-            let x = (tile.x + tile.w / 2. - w / 2.).clamp(60., 1860. - w);
-            // Clear of the tile's focus lift, and above the dock of the
-            // dock's glass edge too.
+            // Clear of the tile's focus lift, and of the dock's glass edge.
             let overhang = tile.h * super::FOCUS_SCALE / 2.;
-            let below = tile.y + tile.h + overhang + 30.;
+            let below = tile.y + tile.h + overhang + 22.;
             (
-                x,
-                if below + h <= 1020. {
+                tile.x + tile.w / 2.,
+                if below + H <= 1020. {
                     below
                 } else {
-                    tile.y - overhang - 48. - h
+                    tile.y - overhang - 44. - H
                 },
             )
         }
-        None => (960. - w / 2., 540. - h / 2.),
+        None => (960., 540. - H / 2.),
     };
-    let panel = Rect::new(x, y.clamp(60., 1020. - h), w, h);
-    out.modal = Some(panel);
-    // Regular Liquid Glass, thicker than the dock's: the blurred backdrop
-    // lensed brighter at the top, a light veil so the scene's colour shows
-    // through, a top sheen, light gathered along the inner edge, one rim, and
-    // a deeper shadow.
-    out.shadow(panel, 30., 48., 18., 0.42);
-    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    let (top, bottom) = out.theme.lens();
-    out.draw.push(Draw::Glass(
-        home_backdrop(state, assets),
-        panel,
-        30.,
-        top,
-        bottom,
-    ));
-    out.shape(panel, 30., out.theme.veil(0.30));
-    out.draw.push(Draw::RoundedGradient(
-        panel,
-        30.,
-        c(0xffffff, 0.12),
-        c(0xffffff, 0.02),
-    ));
-    // Light gathered just inside the edge: the glass's thickness.
-    let (inner_top, inner_bottom) = out.theme.edge(0.12, 0.);
-    out.draw.push(Draw::GradientRing(
-        panel.inset(1.5),
-        28.5,
-        7.,
-        inner_top,
-        inner_bottom,
-    ));
-    out.draw.push(Draw::Soft(None));
-    // One specular rim, bright where light falls, as the pill's.
-    let (rim_top, rim_bottom) = out.theme.edge(0.55, 0.1);
-    out.draw
-        .push(Draw::GradientRing(panel, 30., 1.5, rim_top, rim_bottom));
-    out.text(
-        title,
-        Rect::new(panel.x + 25., panel.y + 16., w - 50., 30.),
-        text(23., 600, 0.),
-        out.theme.ink(0.55),
-        false,
-    );
-    // tvOS focus: one white capsule that glides from the row focus left to
-    // the row it reached, easing out, under dark text; the rest stay plain.
-    let row = |index: usize| {
-        Rect::new(
-            panel.x + 10.,
-            panel.y + 59. + index as f32 * 70.,
-            w - 20.,
-            66.,
-        )
-    };
-    let highlight = match state.focus {
-        Target::Option(current) => {
-            let arrived = state.focus_amount(&Target::Option(current));
-            Some(match &state.focus_from {
-                Some((Target::Option(previous), ..)) => (
-                    row(*previous).y + (row(current).y - row(*previous).y) * arrived,
-                    1.,
-                ),
-                // Arriving from outside the menu (it just opened): fades in.
-                _ => (row(current).y, arrived),
-            })
-        }
-        _ => None,
-    };
-    if let Some((y, alpha)) = highlight {
-        let plate = Rect::new(panel.x + 10., y, w - 20., 66.);
-        out.shadow(plate, 33., 24., 10., 0.3 * alpha);
+    let mut x = (centre - total / 2.).clamp(80., 1840. - total);
+    out.modal = Some(Rect::new(x, y, total, H));
+    let backdrop = home_backdrop(state, assets);
+    let (dark, light) = (c(PLATTER, 1.), out.theme.ink(1.));
+    for (index, ((label, icon), width)) in actions.iter().zip(&widths).enumerate() {
+        let focus = state.focus_amount(&Target::Option(index));
+        let base = Rect::new(x, y, *width, H);
+        x += width + GAP;
+        // The focused capsule lifts a little, as a focused control does.
+        let grow = 0.06 * focus;
+        let pill = Rect::new(
+            base.x - base.w * grow / 2.,
+            base.y - H * grow / 2.,
+            base.w * (1. + grow),
+            H * (1. + grow),
+        );
+        let radius = pill.h / 2.;
+        out.shadow(
+            pill,
+            radius,
+            24. + 8. * focus,
+            8. + 6. * focus,
+            0.28 + 0.12 * focus,
+        );
         out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-        out.shape(plate, 33., c(0xffffff, 0.96 * alpha));
-        out.draw.push(Draw::Soft(None));
-    }
-    // Each row's words are drawn light, then again dark clipped to the
-    // highlight: dark exactly where the white plate is, on every frame of
-    // its glide (never white on white half way between rows).
-    let (light, dark) = (out.theme.ink(1.), c(PLATTER, 1.));
-    let words = |out: &mut Scene, ink| {
-        for (index, (label, icon)) in rows.iter().enumerate() {
-            let rect = row(index);
-            out.text(
-                *label,
-                Rect::new(rect.x + 15., rect.y + 19., 300., 32.),
-                row_style(),
-                ink,
-                false,
-            );
-            out.icon(
-                assets,
-                icon,
-                Rect::new(panel.x + 389., rect.y + 22., 26., 26.),
-                ink,
-            );
-        }
-    };
-    words(out, light);
-    if let Some((y, alpha)) = highlight {
+        let (top, bottom) = out.theme.lens();
         out.draw
-            .push(Draw::Clip(Some(Rect::new(panel.x + 10., y, w - 20., 66.))));
-        words(out, [dark[0], dark[1], dark[2], alpha]);
-        out.draw.push(Draw::Clip(None));
-    }
-    for index in 0..rows.len() {
-        out.control(Target::Option(index), row(index), false);
+            .push(Draw::Glass(backdrop.clone(), pill, radius, top, bottom));
+        out.shape(pill, radius, out.theme.veil(0.34));
+        out.shape(pill, radius, c(0xffffff, 0.97 * focus));
+        out.draw.push(Draw::Soft(None));
+        let (rim_top, rim_bottom) = out.theme.edge(0.5 * (1. - focus), 0.1 * (1. - focus));
+        out.draw
+            .push(Draw::GradientRing(pill, radius, 1.5, rim_top, rim_bottom));
+        let ink: [f32; 4] = std::array::from_fn(|i| light[i] + (dark[i] - light[i]) * focus);
+        let ink = [ink[0], ink[1], ink[2], 1.];
+        out.icon(
+            assets,
+            icon,
+            Rect::new(pill.x + PAD, pill.y + (pill.h - ICON) / 2., ICON, ICON),
+            ink,
+        );
+        out.text(
+            *label,
+            Rect::new(
+                pill.x + PAD + ICON + SPACE,
+                pill.y + (pill.h - 30.) / 2.,
+                *width,
+                30.,
+            ),
+            style,
+            ink,
+            false,
+        );
+        out.control(Target::Option(index), base, false);
     }
 }
 
