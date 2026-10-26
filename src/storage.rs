@@ -153,6 +153,26 @@ pub fn load(path: &Path) -> Result<Preferences, String> {
     }
 }
 
+/// As `load`, but a damaged file (a power cut mid-write, say) never stops
+/// Luma from starting: it is kept aside as `<name>.bad-<time>`, never
+/// overwritten, and Luma starts with defaults. Unreadable storage still fails.
+pub fn load_or_recover(path: &Path) -> Result<Preferences, String> {
+    match load(path) {
+        Ok(preferences) => Ok(preferences),
+        Err(error) if path.is_file() => {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs());
+            let kept = path.with_extension(format!("json.bad-{stamp}"));
+            fs::rename(path, &kept)
+                .map_err(|e| format!("{error}; could not keep it aside as {}: {e}", kept.display()))?;
+            eprintln!("Luma {error}; kept as {} and started with defaults", kept.display());
+            Ok(Preferences::default())
+        }
+        Err(error) => Err(error),
+    }
+}
+
 pub fn save(path: &Path, preferences: &Preferences) -> Result<(), String> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent).map_err(|e| {
@@ -165,14 +185,26 @@ pub fn save(path: &Path, preferences: &Preferences) -> Result<(), String> {
     let temporary = path.with_extension("json.tmp");
     let bytes = serde_json::to_vec_pretty(preferences)
         .map_err(|e| format!("Could not encode preferences: {e}"))?;
-    fs::write(&temporary, bytes).map_err(|e| {
+    // On flash before the rename: a power cut then leaves the old file or
+    // the new one, never a half-written one.
+    let written = fs::File::create(&temporary).and_then(|mut file| {
+        use std::io::Write;
+        file.write_all(&bytes)?;
+        file.sync_all()
+    });
+    written.map_err(|e| {
         format!(
             "Could not write preferences temporary file {}: {e}",
             temporary.display()
         )
     })?;
     fs::rename(&temporary, path)
-        .map_err(|e| format!("Could not replace preferences file {}: {e}", path.display()))
+        .map_err(|e| format!("Could not replace preferences file {}: {e}", path.display()))?;
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        // The rename itself reaches the flash with the folder.
+        let _ = fs::File::open(parent).and_then(|folder| folder.sync_all());
+    }
+    Ok(())
 }
 
 /// Saves preferences off the drawing thread: on the TV a write to its flash

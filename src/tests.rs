@@ -228,6 +228,18 @@ fn preferences_round_trip_and_corrupt_data_is_not_silently_overwritten() {
     assert_eq!(loaded.input_modes["com.webos.app.hdmi1"], InputMode::Off);
     std::fs::write(&path, "broken").unwrap();
     assert!(storage::load(&path).is_err());
+    // Starting up, a damaged file is kept aside (never overwritten) and Luma
+    // starts with defaults rather than not at all.
+    let recovered = storage::load_or_recover(&path).unwrap();
+    assert_eq!(recovered.background, Preferences::default().background);
+    assert!(!path.exists());
+    let kept: Vec<_> = std::fs::read_dir(&directory)
+        .unwrap()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("preferences.json.bad-"))
+        .collect();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(std::fs::read(kept[0].path()).unwrap(), b"broken");
     std::fs::remove_dir_all(directory).unwrap();
 }
 
@@ -808,6 +820,22 @@ fn top_shelf_art_waits_for_focus_to_rest_on_a_dock_app() {
 }
 
 #[test]
+fn a_draw_inserted_mid_list_repaints_only_itself() {
+    use crate::{damage, renderer::Draw, state::Rect};
+    let tile = |x: f32| Draw::Shape(Rect::new(x, 100., 200., 100.), 30., 0., [1.; 4]);
+    let row: Vec<Draw> = (0..8).map(|i| tile(i as f32 * 220.)).collect();
+    // A focus ring appears around the second tile: every later index
+    // shifts, but only the ring's own area changed.
+    let mut ringed = row.clone();
+    ringed.insert(2, Draw::Shape(Rect::new(210., 90., 220., 120.), 34., 2., [1.; 4]));
+    let area = damage::diff(&row, &ringed).expect("a small change repaints a part");
+    assert!(area.x >= 200. && area.x + area.w <= 440., "repaints {area:?}");
+    // And the ring going away again repaints only where it was.
+    let area = damage::diff(&ringed, &row).expect("a small change repaints a part");
+    assert!(area.x >= 200. && area.x + area.w <= 440., "repaints {area:?}");
+}
+
+#[test]
 fn partial_repaint_covers_exactly_what_changed() {
     use crate::{damage, renderer::Draw, state::Rect};
     let tile = |x: f32| Draw::Shape(Rect::new(x, 100., 200., 100.), 30., 0., [1.; 4]);
@@ -821,7 +849,7 @@ fn partial_repaint_covers_exactly_what_changed() {
     assert!(area.x > 200., "the unchanged tile is left alone");
     // A full-screen dissolve repaints everything.
     let mut fading = after.clone();
-    fading.push(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4]));
+    fading.push(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4], [0.; 4]));
     assert!(damage::diff(&after, &fading).is_none());
     // Buffer age: an unknown or too-old buffer repaints everything; an older
     // one also covers the frames since it was drawn.
@@ -834,6 +862,11 @@ fn partial_repaint_covers_exactly_what_changed() {
     assert!(both.x <= 0. && both.x + both.w >= 600.);
     tracker.presented(None);
     assert!(tracker.region(small, 2).is_none(), "a full frame in between repaints all");
+    // An unchanged frame still names one pixel inside the screen, never an
+    // empty (off-surface) area: Mali presented black for that.
+    let still = damage::Tracker::default().region(damage::diff(&before, &before), 1).expect("partial");
+    assert!(still.w >= 1. && still.h >= 1. && still.x >= 0. && still.y >= 0.);
+    assert!(still.x + still.w <= 1920. && still.y + still.h <= 1080.);
 }
 
 #[test]
@@ -853,6 +886,23 @@ fn the_first_scroll_after_a_pause_glides_rather_than_jumps() {
 }
 
 #[test]
+fn a_heavy_frame_advances_the_glide_by_its_real_time() {
+    let mut state = ready();
+    state.open(1);
+    state.glide_scroll();
+    state.scroll = 690.;
+    state.glide_scroll();
+    let after_first = state.shown_scroll;
+    // A 50 ms frame (the TV while the grid rises) must not be cut to 40 ms:
+    // the motion keeps its speed however heavy the frames.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    state.glide_scroll();
+    let k = (state.shown_scroll - after_first) / (690. - after_first);
+    let full = 1. - (-0.05f32 / 0.075).exp();
+    assert!(k >= full * 0.97, "a 50 ms frame moved {k:.3} of the way, expected about {full:.3}");
+}
+
+#[test]
 fn background_writer_keeps_the_newest_preferences_and_finishes_every_save() {
     let directory = std::env::temp_dir().join(format!("luma-writer-{}", std::process::id()));
     let path = directory.join("preferences.json");
@@ -867,4 +917,106 @@ fn background_writer_keeps_the_newest_preferences_and_finishes_every_save() {
     assert_eq!(crate::storage::load(&path).unwrap().background, "forest");
     assert!(writer.errors.try_recv().is_err());
     std::fs::remove_dir_all(&directory).unwrap();
+}
+
+#[test]
+fn automatic_appearance_follows_the_clock_and_cross_fades() {
+    let mut state = ready();
+    assert_eq!(state.light(), 0., "dark by default");
+    state.preferences.appearance = crate::model::Appearance::Auto;
+    state.hour = 21;
+    state.tick();
+    assert_eq!(state.light(), 0., "evening is dark");
+    // 06:00 arrives while Luma is on screen: it fades to light, not cuts.
+    state.hour = 6;
+    state.tick();
+    assert!(state.animating());
+    assert!(state.light() < 0.5);
+    std::thread::sleep(std::time::Duration::from_secs_f32(crate::state::APPEARANCE_FADE + 0.05));
+    state.tick();
+    assert_eq!(state.light(), 1.);
+    // Reduced motion switches at once.
+    state.preferences.reduced_motion = true;
+    state.hour = 19;
+    state.tick();
+    assert_eq!(state.light(), 0.);
+}
+
+#[test]
+fn a_plugged_in_input_appears_right_after_search_whatever_the_saved_order() {
+    let mut state = ready();
+    // A saved order (from Move) that lists every app on the grid.
+    let order: Vec<String> = state.apps().iter().map(|app| app.id.clone()).collect();
+    state.preferences.favorites = Some(order);
+    // A console is plugged into HDMI 1.
+    state.inventory.inputs[0].connected = Some(true);
+    state.refresh_tiles();
+    let ids: Vec<&str> = state.apps().iter().map(|app| app.id.as_str()).collect();
+    let search = ids.iter().position(|id| *id == crate::state::SEARCH_TILE).unwrap();
+    assert_eq!(ids[search + 1], state.inventory.inputs[0].id);
+}
+
+#[test]
+fn a_slow_tv_service_at_boot_is_retried_before_any_error_shows() {
+    let mut state = State::new(Preferences::default());
+    state.loading = true;
+    // Only Luma's own tiles: no apps yet.
+    state.refresh_tiles();
+    for attempt in 1..=crate::state::INVENTORY_RETRIES {
+        assert_eq!(state.inventory_failed("timeout".into()), Some(crate::state::INVENTORY_RETRY_DELAY));
+        assert_eq!(state.inventory_failures, attempt);
+        assert!(state.loading && state.error.is_none(), "still loading, no error yet");
+    }
+    assert_eq!(state.inventory_failed("timeout".into()), None);
+    assert!(!state.loading && state.error.is_some(), "retries used up: the error shows");
+    // With apps already shown, a failed refresh reports at once.
+    let mut state = ready();
+    assert_eq!(state.inventory_failed("timeout".into()), None);
+    assert!(state.error.is_some());
+}
+
+#[test]
+fn power_steps_recorded_on_the_tv_wake_luma_only_from_standby() {
+    use crate::platform::power_step;
+    // Replay a sequence the TV sent (2026-10-25), returning each step's
+    // (off or turning off, woke).
+    let replay = |steps: &[(&str, &str)]| {
+        let mut previous = String::from("Active");
+        steps
+            .iter()
+            .map(|(state, processing)| {
+                let step = power_step(&previous, state, processing);
+                previous = (*state).to_owned();
+                step
+            })
+            .collect::<Vec<_>>()
+    };
+    // Power off into Active Standby and straight back on.
+    let quick = replay(&[
+        ("Active", "Request Power Off"),
+        ("Active", "Request Active Standby"),
+        ("Active", "Prepare Active Standby"),
+        ("Active Standby", ""),
+        ("Active Standby", "LastInput Ready"),
+        ("Active Standby", "Screen On"),
+        ("Active", ""),
+    ]);
+    assert!(quick[..6].iter().all(|(going, woke)| *going && !woke), "off the whole way: quits are ignored");
+    assert_eq!(quick[6], (false, true), "back on: Luma wakes to the front");
+    // Full standby (Suspend) and resume.
+    let full = replay(&[
+        ("Screen Off", "Prepare Suspend"),
+        ("Suspend", ""),
+        ("Suspend", "Prepare Resume"),
+        ("Suspend", "LastInput Ready"),
+        ("Suspend", "Screen On"),
+        ("Active", ""),
+    ]);
+    assert_eq!(full.last(), Some(&(false, true)));
+    // The screen saver (asked for, then on), and Quick Settings' Screen Off:
+    // the TV stays on, so a quit then is a real quit, and back is no wake.
+    for idle in [("Active", "Request Screen Saver"), ("Screen Saver", ""), ("Screen Off", "")] {
+        let steps = replay(&[idle, ("Active", "")]);
+        assert_eq!(steps, [(false, false), (false, false)], "{idle:?}");
+    }
 }

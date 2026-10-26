@@ -78,10 +78,7 @@ pub fn watch_foreground(
                 // Raising an already-running Luma is cheap, so re-assert
                 // often: LG Home loses the race within a frame or two.
                 for _ in 0..12 {
-                    let _ = call(
-                        "luna://com.webos.applicationManager/launch",
-                        json!({"id": APP_ID, "params": self_launch()}),
-                    );
+                    raise_self();
                     wake();
                     thread::sleep(std::time::Duration::from_millis(250));
                     let now = front_now();
@@ -110,7 +107,10 @@ fn clock_ms() -> u128 {
 /// screensaver leaves whatever was playing in front.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 pub fn watch_power() -> Result<(), String> {
-    let mut previous = String::new();
+    use std::sync::atomic::Ordering;
+    // Kept across resubscribes, so a stream that restarts around a wake still
+    // knows the TV was off.
+    static PREVIOUS: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
     crate::luna::subscribe(
         "luna://com.webos.service.tvpower/power/getPowerState",
         &json!({"subscribe": true}),
@@ -123,20 +123,57 @@ pub fn watch_power() -> Result<(), String> {
             let Some(state) = reply.get("state").and_then(Value::as_str) else {
                 return;
             };
-            let woke = state == "Active" && (previous.contains("Standby") || previous.contains("Suspend"));
+            // Turning off: the state stays "Active" while LG works through
+            // "Request Power Off" / "Prepare Active Standby", then becomes
+            // "Active Standby" (or "Suspend"). webOS asks every app to quit
+            // on the way; Luma stays resident instead (see `STANDBY`).
+            let processing = reply.get("processing").and_then(Value::as_str).unwrap_or("");
+            let Ok(mut previous) = PREVIOUS.lock() else {
+                return;
+            };
+            let (going, woke) = power_step(&previous, state, processing);
+            if going != STANDBY.swap(going, Ordering::Relaxed) {
+                status(&format!("power: {state}{}", if processing.is_empty() { String::new() } else { format!(" ({processing})") }));
+            }
+            *previous = state.to_owned();
+            drop(previous);
             if woke {
                 status("woke from standby: Luma to the front");
+                // LG's quick-boot daemon closed every app at power-off; webOS
+                // replaces a run that stayed (it kills it, ~1.9 s, then starts
+                // a fresh one). So this run asks for Luma and steps aside at
+                // once: the fresh Luma starts without that wait.
                 thread::spawn(|| {
-                    let _ = call(
-                        "luna://com.webos.applicationManager/launch",
-                        json!({"id": APP_ID, "params": self_launch()}),
-                    );
+                    thread::spawn(raise_self);
+                    thread::sleep(std::time::Duration::from_millis(150));
+                    status("woke: launch asked; this run steps aside for a fresh start");
+                    std::process::exit(0);
                 });
             }
-            previous = state.to_owned();
         },
     )
 }
+
+/// What one reply of LG's power stream means, given the state before it:
+/// (the TV is off or on its way there, it has just woken). Turning off, LG
+/// reports "Active" with a power-off `processing` step ("Request Power
+/// Off", "Prepare Active Standby"), then "Active Standby" or "Suspend". The
+/// screen saver ("Request Screen Saver", "Screen Saver") and Screen Off
+/// leave the TV on: a quit then is a real quit. A wake is "Active" straight
+/// after Standby or Suspend.
+#[cfg_attr(not(all(feature = "webos", target_os = "linux", target_arch = "arm")), allow(dead_code))]
+pub fn power_step(previous: &str, state: &str, processing: &str) -> (bool, bool) {
+    let off = |text: &str| ["Standby", "Suspend", "Power Off"].iter().any(|word| text.contains(word));
+    let going = off(state) || off(processing);
+    let woke = state == "Active" && processing.is_empty() && (previous.contains("Standby") || previous.contains("Suspend"));
+    (going, woke)
+}
+
+/// The TV is turning off, or is off (Active Standby, Suspend): a quit webOS
+/// sends then is the power-off sweep, not a request to close Luma. Luma
+/// stays resident, hidden, so the wake brings it straight back to the front
+/// (LG's own power-on otherwise restores the last input).
+pub static STANDBY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
 pub fn watch_power() -> Result<(), String> {
@@ -148,8 +185,26 @@ pub fn watch_power() -> Result<(), String> {
 /// every 30 s until the bus takes it.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + Send + 'static) {
+    // A stream that ends again soon after it came back (a service refusing
+    // it, say) waits longer each time: 3 s, 10 s, 30 s, then every 5 minutes,
+    // until it has held for 10 minutes.
+    static ENDINGS: std::sync::Mutex<Vec<(&str, u32, Option<std::time::Instant>)>> = std::sync::Mutex::new(Vec::new());
+    let first = ENDINGS.lock().map_or(3, |mut endings| {
+        let now = std::time::Instant::now();
+        let index = endings.iter().position(|(name, ..)| *name == what).unwrap_or_else(|| {
+            endings.push((what, 0, None));
+            endings.len() - 1
+        });
+        let (_, count, last) = &mut endings[index];
+        if last.is_some_and(|at| now.duration_since(at) > std::time::Duration::from_secs(600)) {
+            *count = 0;
+        }
+        *last = Some(now);
+        *count += 1;
+        [3, 10, 30, 300][(*count as usize - 1).min(3)]
+    });
     thread::spawn(move || {
-        for (attempt, wait) in [3, 10].into_iter().chain(std::iter::repeat(30)).enumerate() {
+        for (attempt, wait) in [first].into_iter().chain([10]).chain(std::iter::repeat(30)).enumerate() {
             thread::sleep(std::time::Duration::from_secs(wait));
             match subscribe() {
                 Ok(()) => {
@@ -208,16 +263,14 @@ pub fn watch_launches(home: Wake, take_home: bool) -> Result<(), String> {
                 return;
             }
             match reply.get("appId").and_then(Value::as_str) {
+                // Luma raising itself (wake, LG Home taken over) is not the
+                // Home key: that would close Settings and jump to the top.
+                Some(APP_ID) if raised_self_recently() => {}
                 Some(APP_ID) => home(),
                 Some(HOME_ID) if take_home => {
                     // Off the bus thread: a call from inside its callback
                     // would wait on itself.
-                    thread::spawn(|| {
-                        let _ = call(
-                            "luna://com.webos.applicationManager/launch",
-                            json!({"id": APP_ID, "params": self_launch()}),
-                        );
-                    });
+                    thread::spawn(raise_self);
                 }
                 _ => {}
             }
@@ -248,6 +301,34 @@ pub fn watch_foreground(
 fn self_launch() -> Value {
     json!({"luma": "self"})
 }
+
+/// When Luma last launched itself (see `raise_self`).
+static RAISED: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// Notes that Luma is launching itself: the launch event that follows is
+/// Luma's own, not the Home key.
+fn note_raised() {
+    if let Ok(mut raised) = RAISED.lock() {
+        *raised = Some(std::time::Instant::now());
+    }
+}
+
+/// Brings Luma to the front by launching itself (see `note_raised`).
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+fn raise_self() {
+    note_raised();
+    let _ = call("luna://com.webos.applicationManager/launch", json!({"id": APP_ID, "params": self_launch()}));
+}
+
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+fn raised_self_recently() -> bool {
+    RAISED
+        .lock()
+        .ok()
+        .and_then(|raised| *raised)
+        .is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(1500))
+}
+
 
 /// Wakes Luma's event loop from another thread (see main's `wake`).
 pub type Wake = std::sync::Arc<dyn Fn() + Send + Sync>;
@@ -363,13 +444,18 @@ impl Platform {
                                 Err("Invalid application identifier".into())
                             } else {
                                 let payload = if id == APP_ID {
+                                    note_raised();
                                     json!({"id": id, "params": self_launch()})
                                 } else {
                                     json!({"id": id})
                                 };
                                 call("luna://com.webos.applicationManager/launch", payload).map(|_| ())
                             };
-                            let _ = responses.send(Response::Launched(result));
+                            // Luma raising itself is no app launch: no reply,
+                            // so it never clears an app's opening or shows its error.
+                            if id != APP_ID {
+                                let _ = responses.send(Response::Launched(result));
+                            }
                         });
                         continue;
                     }
@@ -396,8 +482,16 @@ impl Platform {
 /// gone at reboot): readable on the TV without a debug restart.
 const STATUS: &str = "/tmp/luma-status";
 
+/// A new Luma starts its own section of the status log: the previous run's
+/// last lines are kept (how it ended matters most, e.g. across a power
+/// cycle), bounded so the file in /tmp (memory) never grows.
 pub fn status_reset() {
-    let _ = std::fs::remove_file(STATUS);
+    const KEEP: usize = 150;
+    let previous = std::fs::read_to_string(STATUS).unwrap_or_default();
+    let lines: Vec<&str> = previous.lines().collect();
+    let kept = lines[lines.len().saturating_sub(KEEP)..].join("\n");
+    let _ = std::fs::write(STATUS, if kept.is_empty() { kept } else { kept + "\n" });
+    status(&format!("--- started (pid {})", std::process::id()));
 }
 
 /// Records `line` (also on stderr). Only a handful are written per run.
@@ -409,10 +503,11 @@ pub fn status(line: &str) {
         .append(true)
         .open(STATUS)
         .and_then(|mut file| {
+            // Milliseconds: a power-on is a matter of a few seconds.
             let at = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |time| time.as_secs());
-            writeln!(file, "{at} {line}")
+                .unwrap_or_default();
+            writeln!(file, "{}.{:03} {line}", at.as_secs(), at.subsec_millis())
         });
 }
 

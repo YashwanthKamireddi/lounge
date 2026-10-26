@@ -116,6 +116,16 @@ pub enum InputMode {
     Off,
 }
 
+/// Settings, menus, glass and the time pill: dark, light, or light by day
+/// and dark from 19:00 to 06:00.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub enum Appearance {
+    Light,
+    #[default]
+    Dark,
+    Auto,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Preferences {
@@ -139,6 +149,7 @@ pub struct Preferences {
     /// The profile picture: a file in the avatars folder, or "rotate" for all
     /// of them in turn. None is the first picture.
     pub avatar: Option<String>,
+    pub appearance: Appearance,
 }
 
 impl Default for Preferences {
@@ -157,6 +168,7 @@ impl Default for Preferences {
             temperature_unit: Unit::Celsius,
             recent: vec![],
             avatar: None,
+            appearance: Appearance::Dark,
         }
     }
 }

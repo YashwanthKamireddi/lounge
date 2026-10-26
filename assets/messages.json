@@ -111,8 +111,13 @@
   "topResults": "Top Results",
   "moveHint": "Move with the arrows. Press OK when done.",
   "aboutSettings": "Choose how Luma looks, what the weather shows, and which inputs appear.",
-  "aboutInterface": "App names, the clock, motion and Top Shelf art.",
-  "aboutBackground": "The picture behind your apps. Settings and Control Center take on its colour.",
+  "aboutInterface": "App names, the clock, appearance, motion and Top Shelf art.",
+  "aboutBackground": "The picture behind your apps. Settings, menus and the app switcher take on its colour.",
   "aboutWeather": "Where the weather beside the clock comes from.",
-  "aboutInputs": "Which HDMI and TV inputs appear in Luma, and what they are called."
+  "aboutInputs": "Which HDMI and TV inputs appear in Luma, and what they are called.",
+  "appearance": "Appearance",
+  "appearanceLight": "Light",
+  "appearanceDark": "Dark",
+  "appearanceAuto": "Automatic",
+  "appearanceAutoDetail": "Light by day, dark from 7 PM to 6 AM"
 }

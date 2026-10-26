@@ -1,7 +1,7 @@
 //! The home page (greeting, weather, favourites, inputs) and the apps page
 //! (Top Shelf dock and grid).
 use super::{
-    Assets, DOCK_RADIUS, FACE_HEIGHT, GRID_PITCH, LABEL_GAP, Scene, TILE_RADIUS,
+    Assets, DOCK_RADIUS, FACE_HEIGHT, GRID_PITCH, GRID_VEIL, LABEL_GAP, Scene, TILE_RADIUS,
     glass::{home_backdrop, shelf_art, shelf_dissolve},
     shared::{c, detail_style, input_icon, input_status, row_style, shelf_style, text},
     tile::{caption_height, tile},
@@ -127,7 +127,7 @@ pub(super) fn home(out: &mut Scene, state: &State, assets: &Assets, now: OffsetD
                 HOME_TILE_WIDTH,
                 FACE_HEIGHT,
             ),
-            names,
+            names.then_some(WHITE),
             false,
         );
     }
@@ -410,6 +410,7 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     // light is the glass's own tint rising above 1 toward the top (a white
     // 9%-to-2% sheen on typical glass), so it costs no layer of its own:
     // a quarter of the screen less to paint on every scrolling frame.
+    // Clear glass in both appearances, as Liquid Glass is.
     let glass = |out: &mut Scene, path: String, [r, g, b]: [f32; 3], alpha: f32| {
         let lit = |k: f32| [r * k, g * k, b * k, alpha];
         out.draw.push(Draw::Glass(path, platter, DOCK_RADIUS, lit(1.19), lit(1.045)));
@@ -431,7 +432,7 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
         glass(
             out,
             assets.path(format!("wallpapers/{}-glass.png", state.preferences.background)),
-            [0.62, 0.62, 0.64],
+            [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02],
             spread,
         );
     }
@@ -463,7 +464,7 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
             assets,
             app,
             Rect::new(x, y, HOME_TILE_WIDTH, FACE_HEIGHT),
-            row > 0 && (state.preferences.show_names || focused),
+            (row > 0 && (state.preferences.show_names || focused)).then_some(WHITE),
             false,
         );
     }

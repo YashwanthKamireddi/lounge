@@ -13,6 +13,8 @@ use std::collections::VecDeque;
 const SCREEN: Rect = Rect { x: 0., y: 0., w: 1920., h: 1080. };
 /// Past this share of the screen a full repaint costs no more.
 const FULL_SHARE: f32 = 0.55;
+/// Draws searched ahead to realign after one was inserted or removed.
+const LOOKAHEAD: usize = 8;
 
 /// The area two frames' draw lists differ in, or `None` for everything.
 pub fn diff(previous: &[Draw], current: &[Draw]) -> Option<Rect> {
@@ -24,17 +26,33 @@ pub fn diff(previous: &[Draw], current: &[Draw]) -> Option<Rect> {
         area = Some(area.map_or(rect, |area| union(area, rect)));
         true
     };
-    for index in 0..previous.len().max(current.len()) {
-        let (before, after) = (previous.get(index), current.get(index));
-        if let (Some(a), Some(b)) = (before, after)
-            && same(a, b)
-        {
+    // Walk the new list against the old one. A draw inserted or removed (a
+    // focus ring, a label) shifts every later index: realign by looking a
+    // few draws ahead in the old list, rather than counting everything after
+    // it as changed and so repainting the whole screen (upstream Luma
+    // 8592248). State draws (clip, fade, soft) have no bounds: any change
+    // to them still repaints everything.
+    let mut old = 0;
+    for draw in current {
+        if old < previous.len() && same(&previous[old], draw) {
+            old += 1;
             continue;
         }
-        for draw in [before, after].into_iter().flatten() {
-            if !add(bounds(draw)) {
-                return None;
+        let found = (old..previous.len().min(old + LOOKAHEAD)).find(|&k| same(&previous[k], draw));
+        if let Some(k) = found {
+            for removed in &previous[old..k] {
+                if !add(bounds(removed)) {
+                    return None;
+                }
             }
+            old = k + 1;
+        } else if !add(bounds(draw)) {
+            return None;
+        }
+    }
+    for removed in &previous[old.min(previous.len())..] {
+        if !add(bounds(removed)) {
+            return None;
         }
     }
     // Nothing differs: an empty area (nothing to repaint).
@@ -57,7 +75,7 @@ fn bounds(draw: &Draw) -> Option<Rect> {
         | Draw::AppImage(_, rect, _)
         | Draw::Glass(_, rect, ..) => Some(grow(rect, 3.)),
         // Full-screen, or changes how everything after it is drawn.
-        Draw::Dissolve(..) | Draw::Clip(_) | Draw::EdgeFade(_) => None,
+        Draw::Dissolve(..) | Draw::Clip(_) | Draw::EdgeFade(_) | Draw::Soft(_) => None,
     }
 }
 
@@ -79,9 +97,12 @@ fn same(a: &Draw, b: &Draw) -> bool {
             p1 == p2 && r1 == r2 && a1 == a2 && c1 == c2 && d1 == d2
         }
         (AppImage(i1, r1, c1), AppImage(i2, r2, c2)) => std::sync::Arc::ptr_eq(i1, i2) && r1 == r2 && c1 == c2,
-        (Dissolve(p1, q1, m1, c1), Dissolve(p2, q2, m2, c2)) => p1 == p2 && q1 == q2 && m1 == m2 && c1 == c2,
+        (Dissolve(p1, q1, m1, c1, l1), Dissolve(p2, q2, m2, c2, l2)) => {
+            p1 == p2 && q1 == q2 && m1 == m2 && c1 == c2 && l1 == l2
+        }
         (Clip(a), Clip(b)) => a == b,
         (EdgeFade(a), EdgeFade(b)) => a == b,
+        (Soft(a), Soft(b)) => a == b,
         _ => false,
     }
 }
@@ -120,6 +141,13 @@ impl Tracker {
         let mut area = change?;
         for past in self.history.iter().take(age as usize - 1) {
             area = union(area, (*past)?);
+        }
+        if area.w <= 0. || area.h <= 0. {
+            // Nothing changed: still name (and redraw) one pixel inside the
+            // screen. An empty area becomes a rect outside the surface for
+            // EGL, which leaves Mali nothing to preserve: it presents black
+            // (upstream Luma d5f778c).
+            return Some(Rect::new(0., 0., 1., 1.));
         }
         (area.w * area.h <= FULL_SHARE * SCREEN.w * SCREEN.h).then_some(area)
     }
@@ -214,5 +242,76 @@ impl Egl {
         let rect = [x, height as i32 - top - h, w, h];
         // SAFETY: one rectangle of four ints, as the extension specifies.
         unsafe { (self.set_damage)(self.display, self.surface, rect.as_ptr(), 1) != 0 }
+    }
+}
+
+/// Partial redraw for the window: what to repaint each frame, given what
+/// the back buffer last held. Off the TV (no EGL partial update) every frame
+/// is drawn whole and nothing is kept.
+pub struct Partial {
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    egl: Option<Egl>,
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    tracker: Tracker,
+    /// The draw list last presented (empty: unknown, repaint it all).
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    last: Vec<Draw>,
+}
+
+impl Partial {
+    pub fn new() -> Self {
+        #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+        {
+            let egl = Egl::current();
+            eprintln!("Luma partial repaint: {}", if egl.is_some() { "on" } else { "off" });
+            Self { egl, tracker: Tracker::default(), last: Vec::new() }
+        }
+        #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+        Self {}
+    }
+
+    /// The area this frame repaints (None: all of it), already declared to
+    /// EGL for a `width` x `height` surface.
+    pub fn region(&mut self, draw: &[Draw], width: u32, height: u32) -> Option<Rect> {
+        #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+        {
+            let mut region = None;
+            if let Some(egl) = &self.egl {
+                let change = if self.last.is_empty() {
+                    None
+                } else {
+                    diff(&self.last, draw)
+                };
+                region = self.tracker.region(change, egl.buffer_age());
+                if !egl.declare(region, width, height) {
+                    region = None;
+                }
+                self.tracker.presented(change);
+            }
+            region
+        }
+        #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+        {
+            let _ = (draw, width, height);
+            None
+        }
+    }
+
+    /// The frame `draw` was presented.
+    pub fn drawn(&mut self, draw: &[Draw]) {
+        #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+        {
+            // Reuses the list's allocation frame to frame.
+            self.last.clear();
+            self.last.extend_from_slice(draw);
+        }
+        #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+        let _ = draw;
+    }
+
+    /// Every buffer is stale (Luma was hidden): the next frame repaints all.
+    pub fn invalidate(&mut self) {
+        #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+        self.last.clear();
     }
 }

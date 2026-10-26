@@ -11,6 +11,7 @@ mod scene;
 mod settings;
 mod shared;
 mod switcher;
+mod theme;
 mod tile;
 
 pub use scene::Scene;
@@ -45,6 +46,10 @@ const LABEL_GAP: f32 = 26.;
 /// Settings' backdrop: the blurred wallpaper at this brightness (home's is
 /// 0.62), measured from tvOS 27 Settings over the same wallpaper.
 const SETTINGS_VEIL: f32 = 0.32;
+/// How much the screen dims beneath a context menu or opening search.
+const MENU_DIM: f32 = 0.35;
+/// The grid's backdrop: the blurred wallpaper dimmed to this (dark appearance).
+const GRID_VEIL: f32 = 0.62;
 
 pub struct Assets {
     pub root: PathBuf,
@@ -162,17 +167,21 @@ impl Assets {
 }
 
 /// The switcher's backdrop: the blurred wallpaper, darkened in its own tint.
-const SWITCHER_SHADE: [f32; 4] = [0.38, 0.38, 0.4, 1.];
+const SWITCHER_VEIL: f32 = 0.38;
 
 pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
-    let mut out = Scene::new();
-    if state.switcher_covers() {
+    let mut out = Scene::new(theme::Theme::new(state.light()));
+    // Search, once fully in, is an opaque page: nothing beneath it shows.
+    let search_covers = matches!(state.overlay, Some(Overlay::Keyboard)) && state.panel_started.is_none();
+    if search_covers {
+        // No background: the search page covers it.
+    } else if state.switcher_covers() {
         // The switcher's dimmed backdrop is then the whole background: one
         // opaque pass instead of a picture with a full-screen glass over it.
         let backdrop = assets.path(format!("wallpapers/{}-glass.png", state.preferences.background));
-        out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., SWITCHER_SHADE));
+        let shade = [SWITCHER_VEIL, SWITCHER_VEIL, SWITCHER_VEIL + 0.02, 1.];
+        out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., shade, [0.; 4]));
     } else if let Some((previous, start)) = &state.previous_background {
-        let full = Rect::new(0., 0., 1920., 1080.);
         let alpha = (start.elapsed().as_secs_f32() / 0.4).min(1.);
         let alpha = alpha * alpha * (3. - 2. * alpha);
         let current = &state.preferences.background;
@@ -185,14 +194,16 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
                 assets.path(format!("wallpapers/{current}-glass.png")),
                 alpha,
                 [1.; 4],
+                [0.; 4],
             ));
-            out.shape(full, 0., c(0, 1. - SETTINGS_VEIL));
+            out.veil(out.theme.backdrop_veil(1. - SETTINGS_VEIL));
         } else {
             out.draw.push(Draw::Dissolve(
                 assets.path(format!("wallpapers/{previous}.jpg")),
                 assets.path(format!("wallpapers/{current}.jpg")),
                 alpha,
                 [1.; 4],
+                [0.; 4],
             ));
         }
     } else {
@@ -209,13 +220,13 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         // backdrop, the blurred photo under a 40% #1d1d1d veil. Every
         // transition is one opaque pass mixing two images (Draw::Dissolve):
         // two stacked 1080p layers miss the TV's 20 ms frame.
-        let full = Rect::new(0., 0., 1920., 1080.);
         let (current, current_glass) = shelf_art(state, assets, state.shelf_app.as_deref());
         let backdrop = assets.path(format!(
             "wallpapers/{}-glass.png",
             state.preferences.background
         ));
-        let veil = [0.62, 0.62, 0.64, 1.];
+        // The grid's backdrop stays the same clear, dimmed glass in both appearances.
+        let veil = [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02, 1.];
         // Between home and Settings the backdrop dissolves with the content:
         // Settings' dark screen fades in over the home's blurred backdrop, and
         // out again on the way back, rather than cutting.
@@ -227,14 +238,17 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             // tvOS Settings is not black: it is the home's blurred wallpaper,
             // dimmed further, so it carries the wallpaper's colour. Entering,
             // the veil deepens from the home's in the same single pass.
+            // In the light appearance it frosts over instead, in the same pass.
             let t = page_t.map_or(1., |(t, _)| t);
-            let shade = 0.62 + (SETTINGS_VEIL - 0.62) * t;
+            let (rest, mut lift) = out.theme.backdrop(SETTINGS_VEIL);
+            let tint: [f32; 4] = std::array::from_fn(|i| veil[i] + (rest[i] - veil[i]) * t);
+            lift[3] *= t;
             // Opaque full-screen pictures go through the dissolve's
             // medium-precision pass (fully on one image): the same pixels,
             // at a fraction of this GPU's cost of the shape shader.
-            out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., [shade, shade, shade + 0.02, 1.]));
+            out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., tint, lift));
         } else if grid >= 1. {
-            out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., veil));
+            out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., veil, [0.; 4]));
         } else if grid > 0. {
             // Scrolling into the grid the picture blurs, then dims, as tvOS's
             // does, continuously both ways: first the photo eases into its
@@ -243,18 +257,18 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             const BLUR: f32 = 0.35;
             if grid < BLUR {
                 let t = grid / BLUR;
-                out.draw.push(Draw::Dissolve(current, current_glass, t * t * (3. - 2. * t), [1.; 4]));
+                out.draw.push(Draw::Dissolve(current, current_glass, t * t * (3. - 2. * t), [1.; 4], [0.; 4]));
             } else {
                 let t = (grid - BLUR) / (1. - BLUR);
-                out.draw.push(Draw::Dissolve(current_glass, backdrop, t * t * (3. - 2. * t), veil));
+                out.draw.push(Draw::Dissolve(current_glass, backdrop, t * t * (3. - 2. * t), veil, [0.; 4]));
             }
         } else {
             match shelf_dissolve(state) {
                 Some((previous, t)) => {
                     let (previous, _) = shelf_art(state, assets, previous);
-                    out.draw.push(Draw::Dissolve(previous, current, t, [1.; 4]));
+                    out.draw.push(Draw::Dissolve(previous, current, t, [1.; 4], [0.; 4]));
                 }
-                None => out.draw.push(Draw::Dissolve(current.clone(), current, 0., [1.; 4])),
+                None => out.draw.push(Draw::Dissolve(current.clone(), current, 0., [1.; 4], [0.; 4])),
             }
         }
         if state.page != Page::Settings
@@ -263,7 +277,10 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             && t < 1.
         {
             // Back to home: Settings' deeper veil lifts off the same backdrop.
-            out.shape(full, 0., [0., 0., 0., (1. - SETTINGS_VEIL / 0.62) * (1. - t)]);
+            // Light: Settings' frost fades off the grid's clear backdrop.
+            let mut lifting = out.theme.backdrop_veil(1. - SETTINGS_VEIL / GRID_VEIL);
+            lifting[3] *= 1. - t;
+            out.veil(lifting);
         }
         // Keep all Top Shelf art and the wallpaper decoded and resident (a 1px
         // draw each) so no dissolve ever waits on a JPEG decode.
@@ -304,9 +321,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
     ))));
     // Fully covering screens (search, the switcher once shown) skip the page
     // beneath: drawing it would only spend the TV's small GPU budget.
-    let covered = (matches!(state.overlay, Some(Overlay::Keyboard))
-        && state.panel_started.is_none())
-        || state.switcher_covers();
+    let covered = search_covers || state.switcher_covers();
     if covered {
         out.draw.push(Draw::EdgeFade(None));
         out.draw.push(Draw::Clip(None));
@@ -386,6 +401,8 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             .iter()
             .find(|control| control.target == Target::App(id.clone()))
             .map(|control| control.rect);
+        // The screen lifts back as the menu goes, on the same curve.
+        out.dim(1. - MENU_DIM * (1. - t * t));
         let start = out.draw.len();
         let controls = out.controls.len();
         options(&mut out, state, assets, id, anchor);
@@ -404,15 +421,26 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             _ => None,
         };
         out.controls.clear();
-        let start = out.draw.len();
-        out.shape(Rect::new(0., 0., 1920., 1080.), 0., c(0, 0.35));
+        // Opening eases out: the screen dims as the menu rises into place.
+        let opening = state.panel_started.map(|opened| {
+            let t = (opened.elapsed().as_secs_f32() * 1000. / crate::state::OVERLAY_OPEN_MS as f32).min(1.);
+            1. - (1. - t).powi(3)
+        });
+        let eased = opening.unwrap_or(1.);
+        if !search_covers {
+            out.dim(1. - MENU_DIM * eased);
+        }
+        let panel = out.draw.len();
         match overlay {
             Overlay::Options { id, .. } => options(&mut out, state, assets, id, anchor),
             Overlay::Keyboard => keyboard(&mut out, state, assets),
             Overlay::SystemKeyboard => {}
         }
-        if let Some(opened) = state.panel_started {
-            out.fade(start, (opened.elapsed().as_secs_f32() / 0.12).min(1.), 1.);
+        if opening.is_some() {
+            if matches!(overlay, Overlay::Options { .. }) {
+                out.translate_with_clips(panel, 0., 14. * (1. - eased));
+            }
+            out.fade(panel, eased, 1.);
         }
     }
     switcher(&mut out, state, assets);

@@ -5,9 +5,9 @@ use super::{
 };
 use crate::{
     i18n,
-    model::{BACKGROUNDS, InputMode},
-    renderer::{Draw, WHITE},
-    state::{AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target, WEATHER_SECTION},
+    model::{Appearance, BACKGROUNDS, InputMode},
+    renderer::Draw,
+    state::{APPEARANCES, AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target, WEATHER_SECTION},
     weather::Unit,
 };
 
@@ -36,7 +36,7 @@ fn list_plate(out: &mut Scene, rect: Rect, focused: bool, selected: bool) {
         out.shape(plate, radius + 2., c(0xffffff, 0.95));
     } else if selected {
         // tvOS lists are plain text at rest; only a current choice is tinted.
-        out.shape(rect, radius, c(0xffffff, 0.1));
+        out.shape(rect, radius, out.theme.wash(0.1));
     }
 }
 
@@ -46,14 +46,15 @@ fn row(out: &mut Scene, state: &State, assets: &Assets, row: Row<'_>) {
     // backdrop; focus turns it solid white.
     let plain = state.page == Page::Settings;
     if plain && !focused {
-        out.shape(row.rect, (row.rect.h / 2.).min(36.), c(0xffffff, 0.08));
+        out.shape(row.rect, (row.rect.h / 2.).min(36.), out.theme.wash(0.08));
     }
     list_plate(out, row.rect, focused, false);
+    let theme = out.theme;
     let ink = |alpha: f32| {
         if focused {
             c(PLATTER, alpha)
         } else {
-            c(0xffffff, alpha)
+            theme.ink(alpha)
         }
     };
     let mut x = row.rect.x + 30.;
@@ -191,7 +192,7 @@ fn weather_settings(out: &mut Scene, state: &State, assets: &Assets) {
             if state.focus == Target::WeatherLocation {
                 c(0x444444, 1.)
             } else {
-                c(0xeeeeee, 0.73)
+                out.theme.ink(0.73)
             },
             false,
         );
@@ -218,34 +219,34 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
     let mut y = 164.8 - state.scroll;
     if let Some(place) = &state.preferences.weather_location {
         let rect = Rect::new(LIST_X, y, LIST_W, 76.2);
-        out.shape(rect, 20., c(0x171c20, 0.72));
-        out.border(rect, 20., 1., c(0xffffff, 0.04));
+        out.shape(rect, 20., out.theme.well(0.72));
+        out.border(rect, 20., 1., out.theme.wash(0.04));
         out.icon(
             assets,
             "location",
             Rect::new(LIST_X + 24.2, y + 29.1, 18., 18.),
-            c(0xcccccc, 1.),
+            out.theme.ink(0.85),
         );
         out.text(
             &place.name,
             Rect::new(LIST_X + 58.2, y + 8., LIST_W - 200., 32.),
             row_style(),
-            WHITE,
+            out.theme.ink(1.),
             false,
         );
         out.text(
             place.detail(),
             Rect::new(LIST_X + 58.2, y + 40., LIST_W - 200., 30.),
             detail_style(),
-            c(0xf5f5f5, 0.56),
+            out.theme.ink(0.56),
             false,
         );
         let clear = Rect::new(LIST_X + LIST_W - 64.2, y + 18.1, 40., 40.);
-        out.shape(clear, 20., c(0x23282c, 0.5));
-        out.border(clear, 20., 1., c(0xffffff, 0.07));
-        out.icon(assets, "close", clear.inset(12.), WHITE);
+        out.shape(clear, 20., out.theme.well(0.5));
+        out.border(clear, 20., 1., out.theme.wash(0.07));
+        out.icon(assets, "close", clear.inset(12.), out.theme.ink(1.));
         if state.focus == Target::WeatherClear {
-            out.border(clear.inset(-2.), 22., 2., c(0xf0f0f0, 0.95));
+            out.border(clear.inset(-2.), 22., 2., out.theme.ink(0.95));
         }
         out.control(Target::WeatherClear, clear, true);
         y += 96.2;
@@ -256,25 +257,25 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
         query,
         48.,
         if focused {
-            c(0x303438, 1.)
+            out.theme.pick(c(0x303438, 1.), c(0xffffff, 1.))
         } else {
-            c(0x171c20, 0.72)
+            out.theme.well(0.72)
         },
     );
     out.border(
         query,
         48.,
         1.,
-        c(0xffffff, if focused { 0.70 } else { 0.07 }),
+        out.theme.wash(if focused { 0.70 } else { 0.07 }),
     );
     if focused {
-        out.border(query.inset(-3.), 51., 3., c(0xffffff, 0.063));
+        out.border(query.inset(-3.), 51., 3., out.theme.wash(0.063));
     }
     out.icon(
         assets,
         "search",
         Rect::new(LIST_X + 24.2, y + 21.2, 21.6, 21.6),
-        c(0xeeeeee, 0.73),
+        out.theme.ink(0.73),
     );
     out.text(
         if state.weather.query.is_empty() {
@@ -284,13 +285,13 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
         },
         Rect::new(LIST_X + 59.4, y + 16., LIST_W - 170., 32.),
         row_style(),
-        c(0xeeeeee, 0.73),
+        out.theme.ink(0.73),
         false,
     );
     out.control(Target::WeatherQuery, query, true);
     let search = Rect::new(LIST_X + LIST_W - 64., y, 64., 64.);
-    out.shape(search, 32., c(0x171c20, 0.72));
-    out.border(search, 32., 1., c(0xffffff, 0.07));
+    out.shape(search, 32., out.theme.well(0.72));
+    out.border(search, 32., 1., out.theme.wash(0.07));
     out.icon(
         assets,
         if state.weather.searching {
@@ -299,10 +300,10 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
             "search"
         },
         search.inset(20.8),
-        WHITE,
+        out.theme.ink(1.),
     );
     if state.focus == Target::WeatherSearch {
-        out.border(search.inset(-7.), 39., 2., c(0xf0f0f0, 0.95));
+        out.border(search.inset(-7.), 39., 2., out.theme.ink(0.95));
     }
     out.control(Target::WeatherSearch, search, true);
     y += 84.;
@@ -315,7 +316,7 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
             },
             Rect::new(LIST_X + 24.2, y, LIST_W - 48.4, 58.),
             text(16., 400, 0.).leading(1.5),
-            c(0xe0e0e0, 0.68),
+            out.theme.ink(0.68),
             false,
         );
     }
@@ -355,11 +356,20 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
                 if state.focus == Target::WeatherResult(index) {
                     c(0x444444, 1.)
                 } else {
-                    c(0xe4e4e4, 0.61)
+                    out.theme.ink(0.61)
                 },
             );
         }
         y += height + 12.;
+    }
+}
+
+/// An appearance's name in Settings, and the line under Automatic.
+fn appearance_label(appearance: Appearance) -> (&'static str, Option<&'static str>) {
+    match appearance {
+        Appearance::Light => ("appearanceLight", None),
+        Appearance::Dark => ("appearanceDark", None),
+        Appearance::Auto => ("appearanceAuto", Some("appearanceAutoDetail")),
     }
 }
 
@@ -426,7 +436,7 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
     let page = out.draw.len();
     out.draw.push(Draw::Clip(None));
     // tvOS titles Settings in a large, muted grey, not white.
-    out.text(title, Rect::new(0., 52., 1920., 46.), shelf_style(), c(0xffffff, 0.6), true);
+    out.text(title, Rect::new(0., 52., 1920., 46.), shelf_style(), out.theme.ink(0.6), true);
     out.draw.push(Draw::Clip(Some(Rect::new(0., MAIN_TOP, 1920., 968. - MAIN_TOP))));
     let list = out.draw.len();
     settings_list(out, state, assets);
@@ -456,13 +466,15 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
         if let Some(picture) = picture {
             let circle = Rect::new(230., 250., 400., 400.);
             out.shadow(circle, 200., 40., 18., 0.35);
+            out.draw.push(Draw::Soft(Some(0.8)));
             out.image(picture.large.clone(), circle, 200., false);
+            out.draw.push(Draw::Soft(None));
         }
         out.text(
             i18n::t("aboutAvatar"),
             Rect::new(110., 780., 640., 120.),
             detail_style(),
-            c(0xffffff, 0.62),
+            out.theme.ink(0.62),
             true,
         );
         return;
@@ -487,14 +499,14 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
         );
     } else {
         let card = Rect::new(190., 250., 480., 480.);
-        out.shape(card, 110., c(0xffffff, 0.2));
+        out.shape(card, 110., out.theme.wash(0.2));
         out.icon(assets, glyph, card.inset(130.), [0.15, 0.16, 0.19, 1.]);
     }
     out.text(
         i18n::t(about),
         Rect::new(110., 780., 640., 120.),
         detail_style(),
-        c(0xffffff, 0.62),
+        out.theme.ink(0.62),
         true,
     );
 }
@@ -532,6 +544,13 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
             return;
         }
         let options: Vec<(&str, Option<&str>, bool)> = match subpage {
+            Subpage::Appearance => APPEARANCES
+                .iter()
+                .map(|appearance| {
+                    let (title, description) = appearance_label(*appearance);
+                    (i18n::t(title), description.map(i18n::t), state.preferences.appearance == *appearance)
+                })
+                .collect(),
             Subpage::Clock => vec![
                 (i18n::t("hour12"), None, !state.preferences.hour_24),
                 (i18n::t("hour24"), None, state.preferences.hour_24),
@@ -648,6 +667,13 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     true,
                 ),
                 (
+                    9,
+                    "appearance",
+                    "moon",
+                    i18n::t(appearance_label(state.preferences.appearance).0),
+                    true,
+                ),
+                (
                     2,
                     "reducedMotion",
                     "motion",
@@ -707,7 +733,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     assets,
                     Row {
                         target: Target::Setting(8),
-                        rect: Rect::new(LIST_X, 516.8 - s, LIST_W, 72.),
+                        rect: Rect::new(LIST_X, 600.8 - s, LIST_W, 72.),
                         title: i18n::t("profilePicture"),
                         icon: None,
                         value: Some(shown),
@@ -728,7 +754,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     assets,
                     Row {
                         target: Target::Setting(7),
-                        rect: Rect::new(LIST_X, 516.8 + below - s, LIST_W, 72.),
+                        rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
                         title: i18n::t("hiddenApps"),
                         icon: Some("eye-off-bold"),
                         value: Some(&count),
@@ -745,7 +771,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 assets,
                 Row {
                     target: Target::Setting(3),
-                    rect: Rect::new(LIST_X, 516.8 + below - s, LIST_W, 72.),
+                    rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
                     title: if state.loading {
                         i18n::t("refreshNotice")
                     } else {
@@ -764,7 +790,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 assets,
                 Row {
                     target: Target::Setting(5),
-                    rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
+                    rect: Rect::new(LIST_X, 684.8 + below - s, LIST_W, 72.),
                     title: i18n::t("quitApp"),
                     icon: Some("power"),
                     value: None,
@@ -790,10 +816,10 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     16.,
                     false,
                 );
-                out.border(rect, 16., 1., c(0xffffff, 0.086));
+                out.border(rect, 16., 1., out.theme.wash(0.086));
                 if state.preferences.background == *id {
-                    out.border(rect.inset(-2.), 18., 2., c(0xdedede, 1.));
-                    out.border(rect.inset(-7.), 23., 3., c(0xdedede, 0.10));
+                    out.border(rect.inset(-2.), 18., 2., out.theme.pick(c(0xdedede, 1.), c(0x1d1d1f, 1.)));
+                    out.border(rect.inset(-7.), 23., 3., out.theme.wash(0.1));
                     let check = Rect::new(rect.x + rect.w - 28., rect.y + rect.h - 28., 21.6, 21.6);
                     out.shape(check, 10.8, c(0xf3f3f3, 1.));
                     out.icon(assets, "check", check.inset(3.6), c(0x333333, 1.));
@@ -805,7 +831,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     i18n::wallpaper(id),
                     Rect::new(rect.x + 4., rect.y + rect.h + 12., rect.w - 8., 30.),
                     detail_style(),
-                    c(0xf0f0f0, 0.87),
+                    out.theme.ink(0.87),
                     false,
                 );
                 out.control(
@@ -850,7 +876,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     i18n::t("noInputs"),
                     Rect::new(LIST_X + 24., 165. - s, LIST_W - 48., 32.),
                     row_style(),
-                    c(0xf5f5f5, 0.72),
+                    out.theme.ink(0.72),
                     false,
                 );
                 y += 36.;

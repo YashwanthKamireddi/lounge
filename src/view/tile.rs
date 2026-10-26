@@ -6,7 +6,7 @@ const MOVE_LIFT: f32 = 0.03;
 use crate::{
     i18n,
     model::App,
-    renderer::{Draw, TextStyle, WHITE},
+    renderer::{Color, Draw, TextStyle, WHITE},
     state::{Rect, State, Target},
 };
 
@@ -16,15 +16,17 @@ pub(super) fn tile(
     assets: &Assets,
     app: &App,
     rect: Rect,
-    names: bool,
+    // The app's name under it, in this ink (white over the photo; the
+    // appearance's ink on the search screen), or None for no name.
+    names: Option<Color>,
     pinned: bool,
 ) {
-    let caption_height = if names {
+    let caption_height = if names.is_some() {
         caption_height(state, assets, app, rect.w)
     } else {
         0.
     };
-    let label_height = if names {
+    let label_height = if names.is_some() {
         LABEL_GAP + caption_height
     } else {
         0.
@@ -75,7 +77,7 @@ pub(super) fn tile(
     if state.pressed.as_ref() == Some(&Target::App(app.id.clone())) {
         out.fade(start, 1., 0.85);
     }
-    if names {
+    if let Some([r, g, b, _]) = names {
         out.text(
             fit_caption(assets, &app.title, caption_style(focused), base.w - 8.),
             Rect::new(
@@ -85,7 +87,7 @@ pub(super) fn tile(
                 caption_height,
             ),
             caption_style(focused),
-            c(0xffffff, 0.6 + 0.4 * lift),
+            [r, g, b, 0.6 + 0.4 * lift],
             true,
         );
     }
@@ -101,6 +103,28 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
             false,
         );
         // No outline: tvOS icons have none, and a border pass shades the whole tile.
+    } else if app.brand == "luma-input" {
+        // An input: the system tiles' grey with the HDMI glyph over its
+        // port's name (the glyph alone cannot tell HDMI 1 from HDMI 2).
+        out.draw.push(Draw::RoundedGradient(rect, radius, c(0x9a9aa0, 1.), c(0x6e6e74, 1.)));
+        let size = rect.h * 0.4;
+        out.icon(
+            assets,
+            "input-hdmi",
+            Rect::new(rect.x + (rect.w - size) / 2., rect.y + rect.h * 0.13, size, size),
+            WHITE,
+        );
+        // Size and width in coarse steps: a focus lift reuses a few text
+        // layouts rather than making one per frame.
+        let size = (rect.h * 0.17 * 2.).round() / 2.;
+        let (width, height) = ((rect.w / 16.).round() * 16., (rect.h * 0.24 / 4.).round() * 4.);
+        out.text(
+            &app.title,
+            Rect::new(rect.x + (rect.w - width) / 2., rect.y + rect.h * 0.56, width, height),
+            text(size, 650, 0.),
+            WHITE,
+            true,
+        );
     } else {
         let logo = crate::branding::for_key(&app.brand);
         // Artwork Luma ships always wins: it is there from the first frame,
@@ -132,7 +156,6 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
         } else if let Some(icon) = match app.brand.as_str() {
             "luma-settings" => Some("gear"),
             "luma-search" => Some("search"),
-            "luma-input" => Some("input-hdmi"),
             _ => None,
         } {
             // tvOS system tiles: light grey with a large white glyph.

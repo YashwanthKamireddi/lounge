@@ -19,25 +19,24 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
     });
     let appear = ease(switcher.opened.elapsed().as_secs_f32() / 0.28) * (1. - leave);
     // tvOS: open apps as windows in a row over the dimmed, blurred home. While
-    // it fades in or out the backdrop lies over the home; once it covers the
-    // screen the scene draws it as the background itself (see `scene`).
+    // it fades in or out the home cross-fades into the backdrop (in the
+    // background's own pass where it can); once it covers the screen the
+    // scene draws it as the background itself (see `scene`).
     if !state.switcher_covers() {
         let backdrop = assets.path(format!(
             "wallpapers/{}-glass.png",
             state.preferences.background
         ));
-        let [r, g, b, _] = super::SWITCHER_SHADE;
-        let shade = [r, g, b, appear];
-        out.draw.push(Draw::Glass(backdrop, Rect::new(0., 0., 1920., 1080.), 0., shade, shade));
+        let veil = super::SWITCHER_VEIL;
+        if !out.fade_into(&backdrop, [veil, veil, veil + 0.02, 1.], appear) {
+            let shade = [veil, veil, veil + 0.02, appear];
+            out.draw.push(Draw::Glass(backdrop, Rect::new(0., 0., 1920., 1080.), 0., shade, shade));
+        }
     }
     // Each open app is its own card (no frame, no second logo), as upstream
     // Luma and tvOS show it: the focused one lifted, the rest dimmed back.
     let (w, h, pitch) = (720., 412., 800.);
     let top = 300. + 40. * (1. - appear);
-    let focused = match state.focus {
-        Target::Switch(index) => index,
-        _ => 0,
-    };
     // After a close the cards right of the gap wait a beat (the thrown one
     // clears first), then glide in with a long, soft settle.
     let reflow = switcher.reflow.map(|(slot, start)| {
@@ -56,22 +55,23 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         )
     };
     // The TV's one GPU core pays for every painted pixel: only the card in
-    // front casts a shadow, and the others darken (no extra layer).
-    let draw = |out: &mut Scene, app: &App, rect: Rect, near: f32, alpha: f32, named: bool| {
+    // front casts a shadow, and the others darken (no extra layer). As on
+    // tvOS each card carries its app's name above it, dimmed with the card.
+    let draw = |out: &mut Scene, app: &App, rect: Rect, near: f32, alpha: f32| {
         let first = out.draw.len();
         if near > 0.05 {
             out.shadow(rect, 36., 60., 26., 0.55 * near);
         }
         tile_face(out, assets, app, rect, 36.);
-        if named {
-            out.text(
-                &app.title,
-                Rect::new(rect.x, rect.y + rect.h + 34., rect.w, 36.),
-                tab_style(),
-                WHITE,
-                true,
-            );
-        }
+        // Laid out at the card's full width, centred on it, however the
+        // card is scaled: one cached text run per app, not one per frame.
+        out.text(
+            &app.title,
+            Rect::new(rect.x + rect.w / 2. - w / 2., rect.y - 58., w, 36.),
+            tab_style(),
+            WHITE,
+            true,
+        );
         out.fade(first, alpha, 0.55 + 0.45 * near);
     };
     for (index, id) in switcher.apps.iter().enumerate() {
@@ -83,7 +83,7 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         if rect.x > 1920. || rect.x + rect.w < 0. {
             continue;
         }
-        draw(out, app, rect, near, appear, index == focused && switcher.dismissed.is_none());
+        draw(out, app, rect, near, appear);
         if switcher.dismissed.is_none() {
             out.control(Target::Switch(index), rect, false);
         }
@@ -108,6 +108,6 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
             h,
         );
         let fade = 1. - ((t - 0.6) / 0.4).clamp(0., 1.);
-        draw(out, app, thrown, near, fade * (1. - leave), false);
+        draw(out, app, thrown, near, fade * (1. - leave));
     }
 }

@@ -2,7 +2,7 @@
 //! search keyboard and notifications.
 use super::{
     Assets, Scene,
-    glass::{home_backdrop, platter},
+    glass::home_backdrop,
     shared::{PLATTER, c, detail_style, row_style, text},
     tile::tile,
 };
@@ -14,11 +14,20 @@ use crate::{
 };
 use time::OffsetDateTime;
 
+/// The status pill's scale over tvOS's 25 px menu-bar text: large enough to
+/// read across a room, in the same proportions.
+const PILL_SCALE: f32 = 1.3;
+pub(super) const PILL_HEIGHT: f32 = 60. * PILL_SCALE;
+/// The soft edge (logical px either side) of the large glass curves: the
+/// pill, its avatar, menus and banners (see Draw::Soft).
+const SOFT_EDGE: f32 = 0.8;
+
 pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: OffsetDateTime) {
     // tvOS: no tab bar, one glass capsule at the top right: time, the local
     // weather and the profile's avatar. It only shows; nothing here is focused.
     let clock = i18n::clock(now, state.preferences.hour_24);
-    let style = text(25., 600, 0.);
+    let k = PILL_SCALE;
+    let style = text(25. * k, 600, 0.);
     let reading = state
         .preferences
         .weather_location
@@ -34,20 +43,24 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     // The date leads, set exactly like the time: one line, one voice.
     let date = i18n::short_date(now);
     let date_style = style;
-    let date_width = assets.width(&date, date_style) + 14.;
+    let date_width = assets.width(&date, date_style) + 14. * k;
     let clock_width = assets.width(&clock, style);
     let extra = temperature
         .as_ref()
-        .map_or(0., |(text, _)| 18. + 30. + 8. + assets.width(text, style));
+        .map_or(0., |(text, _)| (18. + 30. + 8.) * k + assets.width(text, style));
     // The avatar: a chosen picture, else the signed-in profile's initial.
     let avatar = state.avatar.is_some() || state.profile.is_some();
-    let width = 40. + date_width + clock_width + extra + if avatar { 14. + 50. } else { 0. };
-    let pill = Rect::new(1836. - width, 49., width, 60.);
+    let width = 40. * k + date_width + clock_width + extra + if avatar { (14. + 50.) * k } else { 0. };
+    let pill = Rect::new(1836. - width, 49., width, PILL_HEIGHT);
+    // Text, icon and avatar sit on the capsule's centre line.
+    let line = |height: f32| pill.y + (pill.h - height) / 2.;
     let first = out.draw.len();
     let fade = pill_shown(state);
     // The capsule is glass over whatever is behind it.
+    // Clear glass with white ink in both appearances (over the photo).
     let ink = WHITE;
     out.shadow(pill, pill.h / 2., 48., 4., 0.2);
+    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
     out.glass_over(home_backdrop(state, assets), pill, pill.h / 2., c(PLATTER, 0.34));
     // One thin specular rim, as Apple's glass has: bright where light falls,
     // faint below. (Two stacked rims read as a soft band once the TV
@@ -59,8 +72,8 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
         c(0xffffff, 0.55),
         c(0xffffff, 0.06),
     ));
-    let size = 46.;
-    let circle = Rect::new(pill.x + pill.w - 30. - size / 2., pill.y + (pill.h - size) / 2., size, size);
+    let size = 46. * k;
+    let circle = Rect::new(pill.x + pill.w - 30. * k - size / 2., line(size), size, size);
     if let Some(picture) = &state.avatar {
         // A new picture (rotating, or just chosen) fades in over the last.
         let fade = state.avatar_from.as_ref().map(|(previous, since)| {
@@ -79,16 +92,17 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
         out.shape(circle, circle.w / 2., c(profile.color, 1.));
         out.text(
             profile.initial(),
-            Rect::new(circle.x, circle.y + (circle.h - 30.) / 2., circle.w, 30.),
+            Rect::new(circle.x, line(30. * k), circle.w, 30. * k),
             style,
             c(0xffffff, 1.),
             true,
         );
     }
-    let mut x = pill.x + 20.;
+    out.draw.push(Draw::Soft(None));
+    let mut x = pill.x + 20. * k;
     out.text(
         date,
-        Rect::new(x, 65., date_width, 30.),
+        Rect::new(x, line(30. * k), date_width, 30. * k),
         date_style,
         ink,
         false,
@@ -96,16 +110,16 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     x += date_width;
     out.text(
         clock,
-        Rect::new(x, 65., clock_width + 2., 30.),
+        Rect::new(x, line(30. * k), clock_width + 2., 30. * k),
         style,
         ink,
         false,
     );
-    x += clock_width + 18.;
+    x += clock_width + 18. * k;
     if let Some((text, icon)) = temperature {
-        out.icon(assets, &icon, Rect::new(x, 64., 30., 30.), [ink[0], ink[1], ink[2], 0.9]);
-        x += 38.;
-        out.text(text, Rect::new(x, 65., 120., 30.), style, ink, false);
+        out.icon(assets, &icon, Rect::new(x, line(30. * k) - k, 30. * k, 30. * k), [ink[0], ink[1], ink[2], 0.9]);
+        x += 38. * k;
+        out.text(text, Rect::new(x, line(30. * k), 160., 30. * k), style, ink, false);
     }
     out.fade(first, fade, 1.);
 }
@@ -183,50 +197,76 @@ pub(super) fn options(out: &mut Scene, state: &State, assets: &Assets, id: &str,
         ),
     ];
     let (w, h) = (440., 59. + rows.len() as f32 * 70. + 10.);
-    // Low on screen (the dock), the menu rises above its tile, centred on it,
-    // covering no neighbour; higher up it opens beside the tile.
+    // As tvOS: the menu hangs just below its tile, centred on it (clear of
+    // the tile's focus lift and name), or rises above it where the screen
+    // ends; it never sits over the tile itself.
     let (x, y) = match anchor {
-        Some(tile) if tile.y > 540. => (
-            (tile.x + tile.w / 2. - w / 2.).clamp(60., 1860. - w),
-            tile.y - 24. - h,
-        ),
-        Some(tile) if tile.x + tile.w + 37. + w <= 1860. => (tile.x + tile.w + 37., tile.y),
-        Some(tile) => (tile.x - 37. - w, tile.y),
+        Some(tile) => {
+            let x = (tile.x + tile.w / 2. - w / 2.).clamp(60., 1860. - w);
+            let below = tile.y + tile.h + 30.;
+            (x, if below + h <= 1020. { below } else { tile.y - 30. - h })
+        }
         None => (960. - w / 2., 540. - h / 2.),
     };
     let panel = Rect::new(x, y.clamp(60., 1020. - h), w, h);
     out.modal = Some(panel);
     // Liquid Glass: veil, top sheen and a light rim.
     out.shadow(panel, 30., 40., 12., 0.35);
-    out.glass_over(home_backdrop(state, assets), panel, 30., c(PLATTER, 0.28));
+    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+    out.glass_over(home_backdrop(state, assets), panel, 30., out.theme.veil(0.42));
     out.draw.push(Draw::RoundedGradient(panel, 30., c(0xffffff, 0.12), c(0xffffff, 0.02)));
-    out.border(panel, 30., 1.5, c(0xffffff, 0.28));
+    out.draw.push(Draw::Soft(None));
+    // One specular rim, bright where light falls, as the pill's.
+    out.draw.push(Draw::GradientRing(panel, 30., 1.5, c(0xffffff, 0.5), c(0xffffff, 0.08)));
     out.text(
         title,
         Rect::new(panel.x + 25., panel.y + 16., w - 50., 30.),
         text(23., 600, 0.),
-        c(0xffffff, 0.55),
+        out.theme.ink(0.55),
         false,
     );
-    for (index, (label, icon)) in rows.into_iter().enumerate() {
-        // Plain rows; focus lifts into glass.
-        let rect = Rect::new(panel.x + 10., panel.y + 59. + index as f32 * 70., w - 20., 66.);
-        let focus = state.focus_amount(&Target::Option(index));
-        let rect = if focus > 0.01 {
-            platter(out, state, assets, rect, focus)
-        } else {
-            rect
-        };
-        let ink = WHITE;
-        out.text(
-            label,
-            Rect::new(rect.x + 15., rect.y + 19., 300., 32.),
-            row_style(),
-            ink,
-            false,
-        );
-        out.icon(assets, icon, Rect::new(panel.x + 389., rect.y + 22., 26., 26.), ink);
-        out.control(Target::Option(index), rect, false);
+    // tvOS focus: one white capsule that glides from the row focus left to
+    // the row it reached, easing out, under dark text; the rest stay plain.
+    let row = |index: usize| Rect::new(panel.x + 10., panel.y + 59. + index as f32 * 70., w - 20., 66.);
+    let highlight = match state.focus {
+        Target::Option(current) => {
+            let arrived = state.focus_amount(&Target::Option(current));
+            Some(match &state.focus_from {
+                Some((Target::Option(previous), ..)) => {
+                    (row(*previous).y + (row(current).y - row(*previous).y) * arrived, 1.)
+                }
+                // Arriving from outside the menu (it just opened): fades in.
+                _ => (row(current).y, arrived),
+            })
+        }
+        _ => None,
+    };
+    if let Some((y, alpha)) = highlight {
+        let plate = Rect::new(panel.x + 10., y, w - 20., 66.);
+        out.shadow(plate, 33., 24., 10., 0.3 * alpha);
+        out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+        out.shape(plate, 33., c(0xffffff, 0.96 * alpha));
+        out.draw.push(Draw::Soft(None));
+    }
+    // Each row's words are drawn light, then again dark clipped to the
+    // highlight: dark exactly where the white plate is, on every frame of
+    // its glide (never white on white half way between rows).
+    let (light, dark) = (out.theme.ink(1.), c(PLATTER, 1.));
+    let words = |out: &mut Scene, ink| {
+        for (index, (label, icon)) in rows.iter().enumerate() {
+            let rect = row(index);
+            out.text(*label, Rect::new(rect.x + 15., rect.y + 19., 300., 32.), row_style(), ink, false);
+            out.icon(assets, icon, Rect::new(panel.x + 389., rect.y + 22., 26., 26.), ink);
+        }
+    };
+    words(out, light);
+    if let Some((y, alpha)) = highlight {
+        out.draw.push(Draw::Clip(Some(Rect::new(panel.x + 10., y, w - 20., 66.))));
+        words(out, [dark[0], dark[1], dark[2], alpha]);
+        out.draw.push(Draw::Clip(None));
+    }
+    for index in 0..rows.len() {
+        out.control(Target::Option(index), row(index), false);
     }
 }
 
@@ -237,12 +277,13 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
     out.modal = Some(screen);
     // Apple's Linear Keyboard template: #2b2b2d, a 56pt glyph at (104,164),
     // the Bold 57 query from x187, keys on one row, results below a rule.
-    out.shape(screen, 0., c(0x2b2b2d, 1.));
+    // The light appearance's keyboard is Apple's light grey.
+    out.shape(screen, 0., out.theme.pick(c(0x2b2b2d, 1.), c(0xf2f2f7, 1.)));
     out.icon(
         assets,
         "search",
         Rect::new(104., 169., 46., 46.),
-        c(0xffffff, 0.5),
+        out.theme.ink(0.5),
     );
     let typed = state.editing_text();
     let query_style = text(57., 650, 0.).leading(66. / 57.);
@@ -256,7 +297,7 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
             hint,
             Rect::new(187., 159., 1500., 66.),
             query_style,
-            c(0xffffff, 0.3),
+            out.theme.ink(0.3),
             false,
         );
     } else {
@@ -264,7 +305,7 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
             typed,
             Rect::new(187., 159., 1500., 66.),
             query_style,
-            WHITE,
+            out.theme.ink(1.),
             false,
         );
     }
@@ -287,7 +328,7 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
         let ink = if focused {
             c(PLATTER, 1.)
         } else {
-            c(0xffffff, 0.62)
+            out.theme.ink(0.62)
         };
         let icon = match *key {
             "Space" => Some("space"),
@@ -314,7 +355,7 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
         }
         out.control(Target::Key(index), rect, false);
     }
-    out.shape(Rect::new(80., 371., 1760., 1.), 0., c(0xffffff, 0.3));
+    out.shape(Rect::new(80., 371., 1760., 1.), 0., out.theme.wash(0.3));
     if !location {
         // Search never offers itself as a result.
         let apps: Vec<_> = state.apps().into_iter().filter(|app| app.id != SEARCH_TILE).collect();
@@ -323,7 +364,7 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
                 i18n::format("noMatchesHint", &[("query", typed)]),
                 Rect::new(80., 410., 1760., 32.),
                 row_style(),
-                c(0xffffff, 0.5),
+                out.theme.ink(0.5),
                 false,
             );
             return;
@@ -333,9 +374,10 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
             i18n::t("topResults"),
             Rect::new(80., 390., 1760., 38.),
             text(31., 650, 0.),
-            c(0xffffff, 0.55),
+            out.theme.ink(0.55),
             false,
         );
+        let ink = out.theme.ink(1.);
         for (index, app) in apps.iter().take(8).enumerate() {
             let (row, column) = (index / 4, index % 4);
             tile(
@@ -344,7 +386,7 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
                 assets,
                 app,
                 Rect::new(80. + column as f32 * 450., 486. + row as f32 * 300., 410., 231.),
-                true,
+                Some(ink),
                 false,
             );
         }
@@ -395,11 +437,13 @@ pub(super) fn toast(out: &mut Scene, state: &State, assets: &Assets, notice: &st
     let height = (lines * 31. + 40.).max(icon + 32.);
     // Top right, right-aligned with the status pill and just beneath it, so
     // the time is never covered; where no pill shows it takes the top.
-    let rect = Rect::new(1836. - width, 49. + 76. * pill_shown(state), width, height);
+    let rect = Rect::new(1836. - width, 49. + (PILL_HEIGHT + 16.) * pill_shown(state), width, height);
     let focused = state.focus == Target::DismissNotice;
     out.shadow(rect, 32., 44., 12., 0.32);
-    out.glass(assets, &state.preferences.background, rect, 32., c(PLATTER, 0.6 - 0.12 * f32::from(u8::from(focused))));
+    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+    out.glass(assets, &state.preferences.background, rect, 32., out.theme.veil(0.6 - 0.12 * f32::from(u8::from(focused))));
     out.draw.push(Draw::RoundedGradient(rect, 32., c(0xffffff, 0.12), c(0xffffff, 0.02)));
+    out.draw.push(Draw::Soft(None));
     out.draw.push(Draw::GradientRing(
         rect,
         32.,
@@ -414,7 +458,7 @@ pub(super) fn toast(out: &mut Scene, state: &State, assets: &Assets, notice: &st
         notice,
         Rect::new(badge.x + icon + 18., rect.y + (height - lines * 31.) / 2., text_width, lines * 31.),
         style,
-        WHITE,
+        out.theme.ink(1.),
         false,
     );
     if state.overlay.is_none() {

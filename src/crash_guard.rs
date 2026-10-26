@@ -40,7 +40,11 @@ fn begin_at(marker: &Path, now: u64) -> bool {
     safe
 }
 
-/// A clean exit: nothing crashed.
+/// After a healthy minute, a later end is no crash loop: LG's memory manager
+/// killing a background Luma must not put the next run in safe mode.
+pub const HEALTHY_SECONDS: u64 = 60;
+
+/// A clean exit, or a run that stayed up HEALTHY_SECONDS: nothing crashed.
 pub fn end(marker: &Path) {
     let _ = fs::remove_file(marker);
 }

@@ -214,8 +214,26 @@ impl Drop for Connection {
     }
 }
 
+/// One reply from a TV service. Each thread keeps its registration between
+/// calls (the platform worker polls, so a fresh registration per call
+/// churned the bus hub); any failure drops it, unregistering before a stale
+/// callback could reach the next call's reply slot, and the next call opens
+/// a new one.
 pub fn call(uri: &str, payload: &Value) -> Result<Value, String> {
-    Connection::open()?.request(uri, payload)
+    thread_local! {
+        static CONNECTION: std::cell::RefCell<Option<Connection>> = const { std::cell::RefCell::new(None) };
+    }
+    CONNECTION.with_borrow_mut(|cached| {
+        let mut connection = match cached.take() {
+            Some(connection) => connection,
+            None => Connection::open()?,
+        };
+        let result = connection.request(uri, payload);
+        if result.is_ok() {
+            *cached = Some(connection);
+        }
+        result
+    })
 }
 
 type Listener = Box<dyn FnMut(Value) + Send>;
@@ -224,8 +242,8 @@ extern "C" fn stream(_handle: *mut c_void, message: *mut c_void, userdata: *mut 
     if message.is_null() || userdata.is_null() {
         return true;
     }
-    // SAFETY: userdata is the leaked listener of a subscription that lives for
-    // the process; LS2 dispatches only on that subscription's own thread.
+    // SAFETY: userdata is the listener of a live subscription (freed only after
+    // its call is cancelled); LS2 dispatches only on that subscription's own thread.
     unsafe {
         let payload = LSMessageGetPayload(message);
         if payload.is_null() {
@@ -249,15 +267,33 @@ extern "C" fn stream(_handle: *mut c_void, message: *mut c_void, userdata: *mut 
 }
 
 /// Long-lived subscription on its own thread and GLib context. Returns once
-/// the hub accepted the call; replies then stream to `listener` until exit.
+/// the hub accepted the call; replies then stream to `listener`. A reply with
+/// `returnValue: false` ends the stream (a denial, or the service went away):
+/// after handing it to the listener (which may resubscribe), the thread
+/// cancels the call, frees its listener and connection, and exits, so ended
+/// streams never pile up as idle threads.
 pub fn subscribe(
     uri: &str,
     payload: &Value,
-    listener: impl FnMut(Value) + Send + 'static,
+    mut listener: impl FnMut(Value) + Send + 'static,
 ) -> Result<(), String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
     let uri = CString::new(uri).map_err(|_| "Invalid Luna URI")?;
     let payload = CString::new(payload.to_string()).map_err(|_| "Invalid Luna payload")?;
     let (ready, accepted) = std::sync::mpsc::channel();
+    let ended = std::sync::Arc::new(AtomicBool::new(false));
+    let end = ended.clone();
+    // Set when the caller stopped waiting (setup took over 5 s): this
+    // attempt then backs out, so a retry never leaves two live streams.
+    let abandoned = std::sync::Arc::new(AtomicBool::new(false));
+    let abandon = abandoned.clone();
+    let listener = move |reply: Value| {
+        let last = reply.get("returnValue").and_then(Value::as_bool) == Some(false);
+        listener(reply);
+        if last {
+            end.store(true, Ordering::Release);
+        }
+    };
     thread::spawn(move || {
         let connection = match Connection::open() {
             Ok(connection) => connection,
@@ -266,11 +302,15 @@ pub fn subscribe(
                 return;
             }
         };
+        if abandoned.load(Ordering::Acquire) {
+            return;
+        }
         let listener: *mut Listener = Box::into_raw(Box::new(Box::new(listener)));
         let mut error = Error::new();
         let mut token = 0;
-        // SAFETY: the listener is intentionally leaked for the process lifetime,
-        // and the connection never drops while this thread iterates it.
+        // SAFETY: the listener lives until this thread cancels the call (or for
+        // the process, if the cancel is refused), and the connection never
+        // drops while this thread iterates it.
         if !unsafe {
             LSCall(
                 connection.handle,
@@ -285,14 +325,27 @@ pub fn subscribe(
             let _ = ready.send(Err(error.describe("subscription")));
             return;
         }
-        let _ = ready.send(Ok(()));
-        loop {
+        if ready.send(Ok(())).is_err() || abandoned.load(Ordering::Acquire) {
+            // Too late: the caller already gave up and will retry.
+            ended.store(true, Ordering::Release);
+        }
+        while !ended.load(Ordering::Acquire) {
             // SAFETY: only this thread drives this private context; blocking
             // iteration sleeps until the hub delivers the next reply.
             unsafe { g_main_context_iteration(connection.context, 1) };
         }
+        // The stream ended: no reply reaches the listener once its call is
+        // cancelled, so then (and only then) it can be freed. The connection
+        // unregisters as it drops with this thread.
+        let mut cancel_error = Error::new();
+        // SAFETY: the handle and token are this thread's own live call.
+        if unsafe { LSCallCancel(connection.handle, token, &mut cancel_error) } {
+            // SAFETY: allocated above with Box::into_raw; no dispatch remains.
+            drop(unsafe { Box::from_raw(listener) });
+        }
     });
-    accepted
-        .recv_timeout(Duration::from_secs(5))
-        .map_err(|_| "Subscription setup timed out".to_string())?
+    accepted.recv_timeout(Duration::from_secs(5)).map_err(|_| {
+        abandon.store(true, Ordering::Release);
+        "Subscription setup timed out".to_string()
+    })?
 }

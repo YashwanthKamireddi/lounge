@@ -1,5 +1,18 @@
 //! A small GLES2-compatible GPU painter. Rust owns vector glyphs and the draw list;
 //! SDL only supplies the context. No browser, LVGL or Qt runtime.
+mod geometry;
+mod occlusion;
+mod shader;
+mod stats;
+mod text;
+mod textures;
+
+use geometry::{regions, screens};
+use shader::{gl_string, link};
+pub use stats::{GraphicsInfo, RenderStats};
+use text::load_font;
+pub use textures::{Compressed, read_astc};
+use textures::{compressed_texture, load_texture, texture};
 use crate::{
     font::Font,
     raster::{Size, Viewport},
@@ -19,7 +32,9 @@ use std::{
 pub type Color = [f32; 4];
 pub const WHITE: Color = [0.96, 0.96, 0.96, 1.];
 const GLYPH_GEOMETRY_BUDGET: usize = 8 * 1024 * 1024;
-const TEXT_GEOMETRY_BUDGET: usize = 32 * 1024 * 1024;
+// Every screen holds under 6 MB of text runs; twice that bounds a runaway
+// (a layout key changing every frame once held 24.8 MB) on a 1.3 GB TV.
+const TEXT_GEOMETRY_BUDGET: usize = 12 * 1024 * 1024;
 const TEXTURE_BUDGET: usize = 48 * 1024 * 1024;
 /// Every texture upload, for profiling frames that stall on one.
 static TEXTURE_UPLOADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -78,10 +93,18 @@ pub enum Draw {
     Glass(String, Rect, f32, Color, Color),
     AppImage(Arc<crate::app_artwork::Artwork>, Rect, Color),
     /// Two full-screen images mixed in one opaque pass: the first tinted by
-    /// nothing, the second by its colour, `f32` of the way to the second.
-    Dissolve(String, String, f32, Color),
+    /// nothing, the second by its colour, `f32` of the way to the second;
+    /// then lifted the last colour's alpha of the way to its colour (the
+    /// light appearance's frosted material, in the same pass).
+    Dissolve(String, String, f32, Color, Color),
     Clip(Option<Rect>),
     EdgeFade(Option<[f32; 4]>),
+    /// Rounded fills and pictures drawn while set get a soft edge this many
+    /// logical px either side of their outline, in place of the crisp 1 px
+    /// one. The TV shows its 1080p frame doubled to 4K, so a large curve
+    /// (the pill, menus, avatars) steps visibly with a 1 px edge; text and
+    /// tiles keep the crisp one.
+    Soft(Option<f32>),
 }
 
 struct Texture {
@@ -119,120 +142,6 @@ struct TextRun {
     frame: u64,
 }
 
-#[derive(Clone, Serialize)]
-pub struct GraphicsInfo {
-    pub vendor: String,
-    pub renderer: String,
-    pub version: String,
-    pub max_texture_size: u32,
-    pub max_viewport: [i32; 2],
-    pub fragment_highp: bool,
-}
-
-#[derive(Clone, Serialize)]
-pub struct RenderStats {
-    pub target: Size,
-    pub viewport: Viewport,
-    pub font_antialiasing: &'static str,
-    pub multisample_samples: u32,
-    pub max_logical_font_px: f32,
-    pub max_physical_font_px: f32,
-    pub cached_glyphs: usize,
-    pub glyph_tessellations: usize,
-    /// Textures uploaded since start (cumulative).
-    pub texture_uploads: usize,
-    pub glyph_failures: usize,
-    pub missing_glyphs: usize,
-    pub missing_images: usize,
-    pub glyph_geometry_bytes: usize,
-    pub cached_text_runs: usize,
-    pub text_geometry_bytes: usize,
-    pub text_triangles: usize,
-    pub artwork_bytes: usize,
-    pub vector_meshes: usize,
-    pub vector_bytes: usize,
-    pub vector_triangles: usize,
-    pub high_resolution_wallpaper: bool,
-    pub draw_calls: usize,
-    pub cpu_submission_ms: f64,
-    pub cpu_build_ms: f64,
-    /// Pixels this frame paints, in full screens, by kind of draw. The TV's
-    /// one-core GPU is bound by exactly this (fill), so it is the number to
-    /// cut; a desktop run measures it faithfully.
-    pub fill: std::collections::BTreeMap<&'static str, f32>,
-    /// The frame with the most fill since start, and what it was made of.
-    pub peak_fill: std::collections::BTreeMap<&'static str, f32>,
-    /// Opaque tiles masking what lies behind them, and their area (screens).
-    pub occluders: usize,
-    pub occluded: f32,
-}
-impl RenderStats {
-    fn new(target: Size) -> Self {
-        Self {
-            target,
-            viewport: Viewport::new(target),
-            font_antialiasing: "vector grayscale coverage",
-            multisample_samples: 0,
-            max_logical_font_px: 0.,
-            max_physical_font_px: 0.,
-            cached_glyphs: 0,
-            glyph_tessellations: 0,
-            texture_uploads: 0,
-            glyph_failures: 0,
-            missing_glyphs: 0,
-            missing_images: 0,
-            glyph_geometry_bytes: 0,
-            cached_text_runs: 0,
-            text_geometry_bytes: 0,
-            text_triangles: 0,
-            artwork_bytes: 0,
-            vector_meshes: 0,
-            vector_bytes: 0,
-            vector_triangles: 0,
-            high_resolution_wallpaper: false,
-            draw_calls: 0,
-            cpu_submission_ms: 0.,
-            cpu_build_ms: 0.,
-            fill: Default::default(),
-            peak_fill: Default::default(),
-            occluders: 0,
-            occluded: 0.,
-        }
-    }
-}
-
-/// The parts of `rect` a shape actually paints, as fractions of it. A rim (a
-/// border-only shape) covers just its edge: four bands along it rather than
-/// the whole rectangle, whose middle the shader would only fill with
-/// transparent pixels (on the TV's one-core GPU the dock's rim alone was a
-/// quarter of a screen per frame). Each band keeps the whole shape's
-/// coordinates, so the pixels are the same.
-fn regions(rect: Rect, radius: f32, border: f32) -> Vec<[f32; 4]> {
-    let edge = border + 3.;
-    let corner = (radius.max(0.) + edge) / rect.h;
-    let side = edge / rect.w;
-    if border > 0. && corner < 0.45 && side < 0.2 {
-        vec![
-            [0., 0., 1., corner],
-            [0., 1. - corner, 1., 1.],
-            [0., corner, side, 1. - corner],
-            [1. - side, corner, 1., 1. - corner],
-        ]
-    } else {
-        vec![[0., 0., 1., 1.]]
-    }
-}
-
-/// The share of the 1080p screen `rect` covers inside `clip`.
-fn screens(rect: Rect, clip: Option<Rect>) -> f32 {
-    let bound = clip.unwrap_or(Rect::new(0., 0., 1920., 1080.));
-    let x = rect.x.max(bound.x).max(0.);
-    let y = rect.y.max(bound.y).max(0.);
-    let right = (rect.x + rect.w).min(bound.x + bound.w).min(1920.);
-    let bottom = (rect.y + rect.h).min(bound.y + bound.h).min(1080.);
-    ((right - x).max(0.) * (bottom - y).max(0.)) / (1920. * 1080.)
-}
-
 enum BatchKind {
     Paint {
         texture: GLuint,
@@ -255,6 +164,7 @@ enum BatchKind {
         start: usize,
         amount: f32,
         tint: Color,
+        lift: Color,
     },
 }
 
@@ -276,6 +186,7 @@ struct Uniforms {
     texture: GLint,
     edge_fade: GLint,
     fringe: GLint,
+    embolden: GLint,
     transform: GLint,
     pixel_scale: GLint,
     tint: GLint,
@@ -288,6 +199,7 @@ impl Uniforms {
             texture: at(c"u_texture"),
             edge_fade: at(c"u_edge_fade"),
             fringe: at(c"u_fringe"),
+            embolden: at(c"u_embolden"),
             transform: at(c"u_transform"),
             pixel_scale: at(c"u_pixel_scale"),
             tint: at(c"u_tint"),
@@ -300,7 +212,7 @@ pub struct Renderer {
     astc: bool,
     program: GLuint,
     dissolve_program: GLuint,
-    dissolve_uniforms: [GLint; 4],
+    dissolve_uniforms: [GLint; 5],
     paint_uniforms: Uniforms,
     vector_uniforms: Uniforms,
     text_uniforms: Uniforms,
@@ -321,6 +233,8 @@ pub struct Renderer {
     batches: Vec<Batch>,
     clip: Option<Rect>,
     fade: Option<[f32; 4]>,
+    /// The soft edge set by Draw::Soft, for the draws being built now.
+    soft: f32,
     /// The rank (see Batch) of the draws being batched now.
     rank: u8,
     /// For each draw of this frame: whether it is an opaque tile.
@@ -344,10 +258,12 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(font: &Path, gles: bool, medium_precision: bool) -> Result<Self, String> {
         let directory = font.parent().ok_or("Invalid font path")?;
+        let began = Instant::now();
         let mut fonts = HashMap::new();
         // Open only the common face; the others, and all metrics and
         // outlines, load lazily on first use.
         fonts.insert(400, load_font(directory, 400)?);
+        let font_ms = began.elapsed().as_millis();
         let mut max_texture_size = 0;
         let mut max_viewport = [0; 2];
         let mut precision = 0;
@@ -433,7 +349,14 @@ impl Renderer {
                 return Err(error);
             }
         };
-        let dissolve_uniforms = [c"u_texture", c"u_texture2", c"u_mix", c"u_tint2"]
+        if cfg!(feature = "webos") {
+            crate::platform::status(&format!(
+                "startup: renderer font {} ms, shaders and setup {} ms",
+                font_ms,
+                began.elapsed().as_millis() - font_ms
+            ));
+        }
+        let dissolve_uniforms = [c"u_texture", c"u_texture2", c"u_mix", c"u_tint2", c"u_lift"]
             .map(|name| unsafe { gl::GetUniformLocation(dissolve_program, name.as_ptr()) });
         let mut buffer = 0;
         let mut vao = 0;
@@ -481,6 +404,7 @@ impl Renderer {
             batches: Vec::new(),
             clip: None,
             fade: None,
+            soft: 0.,
             rank: u8::MAX,
             occluder_at: Vec::new(),
             occluders: Vec::new(),
@@ -499,120 +423,6 @@ impl Renderer {
             skip: Vec::new(),
             damage: None,
         })
-    }
-
-    fn ensure_font(&mut self, id: u16) -> bool {
-        if self.fonts.contains_key(&id) {
-            return true;
-        }
-        if self.failed_fonts.contains(&id) {
-            return false;
-        }
-        match load_font(&self.font_directory, id) {
-            Ok(font) => {
-                self.fonts.insert(id, font);
-                true
-            }
-            Err(error) => {
-                eprintln!("{error}");
-                self.failed_fonts.insert(id);
-                false
-            }
-        }
-    }
-
-    fn glyph(&mut self, c: char, font: u16) -> Result<&[luma_vector_geometry::Vertex], String> {
-        let key = (c, font);
-        if !self.glyphs.contains_key(&key) {
-            let geometry = self.fonts[&font].geometry(c)?;
-            self.glyphs.insert(
-                key,
-                Glyph {
-                    geometry,
-                    frame: self.frame,
-                },
-            );
-            self.stats.glyph_tessellations += 1;
-        }
-        let glyph = self.glyphs.get_mut(&key).unwrap();
-        glyph.frame = self.frame;
-        Ok(&glyph.geometry)
-    }
-
-    /// Prepare up to `budget` not-yet-cached glyphs of the printable ASCII
-    /// set in the faces the interface uses, so a screen opened for the first
-    /// time never tessellates its text mid-frame. Returns whether any work
-    /// remains. Meant for idle ticks only.
-    pub fn warm_glyphs(&mut self, budget: usize) -> bool {
-        // Font ids are the weight, +1000 for display sizes (>= 32pt).
-        const FACES: [u16; 6] = [400, 500, 600, 650, 1500, 1650];
-        let mut done = 0;
-        for font in FACES {
-            if !self.ensure_font(font) {
-                continue;
-            }
-            for c in ' '..='~' {
-                if self.glyphs.contains_key(&(c, font)) {
-                    continue;
-                }
-                if done == budget {
-                    return true;
-                }
-                if let Ok(geometry) = self.fonts[&font].geometry(c) {
-                    self.glyphs.insert((c, font), Glyph { geometry, frame: self.frame });
-                } else {
-                    self.glyphs.insert((c, font), Glyph { geometry: Vec::new(), frame: self.frame });
-                }
-                done += 1;
-            }
-        }
-        false
-    }
-
-    fn trim_text_geometry(&mut self) {
-        let glyph_bytes =
-            |glyph: &Glyph| glyph.geometry.len() * size_of::<luma_vector_geometry::Vertex>();
-        let mut bytes: usize = self.glyphs.values().map(glyph_bytes).sum();
-        if bytes > GLYPH_GEOMETRY_BUDGET || self.glyphs.len() > 4096 {
-            let mut old: Vec<_> = self
-                .glyphs
-                .iter()
-                .filter(|(_, glyph)| glyph.frame != self.frame)
-                .map(|(key, glyph)| (*key, glyph.frame))
-                .collect();
-            old.sort_by_key(|(_, frame)| *frame);
-            for (key, _) in old {
-                if bytes <= GLYPH_GEOMETRY_BUDGET && self.glyphs.len() <= 4096 {
-                    break;
-                }
-                if let Some(glyph) = self.glyphs.remove(&key) {
-                    bytes -= glyph_bytes(&glyph);
-                }
-            }
-        }
-        let run_bytes = |run: &TextRun| run.mesh.as_ref().map_or(0, |mesh| mesh.bytes);
-        let mut bytes: usize = self.text_runs.values().map(run_bytes).sum();
-        if bytes > TEXT_GEOMETRY_BUDGET || self.text_runs.len() > 512 {
-            let mut old: Vec<_> = self
-                .text_runs
-                .iter()
-                .filter(|(_, run)| run.frame != self.frame)
-                .map(|(key, run)| (key.clone(), run.frame))
-                .collect();
-            old.sort_by_key(|(_, frame)| *frame);
-            for (key, _) in old {
-                if bytes <= TEXT_GEOMETRY_BUDGET && self.text_runs.len() <= 512 {
-                    break;
-                }
-                if let Some(run) = self.text_runs.remove(&key) {
-                    bytes -= run_bytes(&run);
-                }
-            }
-        }
-        self.stats.cached_glyphs = self.glyphs.len();
-        self.stats.glyph_geometry_bytes = self.glyphs.values().map(glyph_bytes).sum();
-        self.stats.cached_text_runs = self.text_runs.len();
-        self.stats.text_geometry_bytes = self.text_runs.values().map(run_bytes).sum();
     }
 
     fn quad(
@@ -639,6 +449,16 @@ impl Renderer {
         if rect.w <= 0. || rect.h <= 0. {
             return;
         }
+        // A soft edge (Draw::Soft) on a rounded fill or picture: the quad
+        // grows by it and the shader's blur path, which shrinks it back,
+        // ramps coverage across the same outline.
+        let (rect, uv, border) = if self.soft > 0. && radius > 0. && border == 0. {
+            let s = self.soft;
+            let (du, dv) = ((uv[2] - uv[0]) / rect.w * s, (uv[3] - uv[1]) / rect.h * s);
+            (rect.inset(-s), [uv[0] - du, uv[1] - dv, uv[2] + du, uv[3] + dv], -s)
+        } else {
+            (rect, uv, border)
+        };
         // Large square-cornered fills (wallpaper, dims, photos) need no edge
         // coverage maths: route them to the shader's plain texture path.
         let radius = if radius <= 0. && border == 0. && rect.w >= 64. && rect.h >= 64. {
@@ -700,211 +520,6 @@ impl Renderer {
             fade: self.fade,
             rank: self.rank,
         });
-    }
-
-    fn text(&mut self, text: &str, rect: Rect, style: TextStyle, color: Color, centered: bool) {
-        // Layout remains logical. Reuse the same run geometry at every density;
-        // its shader snaps insertion origins and computes pixel-sized coverage.
-        let size_f = style.size;
-        let viewport = self.stats.viewport;
-        self.stats.max_logical_font_px = self.stats.max_logical_font_px.max(size_f);
-        self.stats.max_physical_font_px = self
-            .stats
-            .max_physical_font_px
-            .max(size_f * viewport.text_scale());
-        let padded = rect.inset(-size_f);
-        if padded.x + padded.w < 0.
-            || padded.y + padded.h < 0.
-            || padded.x > 1920.
-            || padded.y > 1080.
-            || self.clip.is_some_and(|clip| {
-                padded.x + padded.w < clip.x
-                    || padded.y + padded.h < clip.y
-                    || padded.x > clip.x + clip.w
-                    || padded.y > clip.y + clip.h
-            })
-        {
-            return;
-        }
-        let origin = [rect.x, rect.y];
-        let key = TextKey {
-            text: text.into(),
-            weight: style.weight,
-            layout: [
-                size_f.to_bits(),
-                style.tracking.to_bits(),
-                style.line_height.to_bits(),
-                rect.w.to_bits(),
-                rect.h.to_bits(),
-            ],
-            flags: u8::from(style.align_right)
-                | (u8::from(centered) << 1)
-                | (u8::from(self.stats.multisample_samples > 1) << 2),
-        };
-        if self.text_runs.contains_key(&key) {
-            self.submit_text(key, origin, color);
-            return;
-        }
-        let rect = Rect::new(0., 0., rect.w, rect.h);
-        let font_id = style.weight + if style.size >= 32. { 1000 } else { 0 };
-        if !self.ensure_font(font_id) {
-            self.stats.glyph_failures += text.chars().count();
-            return;
-        }
-        let font = &self.fonts[&font_id];
-        let line_height = size_f * style.line_height;
-        let baseline = font.horizontal_line_metrics(size_f).map_or(size_f, |m| {
-            (line_height - m.ascent + m.descent) / 2. + m.ascent
-        });
-        let tracking = style.tracking * size_f;
-        let advance = |c| {
-            if c == '\n' {
-                0.
-            } else {
-                font.metrics(c, size_f).advance_width + tracking
-            }
-        };
-        let mut lines: Vec<String> = Vec::new();
-        let mut line = String::new();
-        let mut width = 0.;
-        // Word wrapping, with character fallback for a title wider than the tile.
-        for word in text.split_inclusive(char::is_whitespace) {
-            let word_width: f32 = word.chars().map(advance).sum();
-            if width > 0. && width + word_width > rect.w {
-                lines.push(line.trim_end().into());
-                line.clear();
-                width = 0.;
-            }
-            for c in word.chars() {
-                if c == '\n' {
-                    lines.push(line.trim_end().into());
-                    line.clear();
-                    width = 0.;
-                    continue;
-                }
-                let w = advance(c);
-                if width > 0. && width + w > rect.w {
-                    lines.push(line.trim_end().into());
-                    line.clear();
-                    width = 0.;
-                }
-                line.push(c);
-                width += w;
-            }
-        }
-        if !line.is_empty() {
-            lines.push(line.trim_end().into());
-        }
-        let mut placed = Vec::new();
-        for (index, line) in lines.iter().enumerate() {
-            let top = rect.y + index as f32 * line_height;
-            if index > 0 && top + line_height > rect.y + rect.h + 1. {
-                break;
-            }
-            let mut previous = None;
-            let width: f32 = line
-                .chars()
-                .map(|c| {
-                    let kern = previous
-                        .and_then(|p| font.horizontal_kern(p, c, size_f))
-                        .unwrap_or(0.);
-                    previous = Some(c);
-                    advance(c) + kern
-                })
-                .sum();
-            let mut x = rect.x
-                + if style.align_right {
-                    rect.w - width
-                } else if centered {
-                    (rect.w - width) / 2.
-                } else {
-                    0.
-                };
-            let mut previous = None;
-            for c in line.chars() {
-                if let Some(previous) = previous {
-                    x += font.horizontal_kern(previous, c, size_f).unwrap_or(0.);
-                }
-                placed.push((c, x, top + baseline));
-                x += advance(c);
-                previous = Some(c);
-            }
-        }
-        let mut vertices = Vec::new();
-        let mut missing_glyphs = 0;
-        let mut failures = 0;
-        let multisampled = self.stats.multisample_samples > 1;
-        for (c, x, baseline) in placed {
-            if self.fonts[&font_id].lookup_glyph_index(c) == 0 && !c.is_whitespace() {
-                missing_glyphs += 1;
-            }
-            match self.glyph(c, font_id) {
-                Ok(geometry) => {
-                    for triangle in geometry.as_chunks::<3>().0 {
-                        // True sample coverage needs only the original fill.
-                        // Exclude the boundary fringe, not just its alpha.
-                        if multisampled && triangle.iter().any(|vertex| vertex.coverage < 1.) {
-                            continue;
-                        }
-                        for vertex in triangle {
-                            vertices.extend_from_slice(&[
-                                vertex.position.x * size_f,
-                                vertex.position.y * size_f,
-                                if multisampled { 0. } else { vertex.offset[0] },
-                                if multisampled { 0. } else { vertex.offset[1] },
-                                x,
-                                baseline,
-                                0.,
-                                0.,
-                                vertex.coverage,
-                            ]);
-                        }
-                    }
-                }
-                Err(error) => {
-                    eprintln!("Luma glyph {c:?}: {error}");
-                    failures += 1;
-                }
-            }
-        }
-        let mesh = if vertices.is_empty() {
-            None
-        } else {
-            match vector::Mesh::upload(1., 1., &vertices) {
-                Ok(mesh) => Some(mesh),
-                Err(error) => {
-                    eprintln!("Luma text: {error}");
-                    failures += 1;
-                    None
-                }
-            }
-        };
-        self.text_runs.insert(
-            key.clone(),
-            TextRun {
-                mesh,
-                missing_glyphs,
-                failures,
-                frame: self.frame,
-            },
-        );
-        self.submit_text(key, origin, color);
-    }
-
-    fn submit_text(&mut self, key: TextKey, origin: [f32; 2], tint: Color) {
-        let run = self.text_runs.get_mut(&key).unwrap();
-        run.frame = self.frame;
-        self.stats.missing_glyphs += run.missing_glyphs;
-        self.stats.glyph_failures += run.failures;
-        if let Some(mesh) = &run.mesh {
-            self.stats.text_triangles += mesh.vertices as usize / 3;
-            self.batches.push(Batch {
-                kind: BatchKind::Text { key, origin, tint },
-                clip: self.clip,
-                fade: self.fade,
-                rank: self.rank,
-            });
-        }
     }
 
     fn image(&mut self, path: &str, mut rect: Rect, radius: f32, contain: bool, tint: Color) {
@@ -977,7 +592,7 @@ impl Renderer {
         Some(texture.id)
     }
 
-    fn dissolve(&mut self, from: &str, to: &str, amount: f32, tint: Color) {
+    fn dissolve(&mut self, from: &str, to: &str, amount: f32, tint: Color, lift: Color) {
         let (Some(from), Some(to)) = (self.loaded(from), self.loaded(to)) else {
             return;
         };
@@ -1007,6 +622,7 @@ impl Renderer {
                 start,
                 amount,
                 tint,
+                lift,
             },
             clip: None,
             fade: None,
@@ -1138,6 +754,7 @@ impl Renderer {
         self.batches.clear();
         self.clip = None;
         self.fade = None;
+        self.soft = 0.;
         let skip = |kind: &str| self.skip.iter().any(|s| s == kind);
         let (no_text, no_shadow, no_vector, no_image, no_shape, no_glass, no_dissolve) = (
             skip("text"),
@@ -1196,7 +813,7 @@ impl Renderer {
                 Draw::AppImage(_, rect, _) => Some(("image", *rect)),
                 Draw::Glass(_, rect, ..) => Some(("glass", *rect)),
                 Draw::Dissolve(..) => Some(("background", Rect::new(0., 0., 1920., 1080.))),
-                Draw::Clip(_) | Draw::EdgeFade(_) => None,
+                Draw::Clip(_) | Draw::EdgeFade(_) | Draw::Soft(_) => None,
             };
             if let Some((kind, rect)) = painted {
                 *fill.entry(kind).or_insert(0.) += screens(rect, self.clip);
@@ -1245,9 +862,10 @@ impl Renderer {
                 }
                 Draw::AppImage(image, rect, tint) => self.app_image(image, *rect, *tint),
                 Draw::Glass(path, rect, radius, top, bottom) => self.glass(path, *rect, *radius, [*top, *bottom]),
-                Draw::Dissolve(from, to, amount, tint) => self.dissolve(from, to, *amount, *tint),
+                Draw::Dissolve(from, to, amount, tint, lift) => self.dissolve(from, to, *amount, *tint, *lift),
                 Draw::Clip(clip) => self.clip = *clip,
                 Draw::EdgeFade(fade) => self.fade = *fade,
+                Draw::Soft(soft) => self.soft = soft.unwrap_or(0.),
             }
         }
         self.rank = u8::MAX;
@@ -1425,6 +1043,7 @@ impl Renderer {
                         start,
                         amount,
                         tint,
+                        lift,
                     } => {
                         // Same vertex layout as paint; the output is opaque, so
                         // blending is off for this one full-screen pass.
@@ -1443,11 +1062,12 @@ impl Renderer {
                             );
                             offset += size as usize;
                         }
-                        let [texture, texture2, mix, tint2] = self.dissolve_uniforms;
+                        let [texture, texture2, mix, tint2, lift_uniform] = self.dissolve_uniforms;
                         gl::Uniform1i(texture, 0);
                         gl::Uniform1i(texture2, 1);
                         gl::Uniform1f(mix, *amount);
                         gl::Uniform4f(tint2, tint[0], tint[1], tint[2], tint[3]);
+                        gl::Uniform4f(lift_uniform, lift[0], lift[1], lift[2], lift[3]);
                         gl::ActiveTexture(gl::TEXTURE1);
                         gl::BindTexture(gl::TEXTURE_2D, *to);
                         gl::ActiveTexture(gl::TEXTURE0);
@@ -1467,6 +1087,7 @@ impl Renderer {
                             mesh,
                             [rect.w / mesh.width, rect.h / mesh.height, rect.x, rect.y],
                             *tint,
+                            0.,
                         );
                         paint_bound = false;
                     }
@@ -1480,6 +1101,7 @@ impl Renderer {
                             mesh,
                             [1., 1., origin[0], origin[1]],
                             *tint,
+                            text::embolden(f32::from_bits(key.layout[0]) * self.stats.viewport.height as f32 / 1080.),
                         );
                         paint_bound = false;
                     }
@@ -1523,7 +1145,7 @@ impl Renderer {
         self.stats.cpu_submission_ms = started.elapsed().as_secs_f64() * 1000.;
     }
 
-    fn draw_mesh(&self, program: GLuint, mesh: &vector::Mesh, transform: [f32; 4], tint: Color) {
+    fn draw_mesh(&self, program: GLuint, mesh: &vector::Mesh, transform: [f32; 4], tint: Color, embolden: f32) {
         let viewport = self.stats.viewport;
         let uniforms = if program == self.text_program {
             self.text_uniforms
@@ -1541,6 +1163,7 @@ impl Renderer {
                         0.5
                     },
                 );
+                gl::Uniform1f(uniforms.embolden, embolden);
             }
             gl::BindBuffer(gl::ARRAY_BUFFER, mesh.buffer);
             gl::DisableVertexAttribArray(4);
@@ -1659,102 +1282,6 @@ impl Renderer {
         }
     }
 
-    /// Stencil bits of the bound framebuffer (0 when it has none).
-    fn stencil_bits(&self) -> i32 {
-        let mut bits = 0;
-        // SAFETY: plain state queries on the current context; any error they
-        // raise (an enum this profile lacks) is cleared before returning.
-        unsafe {
-            if self.gles {
-                // GL_STENCIL_BITS: GLES 2 has it; the core bindings do not.
-                gl::GetIntegerv(0x0D57, &mut bits);
-            } else {
-                let mut bound = 0;
-                gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut bound);
-                let attachment = if bound == 0 { gl::STENCIL } else { gl::STENCIL_ATTACHMENT };
-                let mut kind = gl::NONE as i32;
-                gl::GetFramebufferAttachmentParameteriv(
-                    gl::FRAMEBUFFER,
-                    attachment,
-                    gl::FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
-                    &mut kind,
-                );
-                if kind != gl::NONE as i32 {
-                    gl::GetFramebufferAttachmentParameteriv(
-                        gl::FRAMEBUFFER,
-                        attachment,
-                        gl::FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE,
-                        &mut bits,
-                    );
-                }
-            }
-            while gl::GetError() != gl::NO_ERROR {}
-        }
-        bits.max(0)
-    }
-
-    /// Collects this frame's opaque tile interiors into `occluders`, in paint
-    /// order, marking which draws they are in `occluder_at`.
-    /// Only fills drawn fully opaque count: a tile's solid colour or its
-    /// full-bleed artwork, inside any clip, never under an edge fade.
-    fn find_occluders(&mut self, commands: &[Draw]) {
-        self.occluders.clear();
-        self.occluder_at.clear();
-        self.occluder_at.resize(commands.len(), false);
-        if !self.stencil || self.skip.iter().any(|kind| kind == "occlusion") {
-            return;
-        }
-        let (mut clip, mut fade) = (None::<Rect>, false);
-        for (index, command) in commands.iter().enumerate() {
-            let solid = match command {
-                Draw::Clip(area) => {
-                    clip = *area;
-                    None
-                }
-                Draw::EdgeFade(area) => {
-                    fade = area.is_some();
-                    None
-                }
-                _ if fade => None,
-                Draw::Shape(rect, radius, 0., color) if color[3] >= 0.999 => Some((*rect, *radius)),
-                Draw::RoundedGradient(rect, radius, top, bottom) if top[3] >= 0.999 && bottom[3] >= 0.999 => {
-                    Some((*rect, *radius))
-                }
-                // Glass at full strength is a solid picture of the backdrop.
-                Draw::Glass(_, rect, radius, top, bottom) if top[3] >= 0.999 && bottom[3] >= 0.999 => {
-                    Some((*rect, *radius))
-                }
-                // Tile artwork is full-bleed and opaque (only its corners are cut).
-                Draw::Image(path, rect, radius, false) if path.contains("/tiles/") => Some((*rect, *radius)),
-                Draw::TintedImage(path, rect, radius, false, tint) if path.contains("/tiles/") && tint[3] >= 0.999 => {
-                    Some((*rect, *radius))
-                }
-                _ => None,
-            };
-            let Some((rect, radius)) = solid else {
-                continue;
-            };
-            // Inside a rounded rectangle, the rectangle inset by 0.3 of the
-            // radius (plus the edge's blend) is entirely solid.
-            let mut inner = rect.inset(radius.max(0.) * 0.3 + 2.);
-            if let Some(clip) = clip {
-                let (x, y) = (inner.x.max(clip.x), inner.y.max(clip.y));
-                inner = Rect::new(
-                    x,
-                    y,
-                    (inner.x + inner.w).min(clip.x + clip.w) - x,
-                    (inner.y + inner.h).min(clip.y + clip.h) - y,
-                );
-            }
-            // Small pieces save little and only cost a stencil write; the
-            // stencil counts 254 tiles at most.
-            if inner.w >= 48. && inner.h >= 48. && self.occluders.len() < 254 {
-                self.occluders.push(inner);
-                self.occluder_at[index] = true;
-            }
-        }
-    }
-
     pub fn screenshot(&self, path: &Path, width: u32, height: u32) -> Result<(), String> {
         let mut pixels = vec![0; width as usize * height as usize * 4];
         unsafe {
@@ -1835,31 +1362,12 @@ impl Renderer {
     }
 }
 
-fn load_font(directory: &Path, id: u16) -> Result<Font, String> {
-    let name = if id >= 1000 {
-        format!("font-display-{}.ttf", id - 1000)
-    } else {
-        format!("font-{id}.ttf")
-    };
-    let path = directory.join(&name);
-    let started = Instant::now();
-    let bytes = std::fs::read(&path)
-        .map_err(|e| format!("Font {}: {e}. Regenerate native assets.", path.display()))?;
-    let font = Font::from_bytes(bytes).map_err(|e| format!("Font {}: {e}", path.display()))?;
-    if cfg!(feature = "webos") {
-        eprintln!(
-            "Luma font: {name} loaded in {} ms",
-            started.elapsed().as_millis()
-        );
-    }
-    Ok(font)
-}
-
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteBuffers(1, &self.buffer);
             gl::DeleteProgram(self.program);
+            gl::DeleteProgram(self.dissolve_program);
             gl::DeleteProgram(self.vector_program);
             gl::DeleteProgram(self.text_program);
             if self.vao != 0 {
@@ -1869,223 +1377,3 @@ impl Drop for Renderer {
     }
 }
 
-/// GL_COMPRESSED_RGBA_ASTC_4x4_KHR.
-const ASTC_4X4: u32 = 0x93B0;
-
-/// An image's GPU-compressed copy, shipped beside it as `<path>.astc` (ASTC
-/// 4x4, visually lossless): a quarter of the memory and of what the GPU reads
-/// per frame, and no decoding at all.
-pub struct Compressed {
-    width: u32,
-    height: u32,
-    data: Vec<u8>,
-}
-
-/// Reads `<path>.astc`, accepting only a 4x4 2D file whose data matches its
-/// header exactly.
-pub fn read_astc(path: &str) -> Option<Compressed> {
-    let bytes = std::fs::read(format!("{path}.astc")).ok()?;
-    let header = bytes.get(..16)?;
-    if header[..4] != [0x13, 0xab, 0xa1, 0x5c] || header[4..7] != [4, 4, 1] {
-        return None;
-    }
-    let size = |at: usize| u32::from(header[at]) | u32::from(header[at + 1]) << 8 | u32::from(header[at + 2]) << 16;
-    let (width, height, depth) = (size(7), size(10), size(13));
-    let blocks = width.div_ceil(4) as usize * height.div_ceil(4) as usize;
-    if depth != 1 || width == 0 || height == 0 || bytes.len() != 16 + blocks * 16 {
-        return None;
-    }
-    Some(Compressed {
-        width,
-        height,
-        data: bytes[16..].to_vec(),
-    })
-}
-
-fn compressed_texture(image: &Compressed) -> Texture {
-    TEXTURE_UPLOADS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut id = 0;
-    unsafe {
-        gl::GenTextures(1, &mut id);
-        gl::BindTexture(gl::TEXTURE_2D, id);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
-        gl::CompressedTexImage2D(
-            gl::TEXTURE_2D,
-            0,
-            ASTC_4X4,
-            image.width as i32,
-            image.height as i32,
-            0,
-            image.data.len() as i32,
-            image.data.as_ptr().cast(),
-        );
-    }
-    Texture {
-        id,
-        width: image.width,
-        height: image.height,
-        frame: 0,
-    }
-}
-
-/// An image's texture: its ASTC copy where the GPU takes ASTC, otherwise the
-/// decoded original.
-fn load_texture(astc: bool, path: &str) -> Option<Texture> {
-    if astc && let Some(image) = read_astc(path) {
-        return Some(compressed_texture(&image));
-    }
-    match image::open(path) {
-        Ok(image) => {
-            let image = image.into_rgba8();
-            Some(texture(image.width(), image.height(), image.as_raw()))
-        }
-        Err(error) => {
-            eprintln!("Artwork {path}: {error}");
-            None
-        }
-    }
-}
-
-fn texture(width: u32, height: u32, pixels: &[u8]) -> Texture {
-    TEXTURE_UPLOADS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut id = 0;
-    unsafe {
-        gl::GenTextures(1, &mut id);
-        gl::BindTexture(gl::TEXTURE_2D, id);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
-        gl::TexImage2D(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGBA as i32,
-            width as i32,
-            height as i32,
-            0,
-            gl::RGBA,
-            gl::UNSIGNED_BYTE,
-            if pixels.is_empty() {
-                std::ptr::null()
-            } else {
-                pixels.as_ptr().cast()
-            },
-        );
-    }
-    Texture {
-        id,
-        width,
-        height,
-        frame: 0,
-    }
-}
-
-fn gl_string(name: GLenum) -> String {
-    unsafe {
-        let value = gl::GetString(name);
-        if value.is_null() {
-            "unknown".into()
-        } else {
-            CStr::from_ptr(value.cast()).to_string_lossy().into_owned()
-        }
-    }
-}
-
-fn compile(kind: GLenum, source: &str) -> Result<GLuint, String> {
-    let source = CString::new(source).map_err(|e| e.to_string())?;
-    unsafe {
-        let shader = gl::CreateShader(kind);
-        gl::ShaderSource(shader, 1, &source.as_ptr(), std::ptr::null());
-        gl::CompileShader(shader);
-        let mut success = 0;
-        gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut success);
-        if success == 0 {
-            let mut log = vec![0u8; 4096];
-            let mut len = 0;
-            gl::GetShaderInfoLog(shader, log.len() as i32, &mut len, log.as_mut_ptr().cast());
-            gl::DeleteShader(shader);
-            return Err(format!(
-                "Shader compilation: {}",
-                String::from_utf8_lossy(&log[..len as usize])
-            ));
-        }
-        Ok(shader)
-    }
-}
-
-fn link(vertex: &str, fragment: &str, attributes: &[&CStr]) -> Result<GLuint, String> {
-    let vertex = compile(gl::VERTEX_SHADER, vertex)?;
-    let fragment = match compile(gl::FRAGMENT_SHADER, fragment) {
-        Ok(fragment) => fragment,
-        Err(error) => {
-            unsafe {
-                gl::DeleteShader(vertex);
-            }
-            return Err(error);
-        }
-    };
-    unsafe {
-        let program = gl::CreateProgram();
-        gl::AttachShader(program, vertex);
-        gl::AttachShader(program, fragment);
-        for (index, name) in attributes.iter().enumerate() {
-            gl::BindAttribLocation(program, index as u32, name.as_ptr());
-        }
-        gl::LinkProgram(program);
-        gl::DeleteShader(vertex);
-        gl::DeleteShader(fragment);
-        let mut success = 0;
-        gl::GetProgramiv(program, gl::LINK_STATUS, &mut success);
-        if success == 0 {
-            let mut log = vec![0u8; 4096];
-            let mut len = 0;
-            gl::GetProgramInfoLog(program, log.len() as i32, &mut len, log.as_mut_ptr().cast());
-            gl::DeleteProgram(program);
-            return Err(format!(
-                "Shader linking: {}",
-                String::from_utf8_lossy(&log[..len as usize])
-            ));
-        }
-        Ok(program)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Rect, regions};
-
-    #[test]
-    fn a_rim_draws_only_bands_that_cover_its_edge() {
-        let dock = Rect::new(50., 740., 1820., 274.);
-        let (radius, border) = (72., 1.5);
-        let bands = regions(dock, radius, border);
-        assert_eq!(bands.len(), 4);
-        // Every pixel the rim (and its anti-aliasing) can touch lies in a
-        // band: within the corner rounding of the top and bottom, or within
-        // border + aa of the left and right sides.
-        let inside = |fx: f32, fy: f32| {
-            bands.iter().any(|[x0, y0, x1, y1]| fx >= *x0 && fx <= *x1 && fy >= *y0 && fy <= *y1)
-        };
-        let edge = (border + 2.5) / dock.w;
-        for fy in [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0] {
-            assert!(inside(0.0, fy) && inside(edge, fy) && inside(1.0, fy) && inside(1.0 - edge, fy));
-        }
-        for fx in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            assert!(inside(fx, (radius + border) / dock.h) && inside(fx, 1. - (radius + border) / dock.h));
-        }
-        // The middle, which the shader would only fill with nothing, is not drawn.
-        assert!(!inside(0.5, 0.5));
-        let area: f32 = bands.iter().map(|[x0, y0, x1, y1]| (x1 - x0) * (y1 - y0)).sum();
-        assert!(area < 0.65);
-    }
-
-    #[test]
-    fn fills_and_small_rims_draw_whole() {
-        assert_eq!(regions(Rect::new(0., 0., 400., 200.), 30., 0.), vec![[0., 0., 1., 1.]]);
-        // A capsule pill's rounding spans its height: no bands to save.
-        assert_eq!(regions(Rect::new(0., 0., 360., 60.), 30., 1.5), vec![[0., 0., 1., 1.]]);
-    }
-}

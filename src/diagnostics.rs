@@ -1,7 +1,8 @@
 //! Presentation pacing is measured only in forced-redraw profiling mode. Idle
 //! wakeups are not frames, and CPU submission time is not a GPU timestamp.
+use crate::{raster::Size, renderer::RenderStats, state::State};
 use serde::Serialize;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const WARMUP: usize = 10;
 
@@ -95,6 +96,122 @@ fn summarize(samples: &[f64]) -> Option<Timing> {
         p95_ms: sorted[(sorted.len() * 95).div_ceil(100) - 1],
         max_ms: *sorted.last()?,
     })
+}
+
+
+/// One presented frame, as the frame log sees it.
+pub struct Frame {
+    /// Frames presented before this one.
+    pub number: usize,
+    pub compose_ms: f64,
+    /// A screenshot frame: kept out of the pacing figures.
+    pub exclude: bool,
+    pub width: u32,
+    pub height: u32,
+    /// Time since Luma started.
+    pub uptime: Duration,
+    /// Log the drawable size whenever it changes (diagnostic runs).
+    pub verbose: bool,
+}
+
+/// Per-frame logging: the TV's slow-frame log (`/tmp/luma-debug`), the
+/// profiler's notes on slow frames, and drawable size changes.
+pub struct FrameLog {
+    slow_log: bool,
+    last_presented: Instant,
+    was_animating: bool,
+    last_faults: u64,
+    /// Texture uploads and glyph tessellations at the last profiled frame.
+    last_counts: (usize, usize),
+    last_drawable: Option<Size>,
+}
+
+impl FrameLog {
+    /// `slow_log`: log every frame that misses the panel's refresh.
+    pub fn new(slow_log: bool) -> Self {
+        Self {
+            slow_log,
+            last_presented: Instant::now(),
+            was_animating: false,
+            last_faults: crate::debug::major_faults(),
+            last_counts: (0, 0),
+            last_drawable: None,
+        }
+    }
+
+    /// A frame was presented. `profile` is the profiler in a profiling run.
+    pub fn presented(&mut self, state: &State, stats: &RenderStats, profile: Option<&mut Profile>, frame: Frame) {
+        // TV debug log: every frame that misses the panel's refresh.
+        if self.slow_log {
+            let now = Instant::now();
+            let interval = now.duration_since(self.last_presented).as_secs_f64() * 1000.;
+            // The first frame after an idle gap is not slow: Luma sat
+            // still (correctly) until the next key arrived.
+            // In Move every frame is logged, with the memory pages read
+            // back from swap since the last one, to tell a drawing
+            // stall from a paging one.
+            let slow = interval > 30. && interval < 1000. && state.animating() && self.was_animating;
+            if slow || state.moving.is_some() {
+                let faults = crate::debug::major_faults();
+                eprintln!(
+                    "Luma {} at {} ms: {interval:.1} ms (compose {:.1}, cpu {:.1}, build {:.1}, draws {}, uploads {}, page faults +{}) page {:?} overlay {}",
+                    if slow { "slow frame" } else { "move frame" },
+                    frame.uptime.as_millis(),
+                    frame.compose_ms,
+                    stats.cpu_submission_ms,
+                    stats.cpu_build_ms,
+                    stats.draw_calls,
+                    stats.texture_uploads,
+                    faults.saturating_sub(self.last_faults),
+                    state.page,
+                    state.overlay.is_some(),
+                );
+                self.last_faults = faults;
+            }
+            self.last_presented = now;
+            self.was_animating = state.animating();
+        }
+        if let Some(profile) = profile {
+            profile.record_split(
+                Instant::now(),
+                stats.cpu_submission_ms,
+                stats.cpu_build_ms,
+                frame.compose_ms,
+                frame.exclude,
+            );
+            let (uploads, tessellations) = (stats.texture_uploads, stats.glyph_tessellations);
+            if let Some(interval) = profile.last_interval()
+                && interval > 30.
+            {
+                profile.note_slow(format!(
+                    "frame {}: {interval:.1} ms, cpu {:.1}, uploads +{}, glyphs +{}, draws {}, scroll {:.0}/{:.0}, focus {:?}",
+                    frame.number,
+                    stats.cpu_submission_ms,
+                    uploads - self.last_counts.0,
+                    tessellations - self.last_counts.1,
+                    stats.draw_calls,
+                    state.scroll,
+                    state.shown_scroll,
+                    state.focus,
+                ));
+            }
+            self.last_counts = (uploads, tessellations);
+        }
+        let drawable = Size::new(frame.width, frame.height);
+        if self.last_drawable != Some(drawable) {
+            if frame.verbose || self.slow_log {
+                eprintln!(
+                    "Luma drawable: {}x{}, density {:.3}x, 4K buffer: {}",
+                    frame.width,
+                    frame.height,
+                    drawable.scale(),
+                    drawable.is_4k()
+                );
+            }
+            self.last_drawable = Some(drawable);
+        }
+
+    }
 }
 
 #[cfg(test)]

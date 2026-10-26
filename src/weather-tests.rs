@@ -286,6 +286,42 @@ fn openstreetmap_places_name_postcodes_by_their_district() {
 }
 
 #[test]
+fn one_place_listed_many_times_shows_once_with_its_district() {
+    // OpenStreetMap's answer for "sagar nagar": one neighbourhood in
+    // Visakhapatnam as a place, a housing area and two roads, and another
+    // Sagar Nagar in Kerala.
+    let address = json!({"county": "Visakhapatnam Rural Mandal", "state_district": "Visakhapatnam District",
+                         "state": "Andhra Pradesh", "country": "India"});
+    let places = parse_places(&json!([
+        {"name": "Sagar Nagar", "lat": "17.7671", "lon": "83.3580", "category": "place",
+         "addresstype": "neighbourhood", "address": address},
+        {"name": "Sagar nagar", "lat": "17.7615", "lon": "83.3573", "category": "landuse",
+         "addresstype": "residential", "address": address},
+        {"name": "sagar nagar", "lat": "11.6617", "lon": "76.2487", "category": "landuse",
+         "addresstype": "residential",
+         "address": {"town": "Sultan Bathery", "state_district": "Wayanad", "state": "Kerala", "country": "India"}},
+        {"name": "Sagar Nagar", "lat": "17.7645", "lon": "83.3613", "category": "highway",
+         "addresstype": "road", "address": address},
+    ]))
+    .unwrap();
+    let shown: Vec<_> = places.iter().map(|place| (place.name.as_str(), place.detail())).collect();
+    assert_eq!(
+        shown,
+        [
+            ("Sagar Nagar", "Visakhapatnam, Andhra Pradesh, India".to_owned()),
+            ("Sagar Nagar", "Sultan Bathery, Kerala, India".to_owned()),
+        ]
+    );
+    // Open-Meteo's district reads the same way.
+    let open_meteo = parse_locations(&json!({"results": [
+        {"name": "Gajuwaka", "admin1": "Andhra Pradesh", "admin2": "Visakhapatnam",
+         "country": "India", "latitude": 17.7, "longitude": 83.2}
+    ]}))
+    .unwrap();
+    assert_eq!(open_meteo[0].detail(), "Visakhapatnam, Andhra Pradesh, India");
+}
+
+#[test]
 fn an_empty_search_message_does_not_outlive_its_page() {
     let mut weather = Weather::default();
     assert!(weather.search().is_none());

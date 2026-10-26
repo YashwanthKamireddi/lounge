@@ -3,7 +3,6 @@
 use crate::model::Preferences;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
 
 pub const REFRESH_SECONDS: i64 = 15 * 60;
 pub const MAX_CACHE_AGE: i64 = 6 * 60 * 60;
@@ -24,7 +23,7 @@ impl Location {
     pub fn parse(value: &Value) -> Option<Self> {
         let latitude = value.get("latitude")?.as_f64()?;
         let longitude = value.get("longitude")?.as_f64()?;
-        let name = label(value.get("name"));
+        let name = capitalised(label(value.get("name")));
         if name.is_empty()
             || !latitude.is_finite()
             || !longitude.is_finite()
@@ -33,9 +32,15 @@ impl Location {
         {
             return None;
         }
+        let region = match value.get("region") {
+            Some(region) => label(Some(region)),
+            // Open-Meteo: the district before the state, so two places of
+            // one name in one state still read apart.
+            None => area(&label(value.get("admin2")), &label(value.get("admin1")), &name),
+        };
         Some(Self {
             name,
-            region: label(value.get("region").or_else(|| value.get("admin1"))),
+            region,
             country: label(value.get("country")),
             latitude,
             longitude,
@@ -66,6 +71,56 @@ impl Location {
         parts.join(", ")
     }
 }
+/// "Visakhapatnam, Andhra Pradesh": a place's district, then its state. The
+/// district is left out when empty or only repeating the place's name or
+/// state (a state named like its place is hidden later, by `detail`).
+fn area(district: &str, state: &str, name: &str) -> String {
+    let district = district.trim_end_matches(" District").trim();
+    if district.is_empty() || district.eq_ignore_ascii_case(name) || district.eq_ignore_ascii_case(state) {
+        return state.to_owned();
+    }
+    if state.is_empty() { district.to_owned() } else { format!("{district}, {state}") }
+}
+
+/// A name stored all in lower case ("sagar nagar") reads "Sagar Nagar";
+/// any other casing is the place's own and stays.
+fn capitalised(name: String) -> String {
+    if name.chars().any(char::is_uppercase) || !name.chars().any(char::is_lowercase) {
+        return name;
+    }
+    name.split(' ')
+        .map(|word| {
+            let mut letters = word.chars();
+            letters
+                .next()
+                .map(|first| first.to_uppercase().chain(letters).collect::<String>())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Results that are one place to the weather: the same spot, or the same
+/// name (any case) within 3 km, as OpenStreetMap lists a neighbourhood, its housing area and
+/// its roads. The first, most relevant, stays.
+fn distinct(places: impl Iterator<Item = Location>) -> Vec<Location> {
+    let mut kept: Vec<Location> = Vec::new();
+    for place in places {
+        let same = kept.iter().any(|other| {
+            let north = (place.latitude - other.latitude) * 111.;
+            let east = (place.longitude - other.longitude) * 111. * place.latitude.to_radians().cos();
+            other.key() == place.key() || (other.name.eq_ignore_ascii_case(&place.name) && north.hypot(east) < 3.)
+        });
+        if !same {
+            kept.push(place);
+        }
+        if kept.len() == 6 {
+            break;
+        }
+    }
+    kept
+}
+
 fn label(value: Option<&Value>) -> String {
     value
         .and_then(Value::as_str)
@@ -160,17 +215,15 @@ pub fn parse_locations(value: &Value) -> Result<Vec<Location>, String> {
     {
         return Err("The location service returned an unreadable response.".into());
     }
-    let mut seen = HashSet::new();
-    Ok(value
-        .get("results")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .take(20)
-        .filter_map(Location::parse)
-        .filter(|place| seen.insert(place.key()))
-        .take(6)
-        .collect())
+    Ok(distinct(
+        value
+            .get("results")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .take(20)
+            .filter_map(Location::parse),
+    ))
 }
 
 /// OpenStreetMap's Nominatim answer, for what Open-Meteo does not know
@@ -180,15 +233,18 @@ pub fn parse_places(value: &Value) -> Result<Vec<Location>, String> {
     let list = value
         .as_array()
         .ok_or("The location service returned an unreadable response.")?;
-    let mut seen = HashSet::new();
-    Ok(list
-        .iter()
+    Ok(distinct(
+        list.iter()
         .take(20)
+        // Roads and paths share their neighbourhood's name; only places count.
+        .filter(|place| !matches!(place.get("category").and_then(Value::as_str), Some("highway" | "railway")))
+        .filter(|place| !matches!(place.get("addresstype").and_then(Value::as_str), Some("road" | "highway")))
         .filter_map(|place| {
             let number = |key: &str| place.get(key)?.as_str()?.parse::<f64>().ok();
             let field = |key: &str| label(place.get("address").and_then(|address| address.get(key)));
-            let mut name = label(place.get("name"));
-            if place.get("addresstype").and_then(Value::as_str) == Some("postcode") {
+            let mut name = capitalised(label(place.get("name")));
+            let postcode = place.get("addresstype").and_then(Value::as_str) == Some("postcode");
+            if postcode {
                 let area = ["city", "town", "state_district", "county"]
                     .into_iter()
                     .map(field)
@@ -203,13 +259,21 @@ pub fn parse_places(value: &Value) -> Result<Vec<Location>, String> {
                 "name": name,
                 "latitude": number("lat")?,
                 "longitude": number("lon")?,
-                "region": field("state"),
+                // A postcode already names its district.
+                "region": if postcode {
+                    field("state")
+                } else {
+                    let district = ["city", "town", "state_district", "county"]
+                        .into_iter()
+                        .map(field)
+                        .find(|area| !area.is_empty())
+                        .unwrap_or_default();
+                    area(&district, &field("state"), &name)
+                },
                 "country": field("country"),
             }))
-        })
-        .filter(|place| seen.insert(place.key()))
-        .take(6)
-        .collect())
+        }),
+    ))
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
