@@ -7,3 +7,12 @@ ignoredBuiltDependencies:
   - '@webos-tools/cli'
   - cpu-features
   - ssh2
+# Security advisories in packages reached only through @webos-tools/cli (LG's
+# developer CLI, never shipped to the TV): each pinned to its patched release
+# within the major version the CLI already uses.
+overrides:
+  body-parser@2: ^2.4.0
+  brace-expansion@1: ^1.1.21
+  brace-expansion@5: ^5.0.12
+  proxy-addr@2: ^2.0.8
+  qs@6: ^6.16.0
