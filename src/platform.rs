@@ -989,6 +989,20 @@ pub fn normalize_inputs(raw: &Value) -> Result<Vec<Input>, String> {
         .as_array()
         .filter(|a| a.len() <= 128)
         .ok_or("Invalid input inventory")?;
+    // Some firmware reports `connected: true` for every port, so there it
+    // says nothing and `hdmiPlugIn` (the cable sense) decides. Elsewhere
+    // `connected` is meaningful and `hdmiPlugIn` can stay false for a plugged
+    // device in standby (a 65UQ801C0SB, webOS 7.6: HDMI 2 connected, every
+    // hdmiPlugIn false), so either one marks the port as in use.
+    let hdmi = entries.iter().filter(|e| {
+        e.get("appId")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.starts_with("com.webos.app.hdmi"))
+    });
+    let connected_everywhere = hdmi.clone().count() > 1
+        && hdmi
+            .clone()
+            .all(|e| e.get("connected").and_then(Value::as_bool) == Some(true));
     let mut inputs = Vec::new();
     for entry in entries {
         let Some(id) = entry.get("appId").and_then(Value::as_str) else {
@@ -1027,12 +1041,17 @@ pub fn normalize_inputs(raw: &Value) -> Result<Vec<Input>, String> {
             id: id.into(),
             title: title(entry.get("label").and_then(Value::as_str), &port),
             port,
-            // Some firmware reports `connected: true` for every existing port;
-            // `hdmiPlugIn` is the actual cable state where it is provided.
-            connected: entry
-                .get("hdmiPlugIn")
-                .and_then(Value::as_bool)
-                .or_else(|| entry.get("connected").and_then(Value::as_bool)),
+            connected: {
+                let plugged = entry.get("hdmiPlugIn").and_then(Value::as_bool);
+                let connected = entry
+                    .get("connected")
+                    .and_then(Value::as_bool)
+                    .filter(|_| !connected_everywhere);
+                match (plugged, connected) {
+                    (None, None) => None,
+                    (plugged, connected) => Some(plugged == Some(true) || connected == Some(true)),
+                }
+            },
         });
     }
     Ok(inputs)

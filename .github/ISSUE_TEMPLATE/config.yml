@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ideas and questions
+    url: https://github.com/YashwanthKamireddi/lounge/discussions
+    about: Suggest a feature or ask how something works.

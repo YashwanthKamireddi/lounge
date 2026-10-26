@@ -1,27 +1,20 @@
-# lg-luma
+# Changelog
 
-## 2.1.0
+## 1.0.0
 
-### Minor Changes
+The first release of Lounge, a fork of [lg-luma](https://github.com/ecklf/lg-luma) 2.1.0
+(its history is in [lg-luma's changelog](https://github.com/ecklf/lg-luma/blob/main/CHANGELOG.md)).
 
-- d417291: Add Brazilian Portuguese as a selectable interface language, including translated app labels,
-  localized dates and weather location searches.
-
-### Patch Changes
-
-- 27802ac: Match brand keywords at ASCII word boundaries so unrelated apps such as dashboards retain their
-  own artwork and Utilities category instead of being mistaken for ARD/Das Erste.
-- 14b18f8: Render Korean app and input names using bundled Hangul font subsets loaded on demand. Add
-  Korean-labelled LG Gallery and Room Connect apps to the desktop preview inventory.
-- 3e256f6: Add installed-app artwork collected from an LG C1 for Korean-market apps, with matching card
-  background colours. Make icon collection work on older webOS Node versions and follow the
-  launcher's app visibility and exclusion rules.
-
-  Include Coupang Play, Watcha Play, Wavve, Rainbow TV and LG TV VOD in the desktop demo inventory
-  so their artwork can be previewed during development.
-
-- ee2f6ff: Coordinate app releases through Changesets with synchronized Rust and webOS versions, publishing
-  only after the checked Version Packages PR is merged.
-
-  Add updating PR comments that report missing changesets and explain semantic version bumps for
-  code changes.
+- Power-on lands on Lounge: it stays resident through standby and takes the screen at wake.
+- The Home key from an app shows Lounge at once (it waited up to 2 s for the next event pump).
+- LG's quick settings and other system panels no longer count as returning from an app.
+- Full-screen dimming, Settings' veil and the switcher's fade are drawn inside the background
+  pass: Settings to Home peaks at 1.74 screens of fill per frame instead of 2.74.
+- Light, Dark and Automatic appearance; a context menu under its tile with a gliding highlight;
+  profile pictures fitted to the circle; official tvOS app icons where available.
+- HDMI inputs show when either of the TV's reports says a device is plugged in.
+- Transparent app icons get a contrasting gradient card and clean edges.
+- Reliability: preferences saved in the background and recovered when damaged, subscriptions
+  that resubscribe with backoff, bounded avatar decoding, and a crash guard that never traps
+  the TV in a relaunch loop.
+- New name, app ID (`io.github.yashwanthkamireddi.lounge`) and icon.

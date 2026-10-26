@@ -176,6 +176,28 @@ fn inventory_filters_system_apps_duplicates_and_unsafe_identifiers() {
 }
 
 #[test]
+fn an_input_is_in_use_by_whichever_report_means_something_on_this_firmware() {
+    // A 65UQ801C0SB (webOS 7.6): only HDMI 2 connected, cable sense false on
+    // every port (the device on it in standby).
+    let uq80 = normalize_inputs(&json!([
+        {"appId":"com.webos.app.hdmi1","label":"HDMI 1","connected":false,"hdmiPlugIn":false},
+        {"appId":"com.webos.app.hdmi2","label":"HDMI 2","connected":true,"hdmiPlugIn":false},
+        {"appId":"com.webos.app.hdmi3","label":"HDMI 3","connected":false,"hdmiPlugIn":false}
+    ]))
+    .unwrap();
+    let connected: Vec<_> = uq80.iter().map(|input| input.connected).collect();
+    assert_eq!(connected, [Some(false), Some(true), Some(false)]);
+    // Firmware that reports every port connected: the cable sense decides.
+    let everywhere = normalize_inputs(&json!([
+        {"appId":"com.webos.app.hdmi1","connected":true,"hdmiPlugIn":true},
+        {"appId":"com.webos.app.hdmi2","connected":true,"hdmiPlugIn":false}
+    ]))
+    .unwrap();
+    let connected: Vec<_> = everywhere.iter().map(|input| input.connected).collect();
+    assert_eq!(connected, [Some(true), Some(false)]);
+}
+
+#[test]
 fn icon_collector_visibility_cases_match_the_launcher_inventory() {
     let cases: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("../tests/fixtures/app-visibility.json")).unwrap();

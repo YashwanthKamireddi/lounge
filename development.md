@@ -69,7 +69,7 @@ backend. Avoid copying the whole SDK library directory or the TV's graphics driv
 ### Documentation screenshots
 
 `pnpm screenshots` generates `docs/home.png`, `docs/apps.png`, `docs/settings.png` and
-`docs/inputs.png`, linked by the README. It builds the desktop executable without the TV feature,
+`docs/inputs.png` (the README's own images are in `docs/readme/`). It builds the desktop executable without the TV feature,
 uses isolated temporary preferences, sample inventory and a fixed date/time, and captures actual
 1920×1080 OpenGL framebuffers. Weather is unconfigured, so no real weather APIs are contacted.
 It does not execute the test suites. A desktop display is required; on headless Linux use

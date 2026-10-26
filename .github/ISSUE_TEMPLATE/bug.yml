@@ -1,0 +1,39 @@
+name: Something is wrong
+description: Lounge misbehaves, looks wrong or stutters on a TV.
+labels: [bug]
+body:
+  - type: input
+    id: tv
+    attributes:
+      label: TV model
+      placeholder: LG 65UQ801C0SB
+    validations:
+      required: true
+  - type: input
+    id: webos
+    attributes:
+      label: webOS version
+      description: Settings › General › About This TV, or `cat /etc/starfish-release` over SSH.
+      placeholder: '7.6.0'
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Lounge version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The steps that lead to it, as remote presses if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Status log
+      description: The last lines of `/tmp/lounge-status` on the TV (`tail -40 /tmp/lounge-status` over SSH).
+      render: text

@@ -1,0 +1,25 @@
+name: Works on my TV
+description: Lounge runs on a TV not listed yet. Thank you!
+labels: [tv report]
+body:
+  - type: input
+    id: tv
+    attributes:
+      label: TV model
+    validations:
+      required: true
+  - type: input
+    id: webos
+    attributes:
+      label: webOS version
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works
+      options:
+        - label: Home screen and app launches
+        - label: The Home key opens Lounge
+        - label: Power-on lands on Lounge
+        - label: HDMI inputs show as tiles
