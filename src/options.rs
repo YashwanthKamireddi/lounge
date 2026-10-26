@@ -41,7 +41,8 @@ impl Options {
             })
         {
             if let Some(argument) = args.next() {
-                let launch = serde_json::from_str::<serde_json::Value>(&argument).map_err(|error| error.to_string())?;
+                let launch = serde_json::from_str::<serde_json::Value>(&argument)
+                    .map_err(|error| error.to_string())?;
                 result.preload = launch.get("preload").is_some();
             }
             eprintln!("Lounge webOS launch parameters accepted");

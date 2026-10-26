@@ -28,7 +28,10 @@ for (const file of await fs.readdir(out)) {
 // (OFL), cut from the official variable font at its text optical size to
 // Latin and Latin Extended, so accented names (Łódź, Pokémon) render.
 const sfPro = path.join(root, 'local/fonts/SF-Pro.ttf');
-const useSfPro = await fs.access(sfPro).then(() => true, () => false);
+const useSfPro = await fs.access(sfPro).then(
+  () => true,
+  () => false,
+);
 if (!useSfPro) {
   const font = path.join(out, 'font.woff2');
   await fs.copyFile(path.join(source, 'fonts/inter.woff2'), font);

@@ -16,7 +16,9 @@ const FROST: [f32; 3] = [0.93, 0.93, 0.95];
 
 impl Theme {
     pub fn new(light: f32) -> Self {
-        Self { light: light.clamp(0., 1.) }
+        Self {
+            light: light.clamp(0., 1.),
+        }
     }
 
     fn mix(self, dark: f32, light: f32) -> f32 {
@@ -44,7 +46,12 @@ impl Theme {
     /// A well behind a field (the location search, a saved place).
     pub fn well(self, alpha: f32) -> Color {
         let [r, g, b, _] = c(0x171c20, 1.);
-        [self.mix(r, 1.), self.mix(g, 1.), self.mix(b, 1.), self.mix(alpha, 0.75)]
+        [
+            self.mix(r, 1.),
+            self.mix(g, 1.),
+            self.mix(b, 1.),
+            self.mix(alpha, 0.75),
+        ]
     }
 
     /// The veil laid over glass menus and banners: dark smoke, or on light

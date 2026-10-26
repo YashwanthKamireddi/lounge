@@ -19,7 +19,9 @@ pub use scene::Scene;
 use crate::{
     i18n,
     renderer::{Draw, TextStyle, WHITE},
-    state::{FADE_OUT_MS, GRID_SCROLL, HOME_TILE_PITCH, Overlay, PAGE_MS, Page, Rect, State, Target},
+    state::{
+        FADE_OUT_MS, GRID_SCROLL, HOME_TILE_PITCH, Overlay, PAGE_MS, Page, Rect, State, Target,
+    },
 };
 use glass::{shelf_art, shelf_dissolve};
 use home::{home, library};
@@ -172,15 +174,25 @@ const SWITCHER_VEIL: f32 = 0.38;
 pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
     let mut out = Scene::new(theme::Theme::new(state.light()));
     // Search, once fully in, is an opaque page: nothing beneath it shows.
-    let search_covers = matches!(state.overlay, Some(Overlay::Keyboard)) && state.panel_started.is_none();
+    let search_covers =
+        matches!(state.overlay, Some(Overlay::Keyboard)) && state.panel_started.is_none();
     if search_covers {
         // No background: the search page covers it.
     } else if state.switcher_covers() {
         // The switcher's dimmed backdrop is then the whole background: one
         // opaque pass instead of a picture with a full-screen glass over it.
-        let backdrop = assets.path(format!("wallpapers/{}-glass.png", state.preferences.background));
+        let backdrop = assets.path(format!(
+            "wallpapers/{}-glass.png",
+            state.preferences.background
+        ));
         let shade = [SWITCHER_VEIL, SWITCHER_VEIL, SWITCHER_VEIL + 0.02, 1.];
-        out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., shade, [0.; 4]));
+        out.draw.push(Draw::Dissolve(
+            backdrop.clone(),
+            backdrop,
+            1.,
+            shade,
+            [0.; 4],
+        ));
     } else if let Some((previous, start)) = &state.previous_background {
         let alpha = (start.elapsed().as_secs_f32() / 0.4).min(1.);
         let alpha = alpha * alpha * (3. - 2. * alpha);
@@ -246,9 +258,16 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             // Opaque full-screen pictures go through the dissolve's
             // medium-precision pass (fully on one image): the same pixels,
             // at a fraction of this GPU's cost of the shape shader.
-            out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., tint, lift));
+            out.draw
+                .push(Draw::Dissolve(backdrop.clone(), backdrop, 1., tint, lift));
         } else if grid >= 1. {
-            out.draw.push(Draw::Dissolve(backdrop.clone(), backdrop, 1., veil, [0.; 4]));
+            out.draw.push(Draw::Dissolve(
+                backdrop.clone(),
+                backdrop,
+                1.,
+                veil,
+                [0.; 4],
+            ));
         } else if grid > 0. {
             // Scrolling into the grid the picture blurs, then dims, as tvOS's
             // does, continuously both ways: first the photo eases into its
@@ -257,18 +276,37 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             const BLUR: f32 = 0.35;
             if grid < BLUR {
                 let t = grid / BLUR;
-                out.draw.push(Draw::Dissolve(current, current_glass, t * t * (3. - 2. * t), [1.; 4], [0.; 4]));
+                out.draw.push(Draw::Dissolve(
+                    current,
+                    current_glass,
+                    t * t * (3. - 2. * t),
+                    [1.; 4],
+                    [0.; 4],
+                ));
             } else {
                 let t = (grid - BLUR) / (1. - BLUR);
-                out.draw.push(Draw::Dissolve(current_glass, backdrop, t * t * (3. - 2. * t), veil, [0.; 4]));
+                out.draw.push(Draw::Dissolve(
+                    current_glass,
+                    backdrop,
+                    t * t * (3. - 2. * t),
+                    veil,
+                    [0.; 4],
+                ));
             }
         } else {
             match shelf_dissolve(state) {
                 Some((previous, t)) => {
                     let (previous, _) = shelf_art(state, assets, previous);
-                    out.draw.push(Draw::Dissolve(previous, current, t, [1.; 4], [0.; 4]));
+                    out.draw
+                        .push(Draw::Dissolve(previous, current, t, [1.; 4], [0.; 4]));
                 }
-                None => out.draw.push(Draw::Dissolve(current.clone(), current, 0., [1.; 4], [0.; 4])),
+                None => out.draw.push(Draw::Dissolve(
+                    current.clone(),
+                    current,
+                    0.,
+                    [1.; 4],
+                    [0.; 4],
+                )),
             }
         }
         if state.page != Page::Settings
@@ -389,7 +427,11 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         && let Some(closed) = state.search_closed
     {
         let t = (closed.elapsed().as_secs_f32() * 1000. / FADE_OUT_MS as f32).min(1.);
-        out.shape(Rect::new(0., 0., 1920., 1080.), 0., c(0x2b2b2d, 1. - t * (2. - t)));
+        out.shape(
+            Rect::new(0., 0., 1920., 1080.),
+            0.,
+            c(0x2b2b2d, 1. - t * (2. - t)),
+        );
     }
     // Closing: the context menu fades away beside its tile.
     if state.overlay.is_none()
@@ -423,7 +465,8 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         out.controls.clear();
         // Opening eases out: the screen dims as the menu rises into place.
         let opening = state.panel_started.map(|opened| {
-            let t = (opened.elapsed().as_secs_f32() * 1000. / crate::state::OVERLAY_OPEN_MS as f32).min(1.);
+            let t = (opened.elapsed().as_secs_f32() * 1000. / crate::state::OVERLAY_OPEN_MS as f32)
+                .min(1.);
             1. - (1. - t).powi(3)
         });
         let eased = opening.unwrap_or(1.);

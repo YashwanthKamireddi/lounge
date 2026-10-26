@@ -24,7 +24,12 @@ pub struct Presence {
 impl Presence {
     pub fn new() -> Self {
         let now = Instant::now();
-        Self { visible: true, away: false, shown_at: now, raising_until: now }
+        Self {
+            visible: true,
+            away: false,
+            shown_at: now,
+            raising_until: now,
+        }
     }
 
     /// The window was hidden or minimised.
@@ -79,10 +84,19 @@ mod tests {
         presence.hide();
         assert!(!presence.visible);
         assert!(presence.show(), "back from hidden: a return");
-        assert!(!presence.show(), "the same return's next event is not another");
-        assert!(!presence.settled(), "just back: a Home launch now belongs to the return");
+        assert!(
+            !presence.show(),
+            "the same return's next event is not another"
+        );
+        assert!(
+            !presence.settled(),
+            "just back: a Home launch now belongs to the return"
+        );
         std::thread::sleep(SETTLE + Duration::from_millis(20));
-        assert!(presence.settled(), "in front a while: Home is pressed on Lounge");
+        assert!(
+            presence.settled(),
+            "in front a while: Home is pressed on Lounge"
+        );
         // Focus lost to a system panel (verified on the TV with quick
         // settings: FocusLost, FocusGained, never Hidden): not a return.
         presence.leave(false);

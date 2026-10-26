@@ -164,9 +164,16 @@ pub fn load_or_recover(path: &Path) -> Result<Preferences, String> {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |since| since.as_secs());
             let kept = path.with_extension(format!("json.bad-{stamp}"));
-            fs::rename(path, &kept)
-                .map_err(|e| format!("{error}; could not keep it aside as {}: {e}", kept.display()))?;
-            eprintln!("Lounge {error}; kept as {} and started with defaults", kept.display());
+            fs::rename(path, &kept).map_err(|e| {
+                format!(
+                    "{error}; could not keep it aside as {}: {e}",
+                    kept.display()
+                )
+            })?;
+            eprintln!(
+                "Lounge {error}; kept as {} and started with defaults",
+                kept.display()
+            );
             Ok(Preferences::default())
         }
         Err(error) => Err(error),

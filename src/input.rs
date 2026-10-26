@@ -89,7 +89,10 @@ pub(crate) struct Remote {
 
 impl Remote {
     pub(crate) fn new() -> Self {
-        Self { press: None, last_move: Instant::now() }
+        Self {
+            press: None,
+            last_move: Instant::now(),
+        }
     }
 
     /// A key went down: the effects it asks for.
@@ -166,8 +169,13 @@ impl Remote {
             key if !repeat
                 && (i32::from(key) == 461
                     || (webos
-                        && [WEBOS_BACK_KEYCODE, WEBOS_KEY_BACK, WEBOS_KEY_EXIT, sdl_events::WEBOS_EXIT_KEYCODE]
-                            .contains(&i32::from(key)))) =>
+                        && [
+                            WEBOS_BACK_KEYCODE,
+                            WEBOS_KEY_BACK,
+                            WEBOS_KEY_EXIT,
+                            sdl_events::WEBOS_EXIT_KEYCODE,
+                        ]
+                        .contains(&i32::from(key)))) =>
             {
                 self.press = None;
                 pending = state.back();

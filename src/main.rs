@@ -1,6 +1,8 @@
 mod app_artwork;
 mod avatars;
 mod branding;
+mod crash_guard;
+mod damage;
 mod debug;
 mod diagnostics;
 mod effects;
@@ -9,31 +11,29 @@ mod i18n;
 mod input;
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 mod luna;
-mod crash_guard;
-mod damage;
 mod model;
-mod sdl_events;
+mod options;
 mod platform;
 mod preload;
 mod presence;
-mod options;
 mod raster;
-mod replies;
 mod renderer;
+mod replies;
+mod script;
 #[path = "scroll-preview.rs"]
 mod scroll_preview;
-mod script;
+mod sdl_events;
 mod state;
 mod storage;
 mod vector;
 mod view;
 mod weather;
-mod window;
 #[path = "weather-service.rs"]
 mod weather_service;
 #[cfg(all(feature = "webos", any(target_os = "linux", test)))]
 #[path = "webos-compat.rs"]
 mod webos_compat;
+mod window;
 
 #[cfg(test)]
 mod tests;
@@ -160,7 +160,10 @@ fn run() -> Result<(), String> {
     // takes (at power-on Lounge always starts cold) is read there.
     let startup_stage = |stage: &str| {
         if webos {
-            platform::status(&format!("startup: {stage} at {} ms", startup.elapsed().as_millis()));
+            platform::status(&format!(
+                "startup: {stage} at {} ms",
+                startup.elapsed().as_millis()
+            ));
         }
     };
     if !webos && std::path::Path::new("/etc/starfish-release").exists() {
@@ -229,7 +232,10 @@ fn run() -> Result<(), String> {
     let mut state = State::new(initial_preferences);
     state.heroes = assets.heroes.clone();
     // The owner's profile pictures, prepared once (crate::avatars).
-    let storage = preferences_path.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+    let storage = preferences_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
     state.set_avatars(avatars::load(&storage));
     if options.test_extra_apps > 0 {
         eprintln!(
@@ -268,8 +274,11 @@ fn run() -> Result<(), String> {
     if let Err(error) = video.gl_set_swap_interval(1) {
         eprintln!("VSync: {error}");
     }
-    let mut renderer =
-        renderer::Renderer::new(&assets.root.join("font.ttf"), webos, options.medium_precision)?;
+    let mut renderer = renderer::Renderer::new(
+        &assets.root.join("font.ttf"),
+        webos,
+        options.medium_precision,
+    )?;
     // Decode every home image off the render thread at startup, wallpaper
     // first, so no icon pops in late and no slide stalls on a PNG decode.
     // Images decode on a background worker and upload a few per frame, so
@@ -327,7 +336,8 @@ fn run() -> Result<(), String> {
     // TV in a relaunch loop. A clean exit clears the record.
     let crash_guard = default_preferences.with_file_name("running.marker");
     let safe_mode = webos && crash_guard::begin(&crash_guard);
-    let crash_guard_clear = webos.then(|| Instant::now() + Duration::from_secs(crash_guard::HEALTHY_SECONDS));
+    let crash_guard_clear =
+        webos.then(|| Instant::now() + Duration::from_secs(crash_guard::HEALTHY_SECONDS));
     if safe_mode {
         eprintln!("Lounge safe mode: two recent crashes; not taking over Home this run");
     }
@@ -343,11 +353,15 @@ fn run() -> Result<(), String> {
     if webos {
         match platform::watch_launches(home, !safe_mode) {
             Ok(()) => platform::status("launch events (Home key): on"),
-            Err(error) => platform::status(&format!("launch events: {error}; Home only raises Lounge")),
+            Err(error) => {
+                platform::status(&format!("launch events: {error}; Home only raises Lounge"))
+            }
         }
         match platform::watch_running(platform.running.clone()) {
             Ok(()) => platform::status("running events: on"),
-            Err(error) => platform::status(&format!("running events: {error}; asking on Back instead")),
+            Err(error) => {
+                platform::status(&format!("running events: {error}; asking on Back instead"))
+            }
         }
         if !safe_mode {
             match platform::watch_power() {
@@ -361,7 +375,8 @@ fn run() -> Result<(), String> {
     }
     // Developer flag: log every input event (stderr goes to /dev/null otherwise).
     let log_events = webos && std::path::Path::new("/tmp/lounge-events").exists();
-    let frame_log = diagnostics::FrameLog::new(webos && std::path::Path::new("/tmp/lounge-debug").exists());
+    let frame_log =
+        diagnostics::FrameLog::new(webos && std::path::Path::new("/tmp/lounge-debug").exists());
     let partial = damage::Partial::new();
     // Back from an app: queue what the trim freed, after the first frame.
     let rewarm = false;
@@ -483,7 +498,10 @@ impl Shell {
     /// A startup stage, timed in the TV's status log.
     fn stage(&self, stage: &str) {
         if self.webos {
-            platform::status(&format!("startup: {stage} at {} ms", self.startup.elapsed().as_millis()));
+            platform::status(&format!(
+                "startup: {stage} at {} ms",
+                self.startup.elapsed().as_millis()
+            ));
         }
     }
 
@@ -513,7 +531,8 @@ impl Shell {
             eprintln!("{error}");
             self.state.notify(i18n::t("savedError"));
         }
-        let now = self.options
+        let now = self
+            .options
             .time
             .unwrap_or_else(|| OffsetDateTime::now_utc().to_offset(self.local_offset));
         if self.last_minute != Some(now.unix_timestamp() / 60) {
@@ -525,13 +544,27 @@ impl Shell {
         // Upload decoded images a few per tick (idle or not), so each is on
         // the GPU before it is first drawn and no frame pays for a batch.
         // Idle and on screen: warm a few text glyphs ahead of need.
-        if self.glyphs_warming && self.presence.visible && !self.state.dirty && !self.state.animating() {
+        if self.glyphs_warming
+            && self.presence.visible
+            && !self.state.dirty
+            && !self.state.animating()
+        {
             self.glyphs_warming = self.renderer.warm_glyphs(3);
         }
-        self.uploads.pump(&mut self.renderer, self.presence.visible && self.state.animating());
+        self.uploads.pump(
+            &mut self.renderer,
+            self.presence.visible && self.state.animating(),
+        );
         self.state.dirty |= self.assets.artwork.poll();
         while let Ok(response) = self.platform.receiver.try_recv() {
-            self.replies.apply(response, &mut self.state, &self.platform, &self.assets, self.presence.visible, self.options.test_extra_apps);
+            self.replies.apply(
+                response,
+                &mut self.state,
+                &self.platform,
+                &self.assets,
+                self.presence.visible,
+                self.options.test_extra_apps,
+            );
         }
         if self.webos
             && !self.watching.load(std::sync::atomic::Ordering::Relaxed)
@@ -543,7 +576,11 @@ impl Shell {
             self.foreground_poll = Instant::now();
             self.platform.send(Request::Foreground);
         }
-        weather_tick(&mut self.state, &self.weather_service, self.presence.visible);
+        weather_tick(
+            &mut self.state,
+            &self.weather_service,
+            self.presence.visible,
+        );
         // Rebuild hit regions before input whenever inventory/layout changed.
         if self.state.dirty {
             self.scene = compose(&mut self.state, &self.assets, now, Some(&self.scene));
@@ -595,7 +632,14 @@ impl Shell {
             if !matches!(event, Event::MouseMotion { .. }) {
                 eprintln!("Lounge event: {event:?}");
             }
-        } else if self.webos && let Event::KeyDown { keycode, scancode, repeat: false, .. } = &event {
+        } else if self.webos
+            && let Event::KeyDown {
+                keycode,
+                scancode,
+                repeat: false,
+                ..
+            } = &event
+        {
             eprintln!(
                 "Lounge key at {} ms: {keycode:?} ({:?}) scancode {scancode:?}",
                 self.startup.elapsed().as_millis(),
@@ -605,7 +649,9 @@ impl Shell {
         match event {
             // The TV turning off asks every app to quit: Lounge stays,
             // hidden, so it is there to take the screen at power-on.
-            Event::Quit { .. } if self.webos && platform::STANDBY.load(std::sync::atomic::Ordering::Relaxed) => {
+            Event::Quit { .. }
+                if self.webos && platform::STANDBY.load(std::sync::atomic::Ordering::Relaxed) =>
+            {
                 platform::status("quit asked while turning off: staying resident for power-on");
                 // Healthy until the TV turned off: webOS replaces this
                 // process at power-on, which must not count as a crash.
@@ -630,7 +676,11 @@ impl Shell {
                 // the loop would sleep up to 2 s before pumping it.
                 self.presence.raise();
                 let in_front = self.presence.settled();
-                platform::status(if in_front { "home key: back to the top" } else { "home key: returned from an app" });
+                platform::status(if in_front {
+                    "home key: back to the top"
+                } else {
+                    "home key: returned from an app"
+                });
                 self.state.home_key(in_front);
             }
             Event::Window {
@@ -674,9 +724,9 @@ impl Shell {
                         }
                     }
                 }
-                WindowEvent::Resized(..)
-                | WindowEvent::SizeChanged(..)
-                | WindowEvent::Exposed => self.state.dirty = true,
+                WindowEvent::Resized(..) | WindowEvent::SizeChanged(..) | WindowEvent::Exposed => {
+                    self.state.dirty = true
+                }
                 _ => {}
             },
             Event::TextInput { text, .. } => self.state.text(&text),
@@ -692,7 +742,15 @@ impl Shell {
                 keycode: Some(key),
                 repeat,
                 ..
-            } => pending = self.remote.key_down(key, repeat, self.webos, &mut self.state, &self.scene.controls),
+            } => {
+                pending = self.remote.key_down(
+                    key,
+                    repeat,
+                    self.webos,
+                    &mut self.state,
+                    &self.scene.controls,
+                )
+            }
             Event::KeyUp {
                 keycode: Some(Keycode::Return | Keycode::KpEnter),
                 ..
@@ -705,7 +763,9 @@ impl Shell {
                 if let Some(target) = hovered.clone() {
                     self.state.pointer_focus(target);
                 }
-                if self.remote.press
+                if self
+                    .remote
+                    .press
                     .as_ref()
                     .is_some_and(|p| p.pointer && hovered.as_ref() != Some(&p.target))
                 {
@@ -781,7 +841,8 @@ impl Shell {
                     );
                     self.remote.press = None;
                 } else {
-                    let max = self.scene
+                    let max = self
+                        .scene
                         .controls
                         .iter()
                         .filter(|c| c.scrollable)
@@ -808,13 +869,20 @@ impl Shell {
             &self.writer,
             &self.weather_service,
         );
-        if self.remote.press
+        if self
+            .remote
+            .press
             .as_ref()
             .is_some_and(|p| !p.held && p.target != self.state.focus)
         {
             self.remote.press = None;
         }
-        let pressed = self.remote.press.as_ref().filter(|p| !p.held).map(|p| p.target.clone());
+        let pressed = self
+            .remote
+            .press
+            .as_ref()
+            .filter(|p| !p.held)
+            .map(|p| p.target.clone());
         if self.state.pressed != pressed {
             self.state.pressed = pressed;
             self.state.dirty = true;
@@ -858,17 +926,28 @@ impl Shell {
                 );
             }
         }
-        if self.crash_guard_clear.is_some_and(|at| Instant::now() >= at) {
+        if self
+            .crash_guard_clear
+            .is_some_and(|at| Instant::now() >= at)
+        {
             self.crash_guard_clear = None;
             crash_guard::end(&self.crash_guard);
         }
         // state.loading stays set meanwhile, so focus and relaunch refreshes
         // add no requests of their own.
-        if self.replies.inventory_retry.is_some_and(|at| Instant::now() >= at) {
+        if self
+            .replies
+            .inventory_retry
+            .is_some_and(|at| Instant::now() >= at)
+        {
             self.replies.inventory_retry = None;
             self.platform.send(Request::Refresh);
         }
-        weather_tick(&mut self.state, &self.weather_service, self.presence.visible);
+        weather_tick(
+            &mut self.state,
+            &self.weather_service,
+            self.presence.visible,
+        );
         // SDL-webOS disables text input when its own panel is dismissed, even
         // if it did not forward a Back/Return key to the application.
         if self.text_active
@@ -901,17 +980,23 @@ impl Shell {
     /// happens: hidden behind another app it presents nothing, and must
     /// never linger beside the real Lounge.
     fn final_frame(&self) -> bool {
-        self.options.frames.is_some_and(|limit| self.frame + 1 >= limit)
+        self.options
+            .frames
+            .is_some_and(|limit| self.frame + 1 >= limit)
             || (self.presence.visible
-                && self.options
+                && self
+                    .options
                     .profile_frames
                     .is_some_and(|limit| self.presented + 1 >= limit))
-            || (self.options.profile_frames.is_some() && self.startup.elapsed() > Duration::from_secs(90))
+            || (self.options.profile_frames.is_some()
+                && self.startup.elapsed() > Duration::from_secs(90))
     }
 
     /// Draws and presents a frame when anything changed.
     fn present(&mut self, now: OffsetDateTime, final_frame: bool) -> Result<(), String> {
-        if ((self.state.dirty || self.options.profile_frames.is_some()) && self.presence.visible) || final_frame {
+        if ((self.state.dirty || self.options.profile_frames.is_some()) && self.presence.visible)
+            || final_frame
+        {
             let composing = Instant::now();
             self.scene = compose(&mut self.state, &self.assets, now, Some(&self.scene));
             let compose_ms = composing.elapsed().as_secs_f64() * 1000.;
@@ -960,7 +1045,10 @@ impl Shell {
                 self.frame_log.presented(
                     &self.state,
                     self.renderer.stats(),
-                    self.options.profile_frames.is_some().then_some(&mut self.profile),
+                    self.options
+                        .profile_frames
+                        .is_some()
+                        .then_some(&mut self.profile),
                     diagnostics::Frame {
                         number: self.presented,
                         compose_ms,
@@ -968,7 +1056,8 @@ impl Shell {
                         width,
                         height,
                         uptime: self.startup.elapsed(),
-                        verbose: self.options.diagnostics.is_some() || self.options.resolution.is_some(),
+                        verbose: self.options.diagnostics.is_some()
+                            || self.options.resolution.is_some(),
                     },
                 );
             }
@@ -990,9 +1079,7 @@ impl Shell {
             } else {
                 250
             }
-        } else if self.state.animating()
-            || self.options.profile_frames.is_some()
-        {
+        } else if self.state.animating() || self.options.profile_frames.is_some() {
             0
         } else if self.remote.press.is_some() || self.options.frames.is_some() {
             8

@@ -304,11 +304,17 @@ fn one_place_listed_many_times_shows_once_with_its_district() {
          "addresstype": "road", "address": address},
     ]))
     .unwrap();
-    let shown: Vec<_> = places.iter().map(|place| (place.name.as_str(), place.detail())).collect();
+    let shown: Vec<_> = places
+        .iter()
+        .map(|place| (place.name.as_str(), place.detail()))
+        .collect();
     assert_eq!(
         shown,
         [
-            ("Sagar Nagar", "Visakhapatnam, Andhra Pradesh, India".to_owned()),
+            (
+                "Sagar Nagar",
+                "Visakhapatnam, Andhra Pradesh, India".to_owned()
+            ),
             ("Sagar Nagar", "Sultan Bathery, Kerala, India".to_owned()),
         ]
     );
@@ -318,7 +324,10 @@ fn one_place_listed_many_times_shows_once_with_its_district() {
          "country": "India", "latitude": 17.7, "longitude": 83.2}
     ]}))
     .unwrap();
-    assert_eq!(open_meteo[0].detail(), "Visakhapatnam, Andhra Pradesh, India");
+    assert_eq!(
+        open_meteo[0].detail(),
+        "Visakhapatnam, Andhra Pradesh, India"
+    );
 }
 
 #[test]

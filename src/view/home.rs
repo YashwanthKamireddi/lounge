@@ -11,8 +11,7 @@ use crate::{
     renderer::{Color, Draw, TextStyle, WHITE},
     state::{
         APPS_COLUMNS, DOCK_GAP, DOCK_TOP, GRID_GAP, GRID_LEFT, GRID_SCROLL, GRID_STEP,
-        HOME_TILE_PITCH, HOME_TILE_WIDTH, ROW_PITCH, Rect, SHELF_HINT, State,
-        Target,
+        HOME_TILE_PITCH, HOME_TILE_WIDTH, ROW_PITCH, Rect, SHELF_HINT, State, Target,
     },
     weather,
 };
@@ -413,7 +412,13 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     // Clear glass in both appearances, as Liquid Glass is.
     let glass = |out: &mut Scene, path: String, [r, g, b]: [f32; 3], alpha: f32| {
         let lit = |k: f32| [r * k, g * k, b * k, alpha];
-        out.draw.push(Draw::Glass(path, platter, DOCK_RADIUS, lit(1.19), lit(1.045)));
+        out.draw.push(Draw::Glass(
+            path,
+            platter,
+            DOCK_RADIUS,
+            lit(1.19),
+            lit(1.045),
+        ));
     };
     if spread < 1. {
         if let Some((previous, t)) = shelf_dissolve(state) {
@@ -431,13 +436,22 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     if spread > 0. {
         glass(
             out,
-            assets.path(format!("wallpapers/{}-glass.png", state.preferences.background)),
+            assets.path(format!(
+                "wallpapers/{}-glass.png",
+                state.preferences.background
+            )),
             [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02],
             spread,
         );
     }
     // One thin specular rim (no flat outline).
-    out.draw.push(Draw::GradientRing(platter, DOCK_RADIUS, 1.5, c(0xffffff, 0.5), c(0xffffff, 0.06)));
+    out.draw.push(Draw::GradientRing(
+        platter,
+        DOCK_RADIUS,
+        1.5,
+        c(0xffffff, 0.5),
+        c(0xffffff, 0.06),
+    ));
     let slot = |index: usize| {
         let (row, column) = (index / APPS_COLUMNS, index % APPS_COLUMNS);
         let y = if row == 0 {

@@ -45,12 +45,18 @@ test('version sync changes only release versions and is idempotent', async (t) =
   assert.equal(after[1], before[1].replace(`version = "${previous}"`, 'version = "3.1.0"'));
   assert.equal(
     after[2],
-    before[2].replace(`name = "lounge"\nversion = "${previous}"`, 'name = "lounge"\nversion = "3.1.0"'),
+    before[2].replace(
+      `name = "lounge"\nversion = "${previous}"`,
+      'name = "lounge"\nversion = "3.1.0"',
+    ),
     'dependency versions and helper crates must be preserved',
   );
   assert.equal(
     after[3],
-    before[3].replaceAll(`io.github.yashwanthkamireddi.lounge_${previous}_arm.ipk`, 'io.github.yashwanthkamireddi.lounge_3.1.0_arm.ipk'),
+    before[3].replaceAll(
+      `io.github.yashwanthkamireddi.lounge_${previous}_arm.ipk`,
+      'io.github.yashwanthkamireddi.lounge_3.1.0_arm.ipk',
+    ),
   );
   assert.deepEqual((await syncVersions(directory, { check: true })).changed, []);
   assert.deepEqual((await syncVersions(directory)).changed, []);
@@ -161,7 +167,10 @@ test('a merged same-repository version PR with an increased version can publish'
 
 test('ordinary merges, unmerged PRs, forks and manual runs cannot publish', async (t) => {
   const cases = [
-    ['feature PR', { pull: { head: { ref: 'feature', repo: { full_name: 'YashwanthKamireddi/lounge' } } } }],
+    [
+      'feature PR',
+      { pull: { head: { ref: 'feature', repo: { full_name: 'YashwanthKamireddi/lounge' } } } },
+    ],
     ['unmerged version PR', { pull: { merged_at: null } }],
     ['different merge commit', { pull: { merge_commit_sha: 'other-commit' } }],
     [

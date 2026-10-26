@@ -21,7 +21,9 @@ pub fn read_astc(path: &str) -> Option<Compressed> {
     if header[..4] != [0x13, 0xab, 0xa1, 0x5c] || header[4..7] != [4, 4, 1] {
         return None;
     }
-    let size = |at: usize| u32::from(header[at]) | u32::from(header[at + 1]) << 8 | u32::from(header[at + 2]) << 16;
+    let size = |at: usize| {
+        u32::from(header[at]) | u32::from(header[at + 1]) << 8 | u32::from(header[at + 2]) << 16
+    };
     let (width, height, depth) = (size(7), size(10), size(13));
     let blocks = width.div_ceil(4) as usize * height.div_ceil(4) as usize;
     if depth != 1 || width == 0 || height == 0 || bytes.len() != 16 + blocks * 16 {

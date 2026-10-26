@@ -14,7 +14,11 @@ impl Renderer {
             } else {
                 let mut bound = 0;
                 gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut bound);
-                let attachment = if bound == 0 { gl::STENCIL } else { gl::STENCIL_ATTACHMENT };
+                let attachment = if bound == 0 {
+                    gl::STENCIL
+                } else {
+                    gl::STENCIL_ATTACHMENT
+                };
                 let mut kind = gl::NONE as i32;
                 gl::GetFramebufferAttachmentParameteriv(
                     gl::FRAMEBUFFER,
@@ -60,16 +64,24 @@ impl Renderer {
                 }
                 _ if fade => None,
                 Draw::Shape(rect, radius, 0., color) if color[3] >= 0.999 => Some((*rect, *radius)),
-                Draw::RoundedGradient(rect, radius, top, bottom) if top[3] >= 0.999 && bottom[3] >= 0.999 => {
+                Draw::RoundedGradient(rect, radius, top, bottom)
+                    if top[3] >= 0.999 && bottom[3] >= 0.999 =>
+                {
                     Some((*rect, *radius))
                 }
                 // Glass at full strength is a solid picture of the backdrop.
-                Draw::Glass(_, rect, radius, top, bottom) if top[3] >= 0.999 && bottom[3] >= 0.999 => {
+                Draw::Glass(_, rect, radius, top, bottom)
+                    if top[3] >= 0.999 && bottom[3] >= 0.999 =>
+                {
                     Some((*rect, *radius))
                 }
                 // Tile artwork is full-bleed and opaque (only its corners are cut).
-                Draw::Image(path, rect, radius, false) if path.contains("/tiles/") => Some((*rect, *radius)),
-                Draw::TintedImage(path, rect, radius, false, tint) if path.contains("/tiles/") && tint[3] >= 0.999 => {
+                Draw::Image(path, rect, radius, false) if path.contains("/tiles/") => {
+                    Some((*rect, *radius))
+                }
+                Draw::TintedImage(path, rect, radius, false, tint)
+                    if path.contains("/tiles/") && tint[3] >= 0.999 =>
+                {
                     Some((*rect, *radius))
                 }
                 _ => None,

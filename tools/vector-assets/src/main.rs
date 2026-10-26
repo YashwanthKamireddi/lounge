@@ -286,7 +286,10 @@ impl Compiler {
             builder.end(true);
         }
         let path = builder.build();
-        for triangle in geometry::tessellate(&path, self.tolerance, rule)?.as_chunks::<3>().0 {
+        for triangle in geometry::tessellate(&path, self.tolerance, rule)?
+            .as_chunks::<3>()
+            .0
+        {
             self.triangle(
                 std::array::from_fn(|index| Vertex {
                     position: triangle[index].position,

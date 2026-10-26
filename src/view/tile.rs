@@ -1,5 +1,8 @@
 //! App tiles: the card face, its brand mark and its caption.
-use super::{Assets, FOCUS_SCALE, LABEL_GAP, MAIN_TOP, Scene, TILE_RADIUS, shared::{c, text}};
+use super::{
+    Assets, FOCUS_SCALE, LABEL_GAP, MAIN_TOP, Scene, TILE_RADIUS,
+    shared::{c, text},
+};
 
 /// How much further than focus the app in Move rises (a fraction of its size).
 const MOVE_LIFT: f32 = 0.03;
@@ -49,7 +52,11 @@ pub(super) fn tile(
     let lift = state.focus_amount(&Target::App(app.id.clone()));
     // Move, as tvOS: the app in hand rises further out of the grid, with a
     // deeper shadow. No outline, and the others stay as they are.
-    let raise = if state.moving.as_ref() == Some(&app.id) { state.move_raise() } else { 0. };
+    let raise = if state.moving.as_ref() == Some(&app.id) {
+        state.move_raise()
+    } else {
+        0.
+    };
     let base = rect;
     let scale = 1. + FOCUS_SCALE * lift + MOVE_LIFT * raise;
     let (cx, cy) = base.center();
@@ -63,7 +70,13 @@ pub(super) fn tile(
     // Only the focused card casts a shadow (tvOS lift). Resting shadows were
     // nearly invisible yet cost a large blurred quad each on the TV's GPU.
     if lift > 0. || raise > 0. {
-        out.shadow(rect, radius, 40. + 24. * raise, 30. * lift + 14. * raise, 0.35 * lift + 0.15 * raise);
+        out.shadow(
+            rect,
+            radius,
+            40. + 24. * raise,
+            30. * lift + 14. * raise,
+            0.35 * lift + 0.15 * raise,
+        );
     }
     tile_face(out, assets, app, rect, radius);
     if pinned {
@@ -106,21 +119,39 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
     } else if app.brand == "lounge-input" {
         // An input: the system tiles' grey with the HDMI glyph over its
         // port's name (the glyph alone cannot tell HDMI 1 from HDMI 2).
-        out.draw.push(Draw::RoundedGradient(rect, radius, c(0x9a9aa0, 1.), c(0x6e6e74, 1.)));
+        out.draw.push(Draw::RoundedGradient(
+            rect,
+            radius,
+            c(0x9a9aa0, 1.),
+            c(0x6e6e74, 1.),
+        ));
         let size = rect.h * 0.4;
         out.icon(
             assets,
             "input-hdmi",
-            Rect::new(rect.x + (rect.w - size) / 2., rect.y + rect.h * 0.13, size, size),
+            Rect::new(
+                rect.x + (rect.w - size) / 2.,
+                rect.y + rect.h * 0.13,
+                size,
+                size,
+            ),
             WHITE,
         );
         // Size and width in coarse steps: a focus lift reuses a few text
         // layouts rather than making one per frame.
         let size = (rect.h * 0.17 * 2.).round() / 2.;
-        let (width, height) = ((rect.w / 16.).round() * 16., (rect.h * 0.24 / 4.).round() * 4.);
+        let (width, height) = (
+            (rect.w / 16.).round() * 16.,
+            (rect.h * 0.24 / 4.).round() * 4.,
+        );
         out.text(
             &app.title,
-            Rect::new(rect.x + (rect.w - width) / 2., rect.y + rect.h * 0.56, width, height),
+            Rect::new(
+                rect.x + (rect.w - width) / 2.,
+                rect.y + rect.h * 0.56,
+                width,
+                height,
+            ),
             text(size, 650, 0.),
             WHITE,
             true,
@@ -138,11 +169,11 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
                     .and_then(|source| assets.artwork.get(source))
             })
             .flatten();
-        if let Some([top, bottom]) = artwork
-            .as_ref()
-            .map(|image| image.backdrop)
-            .or_else(|| installed.and_then(|_| assets.colors.get(&app.id)).map(|rgb| [*rgb; 2]))
-        {
+        if let Some([top, bottom]) = artwork.as_ref().map(|image| image.backdrop).or_else(|| {
+            installed
+                .and_then(|_| assets.colors.get(&app.id))
+                .map(|rgb| [*rgb; 2])
+        }) {
             let color = |rgb: [u8; 3]| rgb.map(|c| c as f32 / 255.);
             let [top, bottom] = [color(top), color(bottom)];
             if top == bottom {

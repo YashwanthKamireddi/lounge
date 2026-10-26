@@ -30,7 +30,13 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         let veil = super::SWITCHER_VEIL;
         if !out.fade_into(&backdrop, [veil, veil, veil + 0.02, 1.], appear) {
             let shade = [veil, veil, veil + 0.02, appear];
-            out.draw.push(Draw::Glass(backdrop, Rect::new(0., 0., 1920., 1080.), 0., shade, shade));
+            out.draw.push(Draw::Glass(
+                backdrop,
+                Rect::new(0., 0., 1920., 1080.),
+                0.,
+                shade,
+                shade,
+            ));
         }
     }
     // Each open app is its own card (no frame, no second logo), as upstream

@@ -50,7 +50,11 @@ impl Renderer {
         }
     }
 
-    pub(super) fn glyph(&mut self, c: char, font: u16) -> Result<&[lounge_vector_geometry::Vertex], String> {
+    pub(super) fn glyph(
+        &mut self,
+        c: char,
+        font: u16,
+    ) -> Result<&[lounge_vector_geometry::Vertex], String> {
         let key = (c, font);
         if !self.glyphs.contains_key(&key) {
             let geometry = self.fonts[&font].geometry(c)?;
@@ -88,9 +92,21 @@ impl Renderer {
                     return true;
                 }
                 if let Ok(geometry) = self.fonts[&font].geometry(c) {
-                    self.glyphs.insert((c, font), Glyph { geometry, frame: self.frame });
+                    self.glyphs.insert(
+                        (c, font),
+                        Glyph {
+                            geometry,
+                            frame: self.frame,
+                        },
+                    );
                 } else {
-                    self.glyphs.insert((c, font), Glyph { geometry: Vec::new(), frame: self.frame });
+                    self.glyphs.insert(
+                        (c, font),
+                        Glyph {
+                            geometry: Vec::new(),
+                            frame: self.frame,
+                        },
+                    );
                 }
                 done += 1;
             }
@@ -144,7 +160,14 @@ impl Renderer {
         self.stats.text_geometry_bytes = self.text_runs.values().map(run_bytes).sum();
     }
 
-    pub(super) fn text(&mut self, text: &str, rect: Rect, style: TextStyle, color: Color, centered: bool) {
+    pub(super) fn text(
+        &mut self,
+        text: &str,
+        rect: Rect,
+        style: TextStyle,
+        color: Color,
+        centered: bool,
+    ) {
         // Layout remains logical. Reuse the same run geometry at every density;
         // its shader snaps insertion origins and computes pixel-sized coverage.
         let size_f = style.size;

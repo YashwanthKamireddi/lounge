@@ -45,12 +45,13 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     let date_style = style;
     let date_width = assets.width(&date, date_style) + 14. * k;
     let clock_width = assets.width(&clock, style);
-    let extra = temperature
-        .as_ref()
-        .map_or(0., |(text, _)| (18. + 30. + 8.) * k + assets.width(text, style));
+    let extra = temperature.as_ref().map_or(0., |(text, _)| {
+        (18. + 30. + 8.) * k + assets.width(text, style)
+    });
     // The avatar: a chosen picture, else the signed-in profile's initial.
     let avatar = state.avatar.is_some() || state.profile.is_some();
-    let width = 40. * k + date_width + clock_width + extra + if avatar { (14. + 50.) * k } else { 0. };
+    let width =
+        40. * k + date_width + clock_width + extra + if avatar { (14. + 50.) * k } else { 0. };
     let pill = Rect::new(1836. - width, 49., width, PILL_HEIGHT);
     // Text, icon and avatar sit on the capsule's centre line.
     let line = |height: f32| pill.y + (pill.h - height) / 2.;
@@ -61,7 +62,12 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     let ink = WHITE;
     out.shadow(pill, pill.h / 2., 48., 4., 0.2);
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    out.glass_over(home_backdrop(state, assets), pill, pill.h / 2., c(PLATTER, 0.34));
+    out.glass_over(
+        home_backdrop(state, assets),
+        pill,
+        pill.h / 2.,
+        c(PLATTER, 0.34),
+    );
     // One thin specular rim, as Apple's glass has: bright where light falls,
     // faint below. (Two stacked rims read as a soft band once the TV
     // doubles every pixel to 4K.)
@@ -73,7 +79,12 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
         c(0xffffff, 0.06),
     ));
     let size = 46. * k;
-    let circle = Rect::new(pill.x + pill.w - 30. * k - size / 2., line(size), size, size);
+    let circle = Rect::new(
+        pill.x + pill.w - 30. * k - size / 2.,
+        line(size),
+        size,
+        size,
+    );
     if let Some(picture) = &state.avatar {
         // A new picture (rotating, or just chosen) fades in over the last.
         let fade = state.avatar_from.as_ref().map(|(previous, since)| {
@@ -81,10 +92,22 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
             (previous, t * t * (3. - 2. * t))
         });
         if let Some((previous, t)) = fade {
-            out.draw.push(Draw::TintedImage(previous.clone(), circle, size / 2., false, [1., 1., 1., 1. - t]));
+            out.draw.push(Draw::TintedImage(
+                previous.clone(),
+                circle,
+                size / 2.,
+                false,
+                [1., 1., 1., 1. - t],
+            ));
         }
         let alpha = fade.map_or(1., |(_, t)| t);
-        out.draw.push(Draw::TintedImage(picture.clone(), circle, size / 2., false, [1., 1., 1., alpha]));
+        out.draw.push(Draw::TintedImage(
+            picture.clone(),
+            circle,
+            size / 2.,
+            false,
+            [1., 1., 1., alpha],
+        ));
     } else if let Some(profile) = &state.profile {
         // tvOS ends the menu bar with the profile's avatar: here the signed-in
         // LG profile's initial on its colour.
@@ -117,9 +140,20 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     );
     x += clock_width + 18. * k;
     if let Some((text, icon)) = temperature {
-        out.icon(assets, &icon, Rect::new(x, line(30. * k) - k, 30. * k, 30. * k), [ink[0], ink[1], ink[2], 0.9]);
+        out.icon(
+            assets,
+            &icon,
+            Rect::new(x, line(30. * k) - k, 30. * k, 30. * k),
+            [ink[0], ink[1], ink[2], 0.9],
+        );
         x += 38. * k;
-        out.text(text, Rect::new(x, line(30. * k), 160., 30. * k), style, ink, false);
+        out.text(
+            text,
+            Rect::new(x, line(30. * k), 160., 30. * k),
+            style,
+            ink,
+            false,
+        );
     }
     out.fade(first, fade, 1.);
 }
@@ -181,7 +215,13 @@ pub(super) fn footer(out: &mut Scene, state: &State, assets: &Assets) {
 /// tvOS context menu, from Apple's template: a 440-wide glass platter (r30)
 /// beside the item it acts on, a one-line header, then 70pt rows with the
 /// label at the left and its symbol at the right. Back closes it.
-pub(super) fn options(out: &mut Scene, state: &State, assets: &Assets, id: &str, anchor: Option<Rect>) {
+pub(super) fn options(
+    out: &mut Scene,
+    state: &State,
+    assets: &Assets,
+    id: &str,
+    anchor: Option<Rect>,
+) {
     let title = state
         .inventory
         .apps
@@ -204,7 +244,14 @@ pub(super) fn options(out: &mut Scene, state: &State, assets: &Assets, id: &str,
         Some(tile) => {
             let x = (tile.x + tile.w / 2. - w / 2.).clamp(60., 1860. - w);
             let below = tile.y + tile.h + 30.;
-            (x, if below + h <= 1020. { below } else { tile.y - 30. - h })
+            (
+                x,
+                if below + h <= 1020. {
+                    below
+                } else {
+                    tile.y - 30. - h
+                },
+            )
         }
         None => (960. - w / 2., 540. - h / 2.),
     };
@@ -213,11 +260,27 @@ pub(super) fn options(out: &mut Scene, state: &State, assets: &Assets, id: &str,
     // Liquid Glass: veil, top sheen and a light rim.
     out.shadow(panel, 30., 40., 12., 0.35);
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    out.glass_over(home_backdrop(state, assets), panel, 30., out.theme.veil(0.42));
-    out.draw.push(Draw::RoundedGradient(panel, 30., c(0xffffff, 0.12), c(0xffffff, 0.02)));
+    out.glass_over(
+        home_backdrop(state, assets),
+        panel,
+        30.,
+        out.theme.veil(0.42),
+    );
+    out.draw.push(Draw::RoundedGradient(
+        panel,
+        30.,
+        c(0xffffff, 0.12),
+        c(0xffffff, 0.02),
+    ));
     out.draw.push(Draw::Soft(None));
     // One specular rim, bright where light falls, as the pill's.
-    out.draw.push(Draw::GradientRing(panel, 30., 1.5, c(0xffffff, 0.5), c(0xffffff, 0.08)));
+    out.draw.push(Draw::GradientRing(
+        panel,
+        30.,
+        1.5,
+        c(0xffffff, 0.5),
+        c(0xffffff, 0.08),
+    ));
     out.text(
         title,
         Rect::new(panel.x + 25., panel.y + 16., w - 50., 30.),
@@ -227,14 +290,22 @@ pub(super) fn options(out: &mut Scene, state: &State, assets: &Assets, id: &str,
     );
     // tvOS focus: one white capsule that glides from the row focus left to
     // the row it reached, easing out, under dark text; the rest stay plain.
-    let row = |index: usize| Rect::new(panel.x + 10., panel.y + 59. + index as f32 * 70., w - 20., 66.);
+    let row = |index: usize| {
+        Rect::new(
+            panel.x + 10.,
+            panel.y + 59. + index as f32 * 70.,
+            w - 20.,
+            66.,
+        )
+    };
     let highlight = match state.focus {
         Target::Option(current) => {
             let arrived = state.focus_amount(&Target::Option(current));
             Some(match &state.focus_from {
-                Some((Target::Option(previous), ..)) => {
-                    (row(*previous).y + (row(current).y - row(*previous).y) * arrived, 1.)
-                }
+                Some((Target::Option(previous), ..)) => (
+                    row(*previous).y + (row(current).y - row(*previous).y) * arrived,
+                    1.,
+                ),
                 // Arriving from outside the menu (it just opened): fades in.
                 _ => (row(current).y, arrived),
             })
@@ -255,13 +326,25 @@ pub(super) fn options(out: &mut Scene, state: &State, assets: &Assets, id: &str,
     let words = |out: &mut Scene, ink| {
         for (index, (label, icon)) in rows.iter().enumerate() {
             let rect = row(index);
-            out.text(*label, Rect::new(rect.x + 15., rect.y + 19., 300., 32.), row_style(), ink, false);
-            out.icon(assets, icon, Rect::new(panel.x + 389., rect.y + 22., 26., 26.), ink);
+            out.text(
+                *label,
+                Rect::new(rect.x + 15., rect.y + 19., 300., 32.),
+                row_style(),
+                ink,
+                false,
+            );
+            out.icon(
+                assets,
+                icon,
+                Rect::new(panel.x + 389., rect.y + 22., 26., 26.),
+                ink,
+            );
         }
     };
     words(out, light);
     if let Some((y, alpha)) = highlight {
-        out.draw.push(Draw::Clip(Some(Rect::new(panel.x + 10., y, w - 20., 66.))));
+        out.draw
+            .push(Draw::Clip(Some(Rect::new(panel.x + 10., y, w - 20., 66.))));
         words(out, [dark[0], dark[1], dark[2], alpha]);
         out.draw.push(Draw::Clip(None));
     }
@@ -358,7 +441,11 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
     out.shape(Rect::new(80., 371., 1760., 1.), 0., out.theme.wash(0.3));
     if !location {
         // Search never offers itself as a result.
-        let apps: Vec<_> = state.apps().into_iter().filter(|app| app.id != SEARCH_TILE).collect();
+        let apps: Vec<_> = state
+            .apps()
+            .into_iter()
+            .filter(|app| app.id != SEARCH_TILE)
+            .collect();
         if apps.is_empty() && !typed.is_empty() {
             out.text(
                 i18n::format("noMatchesHint", &[("query", typed)]),
@@ -385,7 +472,12 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
                 state,
                 assets,
                 app,
-                Rect::new(80. + column as f32 * 450., 486. + row as f32 * 300., 410., 231.),
+                Rect::new(
+                    80. + column as f32 * 450.,
+                    486. + row as f32 * 300.,
+                    410.,
+                    231.,
+                ),
                 Some(ink),
                 false,
             );
@@ -437,12 +529,28 @@ pub(super) fn toast(out: &mut Scene, state: &State, assets: &Assets, notice: &st
     let height = (lines * 31. + 40.).max(icon + 32.);
     // Top right, right-aligned with the status pill and just beneath it, so
     // the time is never covered; where no pill shows it takes the top.
-    let rect = Rect::new(1836. - width, 49. + (PILL_HEIGHT + 16.) * pill_shown(state), width, height);
+    let rect = Rect::new(
+        1836. - width,
+        49. + (PILL_HEIGHT + 16.) * pill_shown(state),
+        width,
+        height,
+    );
     let focused = state.focus == Target::DismissNotice;
     out.shadow(rect, 32., 44., 12., 0.32);
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    out.glass(assets, &state.preferences.background, rect, 32., out.theme.veil(0.6 - 0.12 * f32::from(u8::from(focused))));
-    out.draw.push(Draw::RoundedGradient(rect, 32., c(0xffffff, 0.12), c(0xffffff, 0.02)));
+    out.glass(
+        assets,
+        &state.preferences.background,
+        rect,
+        32.,
+        out.theme.veil(0.6 - 0.12 * f32::from(u8::from(focused))),
+    );
+    out.draw.push(Draw::RoundedGradient(
+        rect,
+        32.,
+        c(0xffffff, 0.12),
+        c(0xffffff, 0.02),
+    ));
     out.draw.push(Draw::Soft(None));
     out.draw.push(Draw::GradientRing(
         rect,
@@ -456,7 +564,12 @@ pub(super) fn toast(out: &mut Scene, state: &State, assets: &Assets, notice: &st
     out.image(assets.path("app-icon.png"), badge, 13., false);
     out.text(
         notice,
-        Rect::new(badge.x + icon + 18., rect.y + (height - lines * 31.) / 2., text_width, lines * 31.),
+        Rect::new(
+            badge.x + icon + 18.,
+            rect.y + (height - lines * 31.) / 2.,
+            text_width,
+            lines * 31.,
+        ),
         style,
         out.theme.ink(1.),
         false,

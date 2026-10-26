@@ -111,7 +111,14 @@ impl Scene {
     }
     /// tvOS Liquid Glass: the blurred wallpaper behind `rect` under a light
     /// veil. Cheap: one texture sample, no runtime blur.
-    pub(super) fn glass(&mut self, assets: &Assets, background: &str, rect: Rect, radius: f32, veil: Color) {
+    pub(super) fn glass(
+        &mut self,
+        assets: &Assets,
+        background: &str,
+        rect: Rect,
+        radius: f32,
+        veil: Color,
+    ) {
         self.glass_over(
             assets.path(format!("wallpapers/{background}-glass.png")),
             rect,
@@ -121,7 +128,8 @@ impl Scene {
     }
     /// Glass over a specific pre-blurred backdrop (Top Shelf art, say).
     pub(super) fn glass_over(&mut self, backdrop: String, rect: Rect, radius: f32, veil: Color) {
-        self.draw.push(Draw::Glass(backdrop, rect, radius, [1.; 4], [1.; 4]));
+        self.draw
+            .push(Draw::Glass(backdrop, rect, radius, [1.; 4], [1.; 4]));
         self.shape(rect, radius, veil);
         // No rim here: each glass piece draws its own single specular rim
         // (two stacked rims read as a soft band once the TV scales to 4K).
@@ -199,12 +207,16 @@ impl Scene {
     /// background is itself mid-dissolve; the caller then lays the backdrop
     /// over as a layer.
     pub(super) fn fade_into(&mut self, backdrop: &str, shade: Color, amount: f32) -> bool {
-        let Some(Draw::Dissolve(_, to, mix, tint, lift)) =
-            self.draw.iter_mut().find(|draw| matches!(draw, Draw::Dissolve(..)))
+        let Some(Draw::Dissolve(_, to, mix, tint, lift)) = self
+            .draw
+            .iter_mut()
+            .find(|draw| matches!(draw, Draw::Dissolve(..)))
         else {
             return false;
         };
-        let blend = |a: Color, b: Color| -> Color { std::array::from_fn(|i| a[i] + (b[i] - a[i]) * amount) };
+        let blend = |a: Color, b: Color| -> Color {
+            std::array::from_fn(|i| a[i] + (b[i] - a[i]) * amount)
+        };
         if *mix >= 1. && to == backdrop {
             // Already that picture (the grid's backdrop): only its tint moves.
             *tint = blend(*tint, shade);
@@ -273,35 +285,64 @@ mod tests {
     fn the_switcher_backdrop_fades_in_within_the_background_pass() {
         let shade = [0.38, 0.38, 0.4, 1.];
         // The home's photo mixes into the backdrop; content fades with it.
-        let mut out = scene(Draw::Dissolve("photo".into(), "photo".into(), 0., [1.; 4], [0.; 4]));
+        let mut out = scene(Draw::Dissolve(
+            "photo".into(),
+            "photo".into(),
+            0.,
+            [1.; 4],
+            [0.; 4],
+        ));
         assert!(out.fade_into("glass", shade, 0.25));
-        assert!(matches!(&out.draw[0], Draw::Dissolve(from, to, mix, tint, _)
-            if from == "photo" && to == "glass" && *mix == 0.25 && *tint == shade));
+        assert!(
+            matches!(&out.draw[0], Draw::Dissolve(from, to, mix, tint, _)
+            if from == "photo" && to == "glass" && *mix == 0.25 && *tint == shade)
+        );
         assert!(matches!(out.draw[1], Draw::Shape(_, _, _, color) if color[3] == 0.75));
         // The grid's backdrop is already that picture: only its tint moves.
-        let mut out = scene(Draw::Dissolve("glass".into(), "glass".into(), 1., [0.62; 4], [0.; 4]));
+        let mut out = scene(Draw::Dissolve(
+            "glass".into(),
+            "glass".into(),
+            1.,
+            [0.62; 4],
+            [0.; 4],
+        ));
         assert!(out.fade_into("glass", shade, 1.));
         assert!(matches!(&out.draw[0], Draw::Dissolve(_, _, _, tint, _) if *tint == shade));
         // Mid-dissolve between two pictures: left alone for a layer instead.
-        let mut out = scene(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4], [0.; 4]));
+        let mut out = scene(Draw::Dissolve(
+            "a".into(),
+            "b".into(),
+            0.5,
+            [1.; 4],
+            [0.; 4],
+        ));
         assert!(!out.fade_into("glass", shade, 0.5));
         assert!(matches!(out.draw[1], Draw::Shape(_, _, _, color) if color[3] == 1.));
     }
 
     #[test]
     fn dimming_a_background_mid_dissolve_adds_no_layer() {
-        let mut out = scene(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4], [0.; 4]));
+        let mut out = scene(Draw::Dissolve(
+            "a".into(),
+            "b".into(),
+            0.5,
+            [1.; 4],
+            [0.; 4],
+        ));
         out.dim(0.65);
         assert_eq!(out.draw.len(), 2, "no veil drawn");
         assert!(matches!(&out.draw[0], Draw::Dissolve(_, _, _, _, lift)
             if lift[..3] == [0.; 3] && (lift[3] - 0.35).abs() < 1e-6));
-        assert!(matches!(out.draw[1], Draw::Shape(_, _, _, color) if (color[0] - 0.65).abs() < 1e-6));
+        assert!(
+            matches!(out.draw[1], Draw::Shape(_, _, _, color) if (color[0] - 0.65).abs() < 1e-6)
+        );
     }
     #[test]
     fn a_backdrop_veil_folds_into_the_background_pass_exactly() {
         // What the dissolve shader shows, then a straight-alpha layer over it.
         let pass = |x: f32, lift: Color, channel: usize| x + (lift[channel] - x) * lift[3];
-        let layer = |below: f32, veil: Color, channel: usize| below + (veil[channel] - below) * veil[3];
+        let layer =
+            |below: f32, veil: Color, channel: usize| below + (veil[channel] - below) * veil[3];
         for (lift, veil) in [
             ([0.; 4], [0., 0., 0., 0.3]),
             ([0.; 4], [0.96, 0.96, 0.97, 0.45]),
@@ -309,10 +350,13 @@ mod tests {
             ([0., 0., 0., 0.35], [0.9, 0.8, 0.7, 0.5]),
         ] {
             let mut out = Scene::new(super::super::theme::Theme::new(0.));
-            out.draw.push(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4], lift));
+            out.draw
+                .push(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4], lift));
             out.veil(veil);
             assert_eq!(out.draw.len(), 1, "no layer drawn");
-            let Draw::Dissolve(.., folded) = out.draw[0] else { unreachable!() };
+            let Draw::Dissolve(.., folded) = out.draw[0] else {
+                unreachable!()
+            };
             for x in [0., 0.25, 0.6, 1.] {
                 for channel in 0..3 {
                     let expected = layer(pass(x, lift, channel), veil, channel);

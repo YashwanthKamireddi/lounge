@@ -23,7 +23,11 @@ impl State {
             self.settings_previous = self.settings_level;
             self.settings_ghost = None;
             if !self.preferences.reduced_motion && self.page_since.is_none() {
-                let direction = if depth >= self.settings_level.0 { 1. } else { -1. };
+                let direction = if depth >= self.settings_level.0 {
+                    1.
+                } else {
+                    -1.
+                };
                 self.settings_since = Some((Instant::now(), direction));
             }
             self.dirty = true;
@@ -94,7 +98,9 @@ impl State {
                     // tvOS: swipe a window up to quit that app.
                     let id = switcher.apps.remove(index);
                     let now = Instant::now();
-                    switcher.closing.push((id.clone(), now, index as f32 - switcher.shown));
+                    switcher
+                        .closing
+                        .push((id.clone(), now, index as f32 - switcher.shown));
                     if switcher.apps.is_empty() {
                         // Let the last window finish flying away, then leave.
                         switcher.dismissed = Some(now);
@@ -137,7 +143,8 @@ impl State {
                     Direction::Down => (index + APPS_COLUMNS).min(last),
                 };
                 if next != index {
-                    let mut visible: Vec<String> = slots.iter().map(|slot| ids[*slot].clone()).collect();
+                    let mut visible: Vec<String> =
+                        slots.iter().map(|slot| ids[*slot].clone()).collect();
                     let before = visible.clone();
                     let moved = visible.remove(index);
                     visible.insert(next, moved);
@@ -435,10 +442,7 @@ impl State {
             }
             if self.page == Page::Settings
                 && matches!(direction, Direction::Left)
-                && !matches!(
-                    self.focus,
-                    Target::Nav(_) | Target::Sidebar(_)
-                )
+                && !matches!(self.focus, Target::Nav(_) | Target::Sidebar(_))
             {
                 if let Target::Background(index) = self.focus {
                     if index % 3 != 0 { /* left follows gallery order */

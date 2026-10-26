@@ -31,7 +31,9 @@ pub fn watch_foreground(
             // A denied or dropped subscription replies returnValue:false: hand
             // back to polling rather than silently stop watching.
             if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
-                status(&format!("foreground events ended: {reply}; polling meanwhile"));
+                status(&format!(
+                    "foreground events ended: {reply}; polling meanwhile"
+                ));
                 alive.store(false, Ordering::Relaxed);
                 let (alive, wake) = (alive.clone(), wake.clone());
                 resubscribe("foreground events", move || {
@@ -41,7 +43,11 @@ pub fn watch_foreground(
                 });
                 return;
             }
-            let front = reply.get("appId").and_then(Value::as_str).unwrap_or_default().to_owned();
+            let front = reply
+                .get("appId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
             eprintln!("Lounge foreground: {front:?} at {} ms", clock_ms());
             note_opened(&front);
             let closed = std::mem::replace(&mut previous, front.clone());
@@ -49,7 +55,8 @@ pub fn watch_foreground(
             // webOS raises LG Home: act then, so LG Home never shows. LG Home
             // itself in front is the fallback. Lounge launching an app (it was
             // in front) is not a close.
-            let app_closed = front.is_empty() && !closed.is_empty() && closed != APP_ID && closed != HOME_ID;
+            let app_closed =
+                front.is_empty() && !closed.is_empty() && closed != APP_ID && closed != HOME_ID;
             if (front != HOME_ID && !app_closed) || returning.swap(true, Ordering::AcqRel) {
                 return;
             }
@@ -127,13 +134,23 @@ pub fn watch_power() -> Result<(), String> {
             // "Request Power Off" / "Prepare Active Standby", then becomes
             // "Active Standby" (or "Suspend"). webOS asks every app to quit
             // on the way; Lounge stays resident instead (see `STANDBY`).
-            let processing = reply.get("processing").and_then(Value::as_str).unwrap_or("");
+            let processing = reply
+                .get("processing")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             let Ok(mut previous) = PREVIOUS.lock() else {
                 return;
             };
             let (going, woke) = power_step(&previous, state, processing);
             if going != STANDBY.swap(going, Ordering::Relaxed) {
-                status(&format!("power: {state}{}", if processing.is_empty() { String::new() } else { format!(" ({processing})") }));
+                status(&format!(
+                    "power: {state}{}",
+                    if processing.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({processing})")
+                    }
+                ));
             }
             *previous = state.to_owned();
             drop(previous);
@@ -161,11 +178,20 @@ pub fn watch_power() -> Result<(), String> {
 /// screen saver ("Request Screen Saver", "Screen Saver") and Screen Off
 /// leave the TV on: a quit then is a real quit. A wake is "Active" straight
 /// after Standby or Suspend.
-#[cfg_attr(not(all(feature = "webos", target_os = "linux", target_arch = "arm")), allow(dead_code))]
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
 pub fn power_step(previous: &str, state: &str, processing: &str) -> (bool, bool) {
-    let off = |text: &str| ["Standby", "Suspend", "Power Off"].iter().any(|word| text.contains(word));
+    let off = |text: &str| {
+        ["Standby", "Suspend", "Power Off"]
+            .iter()
+            .any(|word| text.contains(word))
+    };
     let going = off(state) || off(processing);
-    let woke = state == "Active" && processing.is_empty() && (previous.contains("Standby") || previous.contains("Suspend"));
+    let woke = state == "Active"
+        && processing.is_empty()
+        && (previous.contains("Standby") || previous.contains("Suspend"));
     (going, woke)
 }
 
@@ -188,13 +214,17 @@ fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + 
     // A stream that ends again soon after it came back (a service refusing
     // it, say) waits longer each time: 3 s, 10 s, 30 s, then every 5 minutes,
     // until it has held for 10 minutes.
-    static ENDINGS: std::sync::Mutex<Vec<(&str, u32, Option<std::time::Instant>)>> = std::sync::Mutex::new(Vec::new());
+    static ENDINGS: std::sync::Mutex<Vec<(&str, u32, Option<std::time::Instant>)>> =
+        std::sync::Mutex::new(Vec::new());
     let first = ENDINGS.lock().map_or(3, |mut endings| {
         let now = std::time::Instant::now();
-        let index = endings.iter().position(|(name, ..)| *name == what).unwrap_or_else(|| {
-            endings.push((what, 0, None));
-            endings.len() - 1
-        });
+        let index = endings
+            .iter()
+            .position(|(name, ..)| *name == what)
+            .unwrap_or_else(|| {
+                endings.push((what, 0, None));
+                endings.len() - 1
+            });
         let (_, count, last) = &mut endings[index];
         if last.is_some_and(|at| now.duration_since(at) > std::time::Duration::from_secs(600)) {
             *count = 0;
@@ -204,7 +234,12 @@ fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + 
         [3, 10, 30, 300][(*count as usize - 1).min(3)]
     });
     thread::spawn(move || {
-        for (attempt, wait) in [first].into_iter().chain([10]).chain(std::iter::repeat(30)).enumerate() {
+        for (attempt, wait) in [first]
+            .into_iter()
+            .chain([10])
+            .chain(std::iter::repeat(30))
+            .enumerate()
+        {
             thread::sleep(std::time::Duration::from_secs(wait));
             match subscribe() {
                 Ok(()) => {
@@ -220,7 +255,9 @@ fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + 
 /// Keep `cache` holding webOS's open apps, pushed on every change, so the app
 /// switcher opens at once from memory instead of asking the bus on Back.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-pub fn watch_running(cache: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>>) -> Result<(), String> {
+pub fn watch_running(
+    cache: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>>,
+) -> Result<(), String> {
     let again = cache.clone();
     crate::luna::subscribe(
         "luna://com.webos.applicationManager/running",
@@ -256,7 +293,9 @@ pub fn watch_launches(home: Wake, take_home: bool) -> Result<(), String> {
             if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
                 status(&format!("launch events ended: {reply}"));
                 let home = home.clone();
-                resubscribe("launch events", move || watch_launches(home.clone(), take_home));
+                resubscribe("launch events", move || {
+                    watch_launches(home.clone(), take_home)
+                });
                 return;
             }
             if reply.get("event").and_then(Value::as_str) != Some("launch") {
@@ -284,7 +323,9 @@ pub fn watch_launches(_home: Wake, _take_home: bool) -> Result<(), String> {
 }
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
-pub fn watch_running(_cache: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>>) -> Result<(), String> {
+pub fn watch_running(
+    _cache: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>>,
+) -> Result<(), String> {
     Err("Running-app events need an ARM webOS build".into())
 }
 
@@ -317,7 +358,10 @@ fn note_raised() {
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 fn raise_self() {
     note_raised();
-    let _ = call("luna://com.webos.applicationManager/launch", json!({"id": APP_ID, "params": self_launch()}));
+    let _ = call(
+        "luna://com.webos.applicationManager/launch",
+        json!({"id": APP_ID, "params": self_launch()}),
+    );
 }
 
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
@@ -328,7 +372,6 @@ fn raised_self_recently() -> bool {
         .and_then(|raised| *raised)
         .is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(1500))
 }
-
 
 /// Wakes Lounge's event loop from another thread (see main's `wake`).
 pub type Wake = std::sync::Arc<dyn Fn() + Send + Sync>;
@@ -449,7 +492,8 @@ impl Platform {
                                 } else {
                                     json!({"id": id})
                                 };
-                                call("luna://com.webos.applicationManager/launch", payload).map(|_| ())
+                                call("luna://com.webos.applicationManager/launch", payload)
+                                    .map(|_| ())
                             };
                             // Lounge raising itself is no app launch: no reply,
                             // so it never clears an app's opening or shows its error.
@@ -515,10 +559,13 @@ pub fn status(line: &str) {
 /// supportAppList). Lounge comes forward only over the boot screen, LG Home; with
 /// an app in front, or no answer, it stands aside before any window exists.
 pub fn preload_may_show() -> bool {
-    call("luna://com.webos.applicationManager/getForegroundAppInfo", json!({}))
-        .ok()
-        .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
-        .is_some_and(|front| front.is_empty() || front == HOME_ID || front == APP_ID)
+    call(
+        "luna://com.webos.applicationManager/getForegroundAppInfo",
+        json!({}),
+    )
+    .ok()
+    .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
+    .is_some_and(|front| front.is_empty() || front == HOME_ID || front == APP_ID)
 }
 
 fn call(uri: &str, payload: Value) -> Result<Value, String> {
@@ -565,7 +612,10 @@ echo "{\"returnValue\":true,\"profile\":{$F}}""#;
     )?;
     let profile = inventory_payload(&envelope, "profile")?;
     Ok(crate::model::Profile::from_fields(
-        profile.get("profileNick").and_then(Value::as_str).unwrap_or_default(),
+        profile
+            .get("profileNick")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
         profile.get("profileBg").and_then(Value::as_str),
     ))
 }
@@ -620,9 +670,8 @@ pub fn read_app_icons(source: &app_artwork::Source) -> Result<Vec<Vec<u8>>, Stri
             })
             .collect::<Vec<_>>()
             .join("; ");
-        let command = format!(
-            "printf '{{\"returnValue\":true,\"icons\":[\"'; ( {tries} ); printf '\"]}}'"
-        );
+        let command =
+            format!("printf '{{\"returnValue\":true,\"icons\":[\"'; ( {tries} ); printf '\"]}}'");
         if let Ok(envelope) = call(
             "luna://org.webosbrew.hbchannel.service/exec",
             json!({"command": command}),
@@ -691,7 +740,11 @@ fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
         .0
         .iter()
         .map(|pair| {
-            let digit = |b: u8| (b as char).to_digit(16).ok_or("Invalid installed icon encoding");
+            let digit = |b: u8| {
+                (b as char)
+                    .to_digit(16)
+                    .ok_or("Invalid installed icon encoding")
+            };
             Ok((digit(pair[0])? * 16 + digit(pair[1])?) as u8)
         })
         .collect()

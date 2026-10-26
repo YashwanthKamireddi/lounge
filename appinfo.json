@@ -9,14 +9,8 @@
   "largeIcon": "app-icon-large.png",
   "appDescription": "A calm, tvOS-style home screen for LG TVs.",
   "resolution": "1920x1080",
-  "appCategory": [
-    "home"
-  ],
-  "requiredACG": [
-    "application.launcher",
-    "application.query",
-    "lunabus.query"
-  ],
+  "appCategory": ["home"],
+  "requiredACG": ["application.launcher", "application.query", "lunabus.query"],
   "handlesRelaunch": false,
   "iconColor": "#1e2240",
   "spinnerOnLaunch": false,

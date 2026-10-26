@@ -45,7 +45,16 @@ const worker = async () => {
     } catch {
       // Photos get the most thorough search; quality is what matters here.
       const effort = file.includes(`${path.sep}tiles${path.sep}`) ? '-thorough' : '-exhaustive';
-      await run(encoder, ['-cl', file, `${cached.slice(0, -5)}.part.astc`, '4x4', effort, '-silent', '-j', '1']);
+      await run(encoder, [
+        '-cl',
+        file,
+        `${cached.slice(0, -5)}.part.astc`,
+        '4x4',
+        effort,
+        '-silent',
+        '-j',
+        '1',
+      ]);
       await fs.rename(`${cached.slice(0, -5)}.part.astc`, cached);
       encoded += 1;
     }

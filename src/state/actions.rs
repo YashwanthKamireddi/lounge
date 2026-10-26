@@ -254,7 +254,10 @@ impl State {
                     Some(Subpage::Hidden) => {
                         // Showing an app puts it back where it was; the list
                         // closes once nothing is left in it.
-                        let Some(app) = self.hidden_apps().get(index).map(|app| (app.id.clone(), app.title.clone()))
+                        let Some(app) = self
+                            .hidden_apps()
+                            .get(index)
+                            .map(|app| (app.id.clone(), app.title.clone()))
                         else {
                             return vec![];
                         };

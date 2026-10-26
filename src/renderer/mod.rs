@@ -7,20 +7,17 @@ mod stats;
 mod text;
 mod textures;
 
-use geometry::{regions, screens};
-use shader::{gl_string, link};
-pub use stats::{GraphicsInfo, RenderStats};
-use text::load_font;
-pub use textures::{Compressed, read_astc};
-use textures::{compressed_texture, load_texture, texture};
 use crate::{
     font::Font,
     raster::{Size, Viewport},
     state::Rect,
     vector,
 };
+use geometry::{regions, screens};
 use gl::types::*;
 use serde::Serialize;
+use shader::{gl_string, link};
+pub use stats::{GraphicsInfo, RenderStats};
 use std::{
     collections::{HashMap, HashSet},
     ffi::{CStr, CString},
@@ -28,6 +25,9 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use text::load_font;
+pub use textures::{Compressed, read_astc};
+use textures::{compressed_texture, load_texture, texture};
 
 pub type Color = [f32; 4];
 pub const WHITE: Color = [0.96, 0.96, 0.96, 1.];
@@ -399,7 +399,10 @@ impl Renderer {
             textures: HashMap::new(),
             vectors: HashMap::new(),
             artwork_variants: HashMap::new(),
-            astc: gles && gl_string(gl::EXTENSIONS).split(' ').any(|name| name == "GL_KHR_texture_compression_astc_ldr"),
+            astc: gles
+                && gl_string(gl::EXTENSIONS)
+                    .split(' ')
+                    .any(|name| name == "GL_KHR_texture_compression_astc_ldr"),
             vertices: Vec::with_capacity(65536),
             batches: Vec::new(),
             clip: None,
@@ -455,7 +458,11 @@ impl Renderer {
         let (rect, uv, border) = if self.soft > 0. && radius > 0. && border == 0. {
             let s = self.soft;
             let (du, dv) = ((uv[2] - uv[0]) / rect.w * s, (uv[3] - uv[1]) / rect.h * s);
-            (rect.inset(-s), [uv[0] - du, uv[1] - dv, uv[2] + du, uv[3] + dv], -s)
+            (
+                rect.inset(-s),
+                [uv[0] - du, uv[1] - dv, uv[2] + du, uv[3] + dv],
+                -s,
+            )
         } else {
             (rect, uv, border)
         };
@@ -470,7 +477,8 @@ impl Renderer {
         let regions = regions(rect, radius, border);
         for &[x0, y0, x1, y1] in &regions {
             for (x, y) in [(x0, y0), (x1, y0), (x0, y1), (x0, y1), (x1, y0), (x1, y1)] {
-                let color: [f32; 4] = std::array::from_fn(|i| colors[0][i] + (colors[1][i] - colors[0][i]) * y);
+                let color: [f32; 4] =
+                    std::array::from_fn(|i| colors[0][i] + (colors[1][i] - colors[0][i]) * y);
                 self.vertices.extend_from_slice(&[
                     rect.x + x * rect.w,
                     rect.y + y * rect.h,
@@ -795,21 +803,34 @@ impl Renderer {
                 continue;
             }
             let painted = match command {
-                Draw::Shape(rect, radius, width, _) | Draw::GradientRing(rect, radius, width, ..) if *width > 0. => {
+                Draw::Shape(rect, radius, width, _)
+                | Draw::GradientRing(rect, radius, width, ..)
+                    if *width > 0. =>
+                {
                     for [x0, y0, x1, y1] in regions(*rect, *radius, *width) {
-                        let band = Rect::new(rect.x + x0 * rect.w, rect.y + y0 * rect.h, (x1 - x0) * rect.w, (y1 - y0) * rect.h);
+                        let band = Rect::new(
+                            rect.x + x0 * rect.w,
+                            rect.y + y0 * rect.h,
+                            (x1 - x0) * rect.w,
+                            (y1 - y0) * rect.h,
+                        );
                         *fill.entry("shape").or_insert(0.) += screens(band, self.clip);
                     }
                     None
                 }
-                Draw::Shape(rect, ..) | Draw::RoundedGradient(rect, ..) | Draw::GradientRing(rect, ..) => {
-                    Some(("shape", *rect))
-                }
+                Draw::Shape(rect, ..)
+                | Draw::RoundedGradient(rect, ..)
+                | Draw::GradientRing(rect, ..) => Some(("shape", *rect)),
                 Draw::Shadow(rect, _, blur, _) => Some(("shadow", rect.inset(-*blur))),
                 Draw::Text(_, rect, ..) => Some(("text", *rect)),
-                Draw::Image(path, rect, ..) | Draw::TintedImage(path, rect, ..) => {
-                    Some((if path.ends_with(".lvec") { "vector" } else { "image" }, *rect))
-                }
+                Draw::Image(path, rect, ..) | Draw::TintedImage(path, rect, ..) => Some((
+                    if path.ends_with(".lvec") {
+                        "vector"
+                    } else {
+                        "image"
+                    },
+                    *rect,
+                )),
                 Draw::AppImage(_, rect, _) => Some(("image", *rect)),
                 Draw::Glass(_, rect, ..) => Some(("glass", *rect)),
                 Draw::Dissolve(..) => Some(("background", Rect::new(0., 0., 1920., 1080.))),
@@ -861,8 +882,12 @@ impl Renderer {
                     self.image(path, *rect, *radius, *contain, *tint)
                 }
                 Draw::AppImage(image, rect, tint) => self.app_image(image, *rect, *tint),
-                Draw::Glass(path, rect, radius, top, bottom) => self.glass(path, *rect, *radius, [*top, *bottom]),
-                Draw::Dissolve(from, to, amount, tint, lift) => self.dissolve(from, to, *amount, *tint, *lift),
+                Draw::Glass(path, rect, radius, top, bottom) => {
+                    self.glass(path, *rect, *radius, [*top, *bottom])
+                }
+                Draw::Dissolve(from, to, amount, tint, lift) => {
+                    self.dissolve(from, to, *amount, *tint, *lift)
+                }
                 Draw::Clip(clip) => self.clip = *clip,
                 Draw::EdgeFade(fade) => self.fade = *fade,
                 Draw::Soft(soft) => self.soft = soft.unwrap_or(0.),
@@ -892,7 +917,8 @@ impl Renderer {
                 ]);
             }
         }
-        let total = |fill: &std::collections::BTreeMap<&'static str, f32>| fill.values().sum::<f32>();
+        let total =
+            |fill: &std::collections::BTreeMap<&'static str, f32>| fill.values().sum::<f32>();
         if total(&fill) > total(&self.stats.peak_fill) {
             self.stats.peak_fill = fill.clone();
         }
@@ -1101,7 +1127,10 @@ impl Renderer {
                             mesh,
                             [1., 1., origin[0], origin[1]],
                             *tint,
-                            text::embolden(f32::from_bits(key.layout[0]) * self.stats.viewport.height as f32 / 1080.),
+                            text::embolden(
+                                f32::from_bits(key.layout[0]) * self.stats.viewport.height as f32
+                                    / 1080.,
+                            ),
                         );
                         paint_bound = false;
                     }
@@ -1145,7 +1174,14 @@ impl Renderer {
         self.stats.cpu_submission_ms = started.elapsed().as_secs_f64() * 1000.;
     }
 
-    fn draw_mesh(&self, program: GLuint, mesh: &vector::Mesh, transform: [f32; 4], tint: Color, embolden: f32) {
+    fn draw_mesh(
+        &self,
+        program: GLuint,
+        mesh: &vector::Mesh,
+        transform: [f32; 4],
+        tint: Color,
+        embolden: f32,
+    ) {
         let viewport = self.stats.viewport;
         let uniforms = if program == self.text_program {
             self.text_uniforms
@@ -1208,7 +1244,9 @@ impl Renderer {
     pub fn trim(&mut self) {
         let frame = self.frame;
         self.textures.retain(|path, texture| {
-            texture.as_ref().is_some_and(|texture| texture.frame == frame)
+            texture
+                .as_ref()
+                .is_some_and(|texture| texture.frame == frame)
                 || path.starts_with("installed-icon:")
         });
         self.artwork_variants = HashMap::new();
@@ -1343,10 +1381,25 @@ impl Renderer {
         unsafe {
             gl::GenRenderbuffers(1, &mut stencil);
             gl::BindRenderbuffer(gl::RENDERBUFFER, stencil);
-            gl::RenderbufferStorage(gl::RENDERBUFFER, gl::STENCIL_INDEX8, size.width as i32, size.height as i32);
-            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::STENCIL_ATTACHMENT, gl::RENDERBUFFER, stencil);
+            gl::RenderbufferStorage(
+                gl::RENDERBUFFER,
+                gl::STENCIL_INDEX8,
+                size.width as i32,
+                size.height as i32,
+            );
+            gl::FramebufferRenderbuffer(
+                gl::FRAMEBUFFER,
+                gl::STENCIL_ATTACHMENT,
+                gl::RENDERBUFFER,
+                stencil,
+            );
             if gl::CheckFramebufferStatus(gl::FRAMEBUFFER) != gl::FRAMEBUFFER_COMPLETE {
-                gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::STENCIL_ATTACHMENT, gl::RENDERBUFFER, 0);
+                gl::FramebufferRenderbuffer(
+                    gl::FRAMEBUFFER,
+                    gl::STENCIL_ATTACHMENT,
+                    gl::RENDERBUFFER,
+                    0,
+                );
             }
             while gl::GetError() != gl::NO_ERROR {}
         }
@@ -1376,4 +1429,3 @@ impl Drop for Renderer {
         }
     }
 }
-

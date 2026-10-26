@@ -24,7 +24,11 @@ impl State {
             // dock crosses no full-screen dissolves (each costs this TV's GPU
             // its frame budget for the whole fade).
             if let Target::App(id) = &self.focus
-                && self.apps().iter().take(APPS_COLUMNS).any(|app| &app.id == id)
+                && self
+                    .apps()
+                    .iter()
+                    .take(APPS_COLUMNS)
+                    .any(|app| &app.id == id)
                 && self.shelf_app.as_ref() != Some(id)
             {
                 if self.shelf_app.is_none() || self.preferences.reduced_motion {
@@ -185,9 +189,7 @@ impl State {
             }
             if matches!(
                 self.focus,
-                Target::Nav(_)
-                    | Target::Search
-                    | Target::Sidebar(_)
+                Target::Nav(_) | Target::Search | Target::Sidebar(_)
             ) {
                 self.scroll = 0.;
             } else if control.scrollable {

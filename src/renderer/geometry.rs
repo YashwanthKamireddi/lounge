@@ -47,25 +47,41 @@ mod tests {
         // band: within the corner rounding of the top and bottom, or within
         // border + aa of the left and right sides.
         let inside = |fx: f32, fy: f32| {
-            bands.iter().any(|[x0, y0, x1, y1]| fx >= *x0 && fx <= *x1 && fy >= *y0 && fy <= *y1)
+            bands
+                .iter()
+                .any(|[x0, y0, x1, y1]| fx >= *x0 && fx <= *x1 && fy >= *y0 && fy <= *y1)
         };
         let edge = (border + 2.5) / dock.w;
         for fy in [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0] {
-            assert!(inside(0.0, fy) && inside(edge, fy) && inside(1.0, fy) && inside(1.0 - edge, fy));
+            assert!(
+                inside(0.0, fy) && inside(edge, fy) && inside(1.0, fy) && inside(1.0 - edge, fy)
+            );
         }
         for fx in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            assert!(inside(fx, (radius + border) / dock.h) && inside(fx, 1. - (radius + border) / dock.h));
+            assert!(
+                inside(fx, (radius + border) / dock.h)
+                    && inside(fx, 1. - (radius + border) / dock.h)
+            );
         }
         // The middle, which the shader would only fill with nothing, is not drawn.
         assert!(!inside(0.5, 0.5));
-        let area: f32 = bands.iter().map(|[x0, y0, x1, y1]| (x1 - x0) * (y1 - y0)).sum();
+        let area: f32 = bands
+            .iter()
+            .map(|[x0, y0, x1, y1]| (x1 - x0) * (y1 - y0))
+            .sum();
         assert!(area < 0.65);
     }
 
     #[test]
     fn fills_and_small_rims_draw_whole() {
-        assert_eq!(regions(Rect::new(0., 0., 400., 200.), 30., 0.), vec![[0., 0., 1., 1.]]);
+        assert_eq!(
+            regions(Rect::new(0., 0., 400., 200.), 30., 0.),
+            vec![[0., 0., 1., 1.]]
+        );
         // A capsule pill's rounding spans its height: no bands to save.
-        assert_eq!(regions(Rect::new(0., 0., 360., 60.), 30., 1.5), vec![[0., 0., 1., 1.]]);
+        assert_eq!(
+            regions(Rect::new(0., 0., 360., 60.), 30., 1.5),
+            vec![[0., 0., 1., 1.]]
+        );
     }
 }

@@ -393,10 +393,9 @@ impl State {
             switcher
                 .closing
                 .retain(|(_, start, _)| start.elapsed() < Duration::from_millis(SWITCHER_CLOSE_MS));
-            if switcher
-                .reflow
-                .is_some_and(|(_, start)| start.elapsed() >= Duration::from_millis(SWITCHER_REFLOW_MS))
-            {
+            if switcher.reflow.is_some_and(|(_, start)| {
+                start.elapsed() >= Duration::from_millis(SWITCHER_REFLOW_MS)
+            }) {
                 switcher.reflow = None;
             }
             if before != switcher.closing.len()
@@ -407,9 +406,10 @@ impl State {
             {
                 self.dirty = true;
             }
-            if switcher.dismissed.is_some_and(|start| {
-                start.elapsed() >= Duration::from_millis(SWITCHER_DISMISS_MS)
-            }) && switcher.closing.is_empty()
+            if switcher
+                .dismissed
+                .is_some_and(|start| start.elapsed() >= Duration::from_millis(SWITCHER_DISMISS_MS))
+                && switcher.closing.is_empty()
             {
                 self.switcher = None;
             }
@@ -457,7 +457,11 @@ impl State {
         }
         if let Some(start) = self.panel_started {
             self.dirty = true;
-            let duration = if self.overlay.is_some() { OVERLAY_OPEN_MS } else { 150 };
+            let duration = if self.overlay.is_some() {
+                OVERLAY_OPEN_MS
+            } else {
+                150
+            };
             if self.preferences.reduced_motion || start.elapsed() >= Duration::from_millis(duration)
             {
                 self.panel_started = None;
@@ -611,16 +615,28 @@ impl State {
         // Inputs always follow Search, wherever a saved order put it, so a
         // newly plugged-in device appears in one known place, never at the
         // end of the grid.
-        let search = apps.iter().find(|app| app.id == SEARCH_TILE).map_or(usize::MAX - 2, |app| rank(app));
+        let search = apps
+            .iter()
+            .find(|app| app.id == SEARCH_TILE)
+            .map_or(usize::MAX - 2, |app| rank(app));
         let place = |app: &App| {
-            if app.brand == "lounge-input" { (search, 1) } else { (rank(app), 0) }
+            if app.brand == "lounge-input" {
+                (search, 1)
+            } else {
+                (rank(app), 0)
+            }
         };
         apps.sort_by(|a, b| {
             place(a).cmp(&place(b)).then_with(|| {
                 // Inputs in port order (HDMI 1, 2, …), as LG lists them;
                 // everything else A-Z.
                 if a.brand == "lounge-input" && b.brand == "lounge-input" {
-                    let port = |app: &App| app.id.trim_start_matches(|c: char| !c.is_ascii_digit()).parse::<u8>().unwrap_or(u8::MAX);
+                    let port = |app: &App| {
+                        app.id
+                            .trim_start_matches(|c: char| !c.is_ascii_digit())
+                            .parse::<u8>()
+                            .unwrap_or(u8::MAX)
+                    };
                     port(a).cmp(&port(b))
                 } else {
                     a.title.to_lowercase().cmp(&b.title.to_lowercase())
@@ -677,7 +693,11 @@ impl State {
     pub fn inventory_failed(&mut self, error: String) -> Option<Duration> {
         self.dirty = true;
         // Lounge's own tiles (Settings, Search) are always there; apps are not.
-        let no_apps = self.inventory.apps.iter().all(|app| app.brand.starts_with("lounge-"));
+        let no_apps = self
+            .inventory
+            .apps
+            .iter()
+            .all(|app| app.brand.starts_with("lounge-"));
         if no_apps && self.inventory_failures < INVENTORY_RETRIES {
             self.inventory_failures += 1;
             return Some(INVENTORY_RETRY_DELAY);

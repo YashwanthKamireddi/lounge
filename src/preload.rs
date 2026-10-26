@@ -2,7 +2,11 @@
 //! drawing thread never stalls on a PNG/JPEG decode. Requests come at startup
 //! (wallpaper, tiles, Settings thumbnails) and once the app list is known
 //! (each app's brand card).
-use crate::{background_priority, branding, model, renderer, state::{self, State}, view::Assets};
+use crate::{
+    background_priority, branding, model, renderer,
+    state::{self, State},
+    view::Assets,
+};
 use std::{
     collections::VecDeque,
     sync::mpsc::{Receiver, Sender},
@@ -27,10 +31,14 @@ pub fn start(astc: bool) -> (Sender<String>, Receiver<(String, Preloaded)>) {
         // path decoded in the last few seconds is skipped. Asked again later
         // (refilling what the GPU freed while an app was in front) it decodes
         // again, here, rather than on the drawing thread mid-scroll.
-        let mut recent: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
+        let mut recent: std::collections::HashMap<String, std::time::Instant> =
+            std::collections::HashMap::new();
         for path in queue {
             let now = std::time::Instant::now();
-            if recent.get(&path).is_some_and(|at| now.duration_since(*at) < std::time::Duration::from_secs(10)) {
+            if recent
+                .get(&path)
+                .is_some_and(|at| now.duration_since(*at) < std::time::Duration::from_secs(10))
+            {
                 continue;
             }
             if recent.len() > 512 {
@@ -42,7 +50,9 @@ pub fn start(astc: bool) -> (Sender<String>, Receiver<(String, Preloaded)>) {
             } else if let Some(compressed) = astc.then(|| renderer::read_astc(&path)).flatten() {
                 Some(Preloaded::Compressed(compressed))
             } else {
-                image::open(&path).ok().map(|image| Preloaded::Image(image.into_rgba8()))
+                image::open(&path)
+                    .ok()
+                    .map(|image| Preloaded::Image(image.into_rgba8()))
             };
             if let Some(loaded) = loaded
                 && sender.send((path, loaded)).is_err()
@@ -57,7 +67,6 @@ pub fn start(astc: bool) -> (Sender<String>, Receiver<(String, Preloaded)>) {
 /// Decodes every home image ahead of need, wallpaper first, so no icon pops
 /// in late and no slide stalls on a decode.
 pub fn request_home(preload: &Sender<String>, state: &State, assets: &Assets) {
-
     let background = &state.preferences.background;
     for name in [
         format!("wallpapers/{background}.jpg"),
@@ -75,7 +84,11 @@ pub fn request_home(preload: &Sender<String>, state: &State, assets: &Assets) {
     // Top Shelf art for the dock apps: decoded on first focus it froze the
     // screen ~140 ms per app on the TV.
     if state.preferences.top_shelf_art {
-        for id in order.iter().take(state::APPS_COLUMNS).filter(|id| assets.heroes.contains(*id)) {
+        for id in order
+            .iter()
+            .take(state::APPS_COLUMNS)
+            .filter(|id| assets.heroes.contains(*id))
+        {
             let _ = preload.send(assets.path(format!("heroes/{id}.jpg")));
             let _ = preload.send(assets.path(format!("heroes/{id}-glass.png")));
         }
@@ -106,7 +119,10 @@ pub struct Uploads {
 
 impl Uploads {
     pub fn new(decoded: Receiver<(String, Preloaded)>) -> Self {
-        Self { decoded, held: VecDeque::new() }
+        Self {
+            decoded,
+            held: VecDeque::new(),
+        }
     }
 
     /// Uploads this frame's share: one small image while `busy` (anything
@@ -119,7 +135,9 @@ impl Uploads {
             let Some((path, loaded)) = next else {
                 break;
             };
-            if busy && matches!(&loaded, Preloaded::Image(image) if image.width() * image.height() > 600_000) {
+            if busy
+                && matches!(&loaded, Preloaded::Image(image) if image.width() * image.height() > 600_000)
+            {
                 self.held.push_back((path, loaded));
                 continue;
             }
@@ -136,11 +154,19 @@ impl Uploads {
 /// Back from an app: the tiles freed while it was in front
 /// decode again in the background, before any scroll reaches
 /// them. Only what is missing is queued.
-pub fn refill(preload: &Sender<String>, state: &State, assets: &Assets, renderer: &renderer::Renderer) {
+pub fn refill(
+    preload: &Sender<String>,
+    state: &State,
+    assets: &Assets,
+    renderer: &renderer::Renderer,
+) {
     if state.preferences.top_shelf_art {
         for app in state.apps().into_iter().take(state::APPS_COLUMNS) {
             if assets.heroes.contains(&app.id) {
-                for name in [format!("heroes/{}.jpg", app.id), format!("heroes/{}-glass.png", app.id)] {
+                for name in [
+                    format!("heroes/{}.jpg", app.id),
+                    format!("heroes/{}-glass.png", app.id),
+                ] {
                     let path = assets.path(name);
                     if !renderer.has(&path) {
                         let _ = preload.send(path);

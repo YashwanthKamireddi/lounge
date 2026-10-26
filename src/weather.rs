@@ -36,7 +36,11 @@ impl Location {
             Some(region) => label(Some(region)),
             // Open-Meteo: the district before the state, so two places of
             // one name in one state still read apart.
-            None => area(&label(value.get("admin2")), &label(value.get("admin1")), &name),
+            None => area(
+                &label(value.get("admin2")),
+                &label(value.get("admin1")),
+                &name,
+            ),
         };
         Some(Self {
             name,
@@ -76,10 +80,17 @@ impl Location {
 /// state (a state named like its place is hidden later, by `detail`).
 fn area(district: &str, state: &str, name: &str) -> String {
     let district = district.trim_end_matches(" District").trim();
-    if district.is_empty() || district.eq_ignore_ascii_case(name) || district.eq_ignore_ascii_case(state) {
+    if district.is_empty()
+        || district.eq_ignore_ascii_case(name)
+        || district.eq_ignore_ascii_case(state)
+    {
         return state.to_owned();
     }
-    if state.is_empty() { district.to_owned() } else { format!("{district}, {state}") }
+    if state.is_empty() {
+        district.to_owned()
+    } else {
+        format!("{district}, {state}")
+    }
 }
 
 /// A name stored all in lower case ("sagar nagar") reads "Sagar Nagar";
@@ -108,8 +119,10 @@ fn distinct(places: impl Iterator<Item = Location>) -> Vec<Location> {
     for place in places {
         let same = kept.iter().any(|other| {
             let north = (place.latitude - other.latitude) * 111.;
-            let east = (place.longitude - other.longitude) * 111. * place.latitude.to_radians().cos();
-            other.key() == place.key() || (other.name.eq_ignore_ascii_case(&place.name) && north.hypot(east) < 3.)
+            let east =
+                (place.longitude - other.longitude) * 111. * place.latitude.to_radians().cos();
+            other.key() == place.key()
+                || (other.name.eq_ignore_ascii_case(&place.name) && north.hypot(east) < 3.)
         });
         if !same {
             kept.push(place);
@@ -235,44 +248,55 @@ pub fn parse_places(value: &Value) -> Result<Vec<Location>, String> {
         .ok_or("The location service returned an unreadable response.")?;
     Ok(distinct(
         list.iter()
-        .take(20)
-        // Roads and paths share their neighbourhood's name; only places count.
-        .filter(|place| !matches!(place.get("category").and_then(Value::as_str), Some("highway" | "railway")))
-        .filter(|place| !matches!(place.get("addresstype").and_then(Value::as_str), Some("road" | "highway")))
-        .filter_map(|place| {
-            let number = |key: &str| place.get(key)?.as_str()?.parse::<f64>().ok();
-            let field = |key: &str| label(place.get("address").and_then(|address| address.get(key)));
-            let mut name = capitalised(label(place.get("name")));
-            let postcode = place.get("addresstype").and_then(Value::as_str) == Some("postcode");
-            if postcode {
-                let area = ["city", "town", "state_district", "county"]
-                    .into_iter()
-                    .map(field)
-                    .find(|area| !area.is_empty())
-                    .unwrap_or_default();
-                let area = area.trim_end_matches(" District").trim();
-                if !area.is_empty() {
-                    name = format!("{name} · {area}");
-                }
-            }
-            Location::parse(&serde_json::json!({
-                "name": name,
-                "latitude": number("lat")?,
-                "longitude": number("lon")?,
-                // A postcode already names its district.
-                "region": if postcode {
-                    field("state")
-                } else {
-                    let district = ["city", "town", "state_district", "county"]
+            .take(20)
+            // Roads and paths share their neighbourhood's name; only places count.
+            .filter(|place| {
+                !matches!(
+                    place.get("category").and_then(Value::as_str),
+                    Some("highway" | "railway")
+                )
+            })
+            .filter(|place| {
+                !matches!(
+                    place.get("addresstype").and_then(Value::as_str),
+                    Some("road" | "highway")
+                )
+            })
+            .filter_map(|place| {
+                let number = |key: &str| place.get(key)?.as_str()?.parse::<f64>().ok();
+                let field =
+                    |key: &str| label(place.get("address").and_then(|address| address.get(key)));
+                let mut name = capitalised(label(place.get("name")));
+                let postcode = place.get("addresstype").and_then(Value::as_str) == Some("postcode");
+                if postcode {
+                    let area = ["city", "town", "state_district", "county"]
                         .into_iter()
                         .map(field)
                         .find(|area| !area.is_empty())
                         .unwrap_or_default();
-                    area(&district, &field("state"), &name)
-                },
-                "country": field("country"),
-            }))
-        }),
+                    let area = area.trim_end_matches(" District").trim();
+                    if !area.is_empty() {
+                        name = format!("{name} · {area}");
+                    }
+                }
+                Location::parse(&serde_json::json!({
+                    "name": name,
+                    "latitude": number("lat")?,
+                    "longitude": number("lon")?,
+                    // A postcode already names its district.
+                    "region": if postcode {
+                        field("state")
+                    } else {
+                        let district = ["city", "town", "state_district", "county"]
+                            .into_iter()
+                            .map(field)
+                            .find(|area| !area.is_empty())
+                            .unwrap_or_default();
+                        area(&district, &field("state"), &name)
+                    },
+                    "country": field("country"),
+                }))
+            }),
     ))
 }
 
@@ -312,14 +336,8 @@ pub fn condition(reading: Reading) -> Condition {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
-    Search {
-        id: u64,
-        query: String,
-    },
-    Forecast {
-        id: u64,
-        location: Location,
-    },
+    Search { id: u64, query: String },
+    Forecast { id: u64, location: Location },
     Persist(Cache),
     ClearCache,
 }

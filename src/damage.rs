@@ -10,7 +10,12 @@
 use crate::{renderer::Draw, state::Rect};
 use std::collections::VecDeque;
 
-const SCREEN: Rect = Rect { x: 0., y: 0., w: 1920., h: 1080. };
+const SCREEN: Rect = Rect {
+    x: 0.,
+    y: 0.,
+    w: 1920.,
+    h: 1080.,
+};
 /// Past this share of the screen a full repaint costs no more.
 const FULL_SHARE: f32 = 0.55;
 /// Draws searched ahead to realign after one was inserted or removed.
@@ -65,9 +70,13 @@ pub fn diff(previous: &[Draw], current: &[Draw]) -> Option<Rect> {
 
 /// What a draw can touch on screen; `None` when it may touch anything.
 fn bounds(draw: &Draw) -> Option<Rect> {
-    let grow = |rect: &Rect, by: f32| Rect::new(rect.x - by, rect.y - by, rect.w + 2. * by, rect.h + 2. * by);
+    let grow = |rect: &Rect, by: f32| {
+        Rect::new(rect.x - by, rect.y - by, rect.w + 2. * by, rect.h + 2. * by)
+    };
     match draw {
-        Draw::Shape(rect, ..) | Draw::RoundedGradient(rect, ..) | Draw::GradientRing(rect, ..) => Some(grow(rect, 3.)),
+        Draw::Shape(rect, ..) | Draw::RoundedGradient(rect, ..) | Draw::GradientRing(rect, ..) => {
+            Some(grow(rect, 3.))
+        }
         Draw::Shadow(rect, _, blur, _) => Some(grow(rect, blur + 3.)),
         Draw::Text(_, rect, ..) => Some(grow(rect, 6.)),
         Draw::Image(_, rect, ..)
@@ -82,21 +91,33 @@ fn bounds(draw: &Draw) -> Option<Rect> {
 fn same(a: &Draw, b: &Draw) -> bool {
     use Draw::*;
     match (a, b) {
-        (Shape(r1, a1, b1, c1), Shape(r2, a2, b2, c2)) => r1 == r2 && a1 == a2 && b1 == b2 && c1 == c2,
-        (RoundedGradient(r1, a1, c1, d1), RoundedGradient(r2, a2, c2, d2)) => r1 == r2 && a1 == a2 && c1 == c2 && d1 == d2,
+        (Shape(r1, a1, b1, c1), Shape(r2, a2, b2, c2)) => {
+            r1 == r2 && a1 == a2 && b1 == b2 && c1 == c2
+        }
+        (RoundedGradient(r1, a1, c1, d1), RoundedGradient(r2, a2, c2, d2)) => {
+            r1 == r2 && a1 == a2 && c1 == c2 && d1 == d2
+        }
         (GradientRing(r1, a1, w1, c1, d1), GradientRing(r2, a2, w2, c2, d2)) => {
             r1 == r2 && a1 == a2 && w1 == w2 && c1 == c2 && d1 == d2
         }
-        (Shadow(r1, a1, b1, c1), Shadow(r2, a2, b2, c2)) => r1 == r2 && a1 == a2 && b1 == b2 && c1 == c2,
-        (Text(t1, r1, s1, c1, m1), Text(t2, r2, s2, c2, m2)) => t1 == t2 && r1 == r2 && s1 == s2 && c1 == c2 && m1 == m2,
-        (Image(p1, r1, a1, k1), Image(p2, r2, a2, k2)) => p1 == p2 && r1 == r2 && a1 == a2 && k1 == k2,
+        (Shadow(r1, a1, b1, c1), Shadow(r2, a2, b2, c2)) => {
+            r1 == r2 && a1 == a2 && b1 == b2 && c1 == c2
+        }
+        (Text(t1, r1, s1, c1, m1), Text(t2, r2, s2, c2, m2)) => {
+            t1 == t2 && r1 == r2 && s1 == s2 && c1 == c2 && m1 == m2
+        }
+        (Image(p1, r1, a1, k1), Image(p2, r2, a2, k2)) => {
+            p1 == p2 && r1 == r2 && a1 == a2 && k1 == k2
+        }
         (TintedImage(p1, r1, a1, k1, c1), TintedImage(p2, r2, a2, k2, c2)) => {
             p1 == p2 && r1 == r2 && a1 == a2 && k1 == k2 && c1 == c2
         }
         (Glass(p1, r1, a1, c1, d1), Glass(p2, r2, a2, c2, d2)) => {
             p1 == p2 && r1 == r2 && a1 == a2 && c1 == c2 && d1 == d2
         }
-        (AppImage(i1, r1, c1), AppImage(i2, r2, c2)) => std::sync::Arc::ptr_eq(i1, i2) && r1 == r2 && c1 == c2,
+        (AppImage(i1, r1, c1), AppImage(i2, r2, c2)) => {
+            std::sync::Arc::ptr_eq(i1, i2) && r1 == r2 && c1 == c2
+        }
         (Dissolve(p1, q1, m1, c1, l1), Dissolve(p2, q2, m2, c2, l2)) => {
             p1 == p2 && q1 == q2 && m1 == m2 && c1 == c2 && l1 == l2
         }
@@ -116,12 +137,22 @@ fn union(a: Rect, b: Rect) -> Rect {
         return a;
     }
     let (x, y) = (a.x.min(b.x), a.y.min(b.y));
-    Rect::new(x, y, (a.x + a.w).max(b.x + b.w) - x, (a.y + a.h).max(b.y + b.h) - y)
+    Rect::new(
+        x,
+        y,
+        (a.x + a.w).max(b.x + b.w) - x,
+        (a.y + a.h).max(b.y + b.h) - y,
+    )
 }
 
 fn intersect(a: Rect, b: Rect) -> Rect {
     let (x, y) = (a.x.max(b.x), a.y.max(b.y));
-    Rect::new(x, y, ((a.x + a.w).min(b.x + b.w) - x).max(0.), ((a.y + a.h).min(b.y + b.h) - y).max(0.))
+    Rect::new(
+        x,
+        y,
+        ((a.x + a.w).min(b.x + b.w) - x).max(0.),
+        ((a.y + a.h).min(b.y + b.h) - y).max(0.),
+    )
 }
 
 /// Each presented frame's damage, newest first, to cover a buffer that is
@@ -156,7 +187,6 @@ impl Tracker {
         self.history.push_front(change);
         self.history.truncate(4);
     }
-
 }
 
 /// The TV's EGL surface, when it supports partial updates.
@@ -164,7 +194,8 @@ impl Tracker {
 pub struct Egl {
     display: *mut std::ffi::c_void,
     surface: *mut std::ffi::c_void,
-    set_damage: unsafe extern "C" fn(*mut std::ffi::c_void, *mut std::ffi::c_void, *const i32, i32) -> u32,
+    set_damage:
+        unsafe extern "C" fn(*mut std::ffi::c_void, *mut std::ffi::c_void, *const i32, i32) -> u32,
 }
 
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
@@ -173,7 +204,12 @@ unsafe extern "C" {
     fn eglGetCurrentDisplay() -> *mut std::ffi::c_void;
     fn eglGetCurrentSurface(read_draw: i32) -> *mut std::ffi::c_void;
     fn eglQueryString(display: *mut std::ffi::c_void, name: i32) -> *const std::ffi::c_char;
-    fn eglQuerySurface(display: *mut std::ffi::c_void, surface: *mut std::ffi::c_void, attribute: i32, value: *mut i32) -> u32;
+    fn eglQuerySurface(
+        display: *mut std::ffi::c_void,
+        surface: *mut std::ffi::c_void,
+        attribute: i32,
+        value: *mut i32,
+    ) -> u32;
     fn eglGetProcAddress(name: *const std::ffi::c_char) -> *mut std::ffi::c_void;
 }
 
@@ -211,7 +247,12 @@ impl Egl {
                 surface,
                 set_damage: std::mem::transmute::<
                     *mut std::ffi::c_void,
-                    unsafe extern "C" fn(*mut std::ffi::c_void, *mut std::ffi::c_void, *const i32, i32) -> u32,
+                    unsafe extern "C" fn(
+                        *mut std::ffi::c_void,
+                        *mut std::ffi::c_void,
+                        *const i32,
+                        i32,
+                    ) -> u32,
                 >(address),
             })
         }
@@ -232,7 +273,8 @@ impl Egl {
     pub fn declare(&self, area: Option<Rect>, width: u32, height: u32) -> bool {
         let Some(area) = area else {
             // SAFETY: an empty list declares the whole surface.
-            return unsafe { (self.set_damage)(self.display, self.surface, std::ptr::null(), 0) } != 0;
+            return unsafe { (self.set_damage)(self.display, self.surface, std::ptr::null(), 0) }
+                != 0;
         };
         let (sx, sy) = (width as f32 / 1920., height as f32 / 1080.);
         let x = (area.x * sx).floor() as i32;
@@ -263,8 +305,15 @@ impl Partial {
         #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
         {
             let egl = Egl::current();
-            eprintln!("Lounge partial repaint: {}", if egl.is_some() { "on" } else { "off" });
-            Self { egl, tracker: Tracker::default(), last: Vec::new() }
+            eprintln!(
+                "Lounge partial repaint: {}",
+                if egl.is_some() { "on" } else { "off" }
+            );
+            Self {
+                egl,
+                tracker: Tracker::default(),
+                last: Vec::new(),
+            }
         }
         #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
         Self {}

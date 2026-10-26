@@ -85,7 +85,11 @@ fn reorder_persists_order_and_keeps_selected_identity() {
     state.hold();
     assert_eq!(state.moving.as_deref(), Some("netflix"));
     // Arrows write nothing to disk; the order is saved once Move ends.
-    assert!(state.direction(Direction::Right, &controls(&state)).is_empty());
+    assert!(
+        state
+            .direction(Direction::Right, &controls(&state))
+            .is_empty()
+    );
     assert!(state.unsaved_order);
     assert_eq!(
         &state.preferences.favorites(&state.inventory.apps)[..2],
@@ -94,7 +98,10 @@ fn reorder_persists_order_and_keeps_selected_identity() {
     assert_eq!(state.focus, Target::App("netflix".into()));
     assert!(state.back().is_empty());
     assert!(state.moving.is_none());
-    assert!(state.unsaved_order, "saving falls to the main loop once Move ends");
+    assert!(
+        state.unsaved_order,
+        "saving falls to the main loop once Move ends"
+    );
 }
 
 #[test]
@@ -236,7 +243,12 @@ fn preferences_round_trip_and_corrupt_data_is_not_silently_overwritten() {
     let kept: Vec<_> = std::fs::read_dir(&directory)
         .unwrap()
         .flatten()
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with("preferences.json.bad-"))
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("preferences.json.bad-")
+        })
         .collect();
     assert_eq!(kept.len(), 1);
     assert_eq!(std::fs::read(kept[0].path()).unwrap(), b"broken");
@@ -322,7 +334,12 @@ fn reordering_skips_hidden_and_unavailable_favorite_slots() {
     let order = state.preferences.favorites.clone().unwrap();
     assert_eq!(&order[..2], &["amazon", "netflix"]);
     assert!(!order.contains(&"missing".into()));
-    assert!(state.apps().iter().all(|app| app.id != "youtube.leanback.v4"));
+    assert!(
+        state
+            .apps()
+            .iter()
+            .all(|app| app.id != "youtube.leanback.v4")
+    );
     assert_eq!(state.focus, Target::App("netflix".into()));
 }
 
@@ -354,16 +371,27 @@ fn hidden_apps_come_back_from_general_settings() {
     state.open(2);
     state.section = 0;
     state.focus = Target::Setting(0);
-    assert!(!controls(&state).iter().any(|c| c.target == Target::Setting(7)));
+    assert!(
+        !controls(&state)
+            .iter()
+            .any(|c| c.target == Target::Setting(7))
+    );
     state.preferences.hidden = vec!["netflix".into(), "youtube.leanback.v4".into()];
-    assert!(controls(&state).iter().any(|c| c.target == Target::Setting(7)));
+    assert!(
+        controls(&state)
+            .iter()
+            .any(|c| c.target == Target::Setting(7))
+    );
     state.focus = Target::Setting(7);
     state.activate();
     assert_eq!(state.subpage, Some(crate::state::Subpage::Hidden));
     assert_eq!(state.focus, Target::Choice(0));
     // Showing one keeps the list open on the next.
     assert_eq!(state.activate(), vec![Effect::Save]);
-    assert_eq!(state.preferences.hidden, vec!["youtube.leanback.v4".to_string()]);
+    assert_eq!(
+        state.preferences.hidden,
+        vec!["youtube.leanback.v4".to_string()]
+    );
     assert_eq!(state.focus, Target::Choice(0));
     // Showing the last closes it; focus lands on the row below the gone one.
     assert_eq!(state.activate(), vec![Effect::Save]);
@@ -703,7 +731,10 @@ fn switcher_closes_every_app_safely_and_back_returns_home_at_once() {
     state.open_switcher(vec!["netflix".into(), "youtube.leanback.v4".into()]);
     assert_eq!(state.focus, Target::Switch(0));
     // Close both: the second close empties the list without panicking.
-    assert_eq!(state.direction(Direction::Up, &[]), vec![Effect::Close("netflix".into())]);
+    assert_eq!(
+        state.direction(Direction::Up, &[]),
+        vec![Effect::Close("netflix".into())]
+    );
     assert!(state.switcher.as_ref().unwrap().reflow.is_some());
     assert_eq!(
         state.direction(Direction::Up, &[]),
@@ -746,7 +777,6 @@ fn the_first_focus_on_launch_appears_settled_without_animating() {
     assert!(!state.animating());
 }
 
-
 #[test]
 fn moving_between_settings_sections_does_not_replay_the_push() {
     let mut state = ready();
@@ -758,7 +788,10 @@ fn moving_between_settings_sections_does_not_replay_the_push() {
     state.direction(Direction::Down, &controls);
     state.tick();
     assert_ne!(state.focus, Target::Sidebar(0));
-    assert!(state.settings_since.is_none(), "moving between sections replayed the push");
+    assert!(
+        state.settings_since.is_none(),
+        "moving between sections replayed the push"
+    );
     // Entering a section still pushes.
     state.activate();
     state.tick();
@@ -801,10 +834,19 @@ fn moving_an_app_glides_the_tiles_it_displaces() {
 fn top_shelf_art_waits_for_focus_to_rest_on_a_dock_app() {
     let mut state = ready();
     state.open(1);
-    let dock: Vec<String> = state.apps().iter().take(3).map(|app| app.id.clone()).collect();
+    let dock: Vec<String> = state
+        .apps()
+        .iter()
+        .take(3)
+        .map(|app| app.id.clone())
+        .collect();
     state.focus = Target::App(dock[0].clone());
     state.track_focus();
-    assert_eq!(state.shelf_app.as_deref(), Some(dock[0].as_str()), "the first app shows at once");
+    assert_eq!(
+        state.shelf_app.as_deref(),
+        Some(dock[0].as_str()),
+        "the first app shows at once"
+    );
     // A quick sweep: the art does not change while passing.
     state.focus = Target::App(dock[1].clone());
     state.track_focus();
@@ -813,7 +855,9 @@ fn top_shelf_art_waits_for_focus_to_rest_on_a_dock_app() {
     assert_eq!(state.shelf_app.as_deref(), Some(dock[0].as_str()));
     assert!(state.shelf_from.is_none());
     // Resting: the art of the app focus stopped on fades in.
-    std::thread::sleep(std::time::Duration::from_secs_f32(crate::state::SHELF_REST + 0.02));
+    std::thread::sleep(std::time::Duration::from_secs_f32(
+        crate::state::SHELF_REST + 0.02,
+    ));
     state.track_focus();
     assert_eq!(state.shelf_app.as_deref(), Some(dock[2].as_str()));
     assert!(state.shelf_from.is_some());
@@ -827,12 +871,21 @@ fn a_draw_inserted_mid_list_repaints_only_itself() {
     // A focus ring appears around the second tile: every later index
     // shifts, but only the ring's own area changed.
     let mut ringed = row.clone();
-    ringed.insert(2, Draw::Shape(Rect::new(210., 90., 220., 120.), 34., 2., [1.; 4]));
+    ringed.insert(
+        2,
+        Draw::Shape(Rect::new(210., 90., 220., 120.), 34., 2., [1.; 4]),
+    );
     let area = damage::diff(&row, &ringed).expect("a small change repaints a part");
-    assert!(area.x >= 200. && area.x + area.w <= 440., "repaints {area:?}");
+    assert!(
+        area.x >= 200. && area.x + area.w <= 440.,
+        "repaints {area:?}"
+    );
     // And the ring going away again repaints only where it was.
     let area = damage::diff(&ringed, &row).expect("a small change repaints a part");
-    assert!(area.x >= 200. && area.x + area.w <= 440., "repaints {area:?}");
+    assert!(
+        area.x >= 200. && area.x + area.w <= 440.,
+        "repaints {area:?}"
+    );
 }
 
 #[test]
@@ -841,7 +894,10 @@ fn partial_repaint_covers_exactly_what_changed() {
     let tile = |x: f32| Draw::Shape(Rect::new(x, 100., 200., 100.), 30., 0., [1.; 4]);
     let before = vec![tile(0.), tile(300.)];
     // Nothing changed: no repaint area at all is still a valid (empty) area.
-    assert!(damage::diff(&before, &before).is_some_and(|r| r.w * r.h == 0.), "nothing changed: nothing to repaint");
+    assert!(
+        damage::diff(&before, &before).is_some_and(|r| r.w * r.h == 0.),
+        "nothing changed: nothing to repaint"
+    );
     // One tile moved: the area covers its old and new place, not the other.
     let after = vec![tile(0.), tile(320.)];
     let area = damage::diff(&before, &after).expect("a small change repaints a part");
@@ -849,7 +905,13 @@ fn partial_repaint_covers_exactly_what_changed() {
     assert!(area.x > 200., "the unchanged tile is left alone");
     // A full-screen dissolve repaints everything.
     let mut fading = after.clone();
-    fading.push(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4], [0.; 4]));
+    fading.push(Draw::Dissolve(
+        "a".into(),
+        "b".into(),
+        0.5,
+        [1.; 4],
+        [0.; 4],
+    ));
     assert!(damage::diff(&after, &fading).is_none());
     // Buffer age: an unknown or too-old buffer repaints everything; an older
     // one also covers the frames since it was drawn.
@@ -861,10 +923,15 @@ fn partial_repaint_covers_exactly_what_changed() {
     let both = tracker.region(small, 2).expect("history covers it");
     assert!(both.x <= 0. && both.x + both.w >= 600.);
     tracker.presented(None);
-    assert!(tracker.region(small, 2).is_none(), "a full frame in between repaints all");
+    assert!(
+        tracker.region(small, 2).is_none(),
+        "a full frame in between repaints all"
+    );
     // An unchanged frame still names one pixel inside the screen, never an
     // empty (off-surface) area: Mali presented black for that.
-    let still = damage::Tracker::default().region(damage::diff(&before, &before), 1).expect("partial");
+    let still = damage::Tracker::default()
+        .region(damage::diff(&before, &before), 1)
+        .expect("partial");
     assert!(still.w >= 1. && still.h >= 1. && still.x >= 0. && still.y >= 0.);
     assert!(still.x + still.w <= 1920. && still.y + still.h <= 1080.);
 }
@@ -899,7 +966,10 @@ fn a_heavy_frame_advances_the_glide_by_its_real_time() {
     state.glide_scroll();
     let k = (state.shown_scroll - after_first) / (690. - after_first);
     let full = 1. - (-0.05f32 / 0.075).exp();
-    assert!(k >= full * 0.97, "a 50 ms frame moved {k:.3} of the way, expected about {full:.3}");
+    assert!(
+        k >= full * 0.97,
+        "a 50 ms frame moved {k:.3} of the way, expected about {full:.3}"
+    );
 }
 
 #[test]
@@ -932,7 +1002,9 @@ fn automatic_appearance_follows_the_clock_and_cross_fades() {
     state.tick();
     assert!(state.animating());
     assert!(state.light() < 0.5);
-    std::thread::sleep(std::time::Duration::from_secs_f32(crate::state::APPEARANCE_FADE + 0.05));
+    std::thread::sleep(std::time::Duration::from_secs_f32(
+        crate::state::APPEARANCE_FADE + 0.05,
+    ));
     state.tick();
     assert_eq!(state.light(), 1.);
     // Reduced motion switches at once.
@@ -952,7 +1024,10 @@ fn a_plugged_in_input_appears_right_after_search_whatever_the_saved_order() {
     state.inventory.inputs[0].connected = Some(true);
     state.refresh_tiles();
     let ids: Vec<&str> = state.apps().iter().map(|app| app.id.as_str()).collect();
-    let search = ids.iter().position(|id| *id == crate::state::SEARCH_TILE).unwrap();
+    let search = ids
+        .iter()
+        .position(|id| *id == crate::state::SEARCH_TILE)
+        .unwrap();
     assert_eq!(ids[search + 1], state.inventory.inputs[0].id);
 }
 
@@ -963,12 +1038,21 @@ fn a_slow_tv_service_at_boot_is_retried_before_any_error_shows() {
     // Only Lounge's own tiles: no apps yet.
     state.refresh_tiles();
     for attempt in 1..=crate::state::INVENTORY_RETRIES {
-        assert_eq!(state.inventory_failed("timeout".into()), Some(crate::state::INVENTORY_RETRY_DELAY));
+        assert_eq!(
+            state.inventory_failed("timeout".into()),
+            Some(crate::state::INVENTORY_RETRY_DELAY)
+        );
         assert_eq!(state.inventory_failures, attempt);
-        assert!(state.loading && state.error.is_none(), "still loading, no error yet");
+        assert!(
+            state.loading && state.error.is_none(),
+            "still loading, no error yet"
+        );
     }
     assert_eq!(state.inventory_failed("timeout".into()), None);
-    assert!(!state.loading && state.error.is_some(), "retries used up: the error shows");
+    assert!(
+        !state.loading && state.error.is_some(),
+        "retries used up: the error shows"
+    );
     // With apps already shown, a failed refresh reports at once.
     let mut state = ready();
     assert_eq!(state.inventory_failed("timeout".into()), None);
@@ -1001,8 +1085,15 @@ fn power_steps_recorded_on_the_tv_wake_lounge_only_from_standby() {
         ("Active Standby", "Screen On"),
         ("Active", ""),
     ]);
-    assert!(quick[..6].iter().all(|(going, woke)| *going && !woke), "off the whole way: quits are ignored");
-    assert_eq!(quick[6], (false, true), "back on: Lounge wakes to the front");
+    assert!(
+        quick[..6].iter().all(|(going, woke)| *going && !woke),
+        "off the whole way: quits are ignored"
+    );
+    assert_eq!(
+        quick[6],
+        (false, true),
+        "back on: Lounge wakes to the front"
+    );
     // Full standby (Suspend) and resume.
     let full = replay(&[
         ("Screen Off", "Prepare Suspend"),
@@ -1015,7 +1106,11 @@ fn power_steps_recorded_on_the_tv_wake_lounge_only_from_standby() {
     assert_eq!(full.last(), Some(&(false, true)));
     // The screen saver (asked for, then on), and Quick Settings' Screen Off:
     // the TV stays on, so a quit then is a real quit, and back is no wake.
-    for idle in [("Active", "Request Screen Saver"), ("Screen Saver", ""), ("Screen Off", "")] {
+    for idle in [
+        ("Active", "Request Screen Saver"),
+        ("Screen Saver", ""),
+        ("Screen Off", ""),
+    ] {
         let steps = replay(&[idle, ("Active", "")]);
         assert_eq!(steps, [(false, false), (false, false)], "{idle:?}");
     }

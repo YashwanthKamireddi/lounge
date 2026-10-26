@@ -8,7 +8,11 @@ impl State {
         let (row, column) = (index / APPS_COLUMNS, index % APPS_COLUMNS);
         let spread = (self.shown_scroll / GRID_SCROLL).clamp(0., 1.);
         let gap = DOCK_GAP + (GRID_GAP - DOCK_GAP) * spread;
-        let y = if row == 0 { 0. } else { gap + (row - 1) as f32 * ROW_PITCH };
+        let y = if row == 0 {
+            0.
+        } else {
+            gap + (row - 1) as f32 * ROW_PITCH
+        };
         (column as f32 * GRID_STEP, y)
     }
 

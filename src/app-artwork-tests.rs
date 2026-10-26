@@ -393,9 +393,7 @@ fn visible_cards_switch_from_fallback_to_installed_artwork_without_an_icon_map()
         },
         None,
     );
-    let scene = || {
-        crate::view::scene(&state, &assets, time::OffsetDateTime::UNIX_EPOCH)
-    };
+    let scene = || crate::view::scene(&state, &assets, time::OffsetDateTime::UNIX_EPOCH);
     assert!(
         !scene()
             .draw
@@ -440,7 +438,10 @@ fn refresh_keeps_shown_icons_and_disk_cache_serves_them_without_a_read() {
     let path = disk_path(&directory, &source);
     let artwork = decode(&encoded(ImageFormat::Png, 2, 2, [7, 0, 0, 255])).unwrap();
     std::fs::create_dir_all(&directory).unwrap();
-    artwork.pixels.save_with_format(&path, ImageFormat::Png).unwrap();
+    artwork
+        .pixels
+        .save_with_format(&path, ImageFormat::Png)
+        .unwrap();
     let cached = load_cached(Some(&directory), &source).unwrap();
     assert_eq!(cached.pixels.get_pixel(0, 0)[0], 7);
     let _ = std::fs::remove_dir_all(&directory);
@@ -471,10 +472,17 @@ fn failed_reads_retry_by_themselves_with_growing_gaps() {
     });
     let source = Source::new("sample", &json!({}));
     assert!(service.get(&source).is_none());
-    poll_until(&service, || service.cache.borrow().entries[&source].image.is_some());
+    poll_until(&service, || {
+        service.cache.borrow().entries[&source].image.is_some()
+    });
     // Bring the retry forward rather than waiting 15 s in a test.
-    service.cache.borrow_mut().entries.get_mut(&source).unwrap().retry_at =
-        Some(std::time::Instant::now());
+    service
+        .cache
+        .borrow_mut()
+        .entries
+        .get_mut(&source)
+        .unwrap()
+        .retry_at = Some(std::time::Instant::now());
     poll_until(&service, || service.get(&source).is_some());
     assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
@@ -487,4 +495,3 @@ fn an_app_update_gets_a_fresh_icon_cache_key() {
     assert_ne!(old, new);
     assert_ne!(disk_path(directory, &old), disk_path(directory, &new));
 }
-

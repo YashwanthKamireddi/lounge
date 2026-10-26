@@ -96,7 +96,9 @@ impl Replies {
                 self.foreground_pending = false;
                 if !visible
                     && id.as_deref() == Some(platform::HOME_ID)
-                    && self.last_redirect.is_none_or(|at| at.elapsed() >= Duration::from_secs(2))
+                    && self
+                        .last_redirect
+                        .is_none_or(|at| at.elapsed() >= Duration::from_secs(2))
                 {
                     self.last_redirect = Some(Instant::now());
                     platform.send(Request::Launch(platform::APP_ID.into()));

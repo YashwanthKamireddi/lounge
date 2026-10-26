@@ -6,7 +6,10 @@ impl State {
     /// there is more than one picture) and then every picture's file.
     pub fn avatar_choices(&self) -> Vec<String> {
         let rotate = (self.avatars.len() > 1).then(|| AVATAR_ROTATE.to_owned());
-        rotate.into_iter().chain(self.avatars.iter().map(|picture| picture.file.clone())).collect()
+        rotate
+            .into_iter()
+            .chain(self.avatars.iter().map(|picture| picture.file.clone()))
+            .collect()
     }
 
     /// The choice in effect: the preference, or the first picture by default.
@@ -31,8 +34,13 @@ impl State {
                 .and_then(|file| self.avatars.iter().position(|picture| picture.file == file))
                 .unwrap_or(0);
         }
-        let next = self.avatars.get(self.avatar_index).map(|picture| picture.small.clone());
-        if fade && !self.preferences.reduced_motion && next != self.avatar
+        let next = self
+            .avatars
+            .get(self.avatar_index)
+            .map(|picture| picture.small.clone());
+        if fade
+            && !self.preferences.reduced_motion
+            && next != self.avatar
             && let Some(previous) = self.avatar.clone()
         {
             self.avatar_from = Some((previous, Instant::now()));
@@ -53,7 +61,11 @@ impl State {
 
     /// How light the screen is (0 dark, 1 light), cross-fading after a change.
     pub fn light(&self) -> f32 {
-        let target = if self.light_shown.unwrap_or_else(|| self.wants_light()) { 1. } else { 0. };
+        let target = if self.light_shown.unwrap_or_else(|| self.wants_light()) {
+            1.
+        } else {
+            0.
+        };
         match self.appearance_from {
             Some((from, start)) => {
                 let t = (start.elapsed().as_secs_f32() / APPEARANCE_FADE).min(1.);
@@ -67,7 +79,8 @@ impl State {
     /// cross-fades from wherever the screen is; the first frame just shows it.
     pub(super) fn track_appearance(&mut self) {
         let wanted = self.wants_light();
-        if self.light_shown.is_some_and(|shown| shown != wanted) && !self.preferences.reduced_motion {
+        if self.light_shown.is_some_and(|shown| shown != wanted) && !self.preferences.reduced_motion
+        {
             self.appearance_from = Some((self.light(), Instant::now()));
         }
         if self.light_shown != Some(wanted) {
@@ -92,7 +105,11 @@ impl State {
             self.avatar_index = (self.avatar_index + 1) % self.avatars.len();
             self.show_avatar(true);
         }
-        if self.avatar_from.as_ref().is_some_and(|(_, since)| since.elapsed().as_secs_f32() >= AVATAR_FADE) {
+        if self
+            .avatar_from
+            .as_ref()
+            .is_some_and(|(_, since)| since.elapsed().as_secs_f32() >= AVATAR_FADE)
+        {
             self.avatar_from = None;
             self.dirty = true;
         }

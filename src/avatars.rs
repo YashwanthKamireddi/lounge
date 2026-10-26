@@ -41,12 +41,20 @@ pub fn load(directory: &Path) -> Vec<Picture> {
         .filter(|path| {
             path.extension()
                 .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "png" | "webp"))
+                .is_some_and(|extension| {
+                    matches!(
+                        extension.to_ascii_lowercase().as_str(),
+                        "jpg" | "jpeg" | "png" | "webp"
+                    )
+                })
         })
         .collect();
     files.sort();
     let cache = folder.join(".cache");
-    let mut pictures: Vec<Picture> = files.iter().filter_map(|path| prepare(path, &cache)).collect();
+    let mut pictures: Vec<Picture> = files
+        .iter()
+        .filter_map(|path| prepare(path, &cache))
+        .collect();
     prune(&cache, &pictures);
     let legacy = directory.join("avatar.jpg");
     if pictures.is_empty() && legacy.is_file() {
@@ -68,7 +76,9 @@ fn prepare(source: &Path, cache: &Path) -> Option<Picture> {
     let stem = source.file_stem()?.to_str()?;
     let small = cache.join(format!("{stem}-{CUT}-{SMALL}.png"));
     let large = cache.join(format!("{stem}-{CUT}-{LARGE}.png"));
-    let changed = std::fs::metadata(source).and_then(|meta| meta.modified()).ok();
+    let changed = std::fs::metadata(source)
+        .and_then(|meta| meta.modified())
+        .ok();
     let fresh = |path: &Path| {
         std::fs::metadata(path)
             .and_then(|meta| meta.modified())
@@ -117,7 +127,9 @@ fn fit_circle(square: &RgbaImage, size: u32) -> RgbaImage {
     let picture = image::imageops::resize(square, inner, inner, FilterType::Lanczos3);
     let (left, top) = ((size - inner) / 2, (size - inner) / 2);
     let clamp = |value: u32, start: u32| value.saturating_sub(start).min(inner - 1);
-    let extended = RgbaImage::from_fn(size, size, |x, y| *picture.get_pixel(clamp(x, left), clamp(y, top)));
+    let extended = RgbaImage::from_fn(size, size, |x, y| {
+        *picture.get_pixel(clamp(x, left), clamp(y, top))
+    });
     let mut out = image::imageops::blur(&extended, size as f32 / 16.);
     let feather = (inner as f32 / 6.).max(1.);
     for (x, y, pixel) in out.enumerate_pixels_mut() {
@@ -141,7 +153,10 @@ fn fit_circle(square: &RgbaImage, size: u32) -> RgbaImage {
 /// Removes cached cuts no picture uses any more (a removed picture, or cuts
 /// made an older way), so the cache never grows.
 fn prune(cache: &Path, pictures: &[Picture]) {
-    let keep: Vec<&str> = pictures.iter().flat_map(|picture| [picture.small.as_str(), picture.large.as_str()]).collect();
+    let keep: Vec<&str> = pictures
+        .iter()
+        .flat_map(|picture| [picture.small.as_str(), picture.large.as_str()])
+        .collect();
     for entry in std::fs::read_dir(cache).into_iter().flatten().flatten() {
         let path = entry.path();
         if !keep.contains(&path.to_string_lossy().as_ref()) {
@@ -189,9 +204,18 @@ mod tests {
         let large = large.to_rgba8();
         assert_eq!(large.get_pixel(LARGE / 2, 2).0, [200, 30, 40, 255]);
         // A second load reuses the cache.
-        let made = std::fs::metadata(&pictures[0].small).unwrap().modified().unwrap();
+        let made = std::fs::metadata(&pictures[0].small)
+            .unwrap()
+            .modified()
+            .unwrap();
         assert_eq!(load(&directory), pictures);
-        assert_eq!(std::fs::metadata(&pictures[0].small).unwrap().modified().unwrap(), made);
+        assert_eq!(
+            std::fs::metadata(&pictures[0].small)
+                .unwrap()
+                .modified()
+                .unwrap(),
+            made
+        );
         std::fs::remove_dir_all(&directory).unwrap();
     }
 }

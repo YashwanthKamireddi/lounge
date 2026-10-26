@@ -1,6 +1,8 @@
 //! Dedicated latest-job HTTP workers and an ordered cache writer. No request,
 //! DNS/TLS work or cache write blocks the SDL thread.
-use crate::weather::{Cache, Command, Location, Reading, parse_locations, parse_places, parse_reading};
+use crate::weather::{
+    Cache, Command, Location, Reading, parse_locations, parse_places, parse_reading,
+};
 use serde_json::Value;
 use std::{
     fs,

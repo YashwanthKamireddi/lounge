@@ -93,12 +93,19 @@ impl Profile {
             .filter(|hex| hex.len() == 6)
             .and_then(|hex| u32::from_str_radix(hex, 16).ok())
             .unwrap_or(0x7360e7);
-        Some(Self { nick: nick.chars().take(32).collect(), color })
+        Some(Self {
+            nick: nick.chars().take(32).collect(),
+            color,
+        })
     }
 
     /// The avatar's letter: the nickname's first, upper-cased.
     pub fn initial(&self) -> String {
-        self.nick.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default()
+        self.nick
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().collect())
+            .unwrap_or_default()
     }
 }
 

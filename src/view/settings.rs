@@ -7,7 +7,10 @@ use crate::{
     i18n,
     model::{Appearance, BACKGROUNDS, InputMode},
     renderer::Draw,
-    state::{APPEARANCES, AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target, WEATHER_SECTION},
+    state::{
+        APPEARANCES, AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target,
+        WEATHER_SECTION,
+    },
     weather::Unit,
 };
 
@@ -436,14 +439,29 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
     let page = out.draw.len();
     out.draw.push(Draw::Clip(None));
     // tvOS titles Settings in a large, muted grey, not white.
-    out.text(title, Rect::new(0., 52., 1920., 46.), shelf_style(), out.theme.ink(0.6), true);
-    out.draw.push(Draw::Clip(Some(Rect::new(0., MAIN_TOP, 1920., 968. - MAIN_TOP))));
+    out.text(
+        title,
+        Rect::new(0., 52., 1920., 46.),
+        shelf_style(),
+        out.theme.ink(0.6),
+        true,
+    );
+    out.draw.push(Draw::Clip(Some(Rect::new(
+        0.,
+        MAIN_TOP,
+        1920.,
+        968. - MAIN_TOP,
+    ))));
     let list = out.draw.len();
     settings_list(out, state, assets);
     out.settings_range = Some(page..out.draw.len());
     if let Some((t, eased, direction)) = push {
         out.translate(list, direction * 48. * (1. - eased), 0.);
-        let alpha = if state.settings_ghost.is_some() { smooth(0.2, 1., t) } else { 1. };
+        let alpha = if state.settings_ghost.is_some() {
+            smooth(0.2, 1., t)
+        } else {
+            1.
+        };
         out.fade(page, alpha, 1.);
     }
 }
@@ -461,7 +479,12 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
         };
         let picture = focused
             .and_then(|choice| state.avatars.iter().find(|picture| &picture.file == choice))
-            .or_else(|| state.avatars.iter().find(|picture| Some(&picture.small) == state.avatar.as_ref()))
+            .or_else(|| {
+                state
+                    .avatars
+                    .iter()
+                    .find(|picture| Some(&picture.small) == state.avatar.as_ref())
+            })
             .or(state.avatars.first());
         if let Some(picture) = picture {
             let circle = Rect::new(230., 250., 400., 400.);
@@ -548,7 +571,11 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 .iter()
                 .map(|appearance| {
                     let (title, description) = appearance_label(*appearance);
-                    (i18n::t(title), description.map(i18n::t), state.preferences.appearance == *appearance)
+                    (
+                        i18n::t(title),
+                        description.map(i18n::t),
+                        state.preferences.appearance == *appearance,
+                    )
                 })
                 .collect(),
             Subpage::Clock => vec![
@@ -818,7 +845,12 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 );
                 out.border(rect, 16., 1., out.theme.wash(0.086));
                 if state.preferences.background == *id {
-                    out.border(rect.inset(-2.), 18., 2., out.theme.pick(c(0xdedede, 1.), c(0x1d1d1f, 1.)));
+                    out.border(
+                        rect.inset(-2.),
+                        18.,
+                        2.,
+                        out.theme.pick(c(0xdedede, 1.), c(0x1d1d1f, 1.)),
+                    );
                     out.border(rect.inset(-7.), 23., 3., out.theme.wash(0.1));
                     let check = Rect::new(rect.x + rect.w - 28., rect.y + rect.h - 28., 21.6, 21.6);
                     out.shape(check, 10.8, c(0xf3f3f3, 1.));

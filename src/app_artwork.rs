@@ -59,7 +59,10 @@ impl Source {
     pub fn listed_icon_paths(&self) -> Vec<PathBuf> {
         let mut paths = Vec::new();
         for directory in self.directories() {
-            for value in [self.large_icon.as_deref(), self.icon.as_deref()].into_iter().flatten() {
+            for value in [self.large_icon.as_deref(), self.icon.as_deref()]
+                .into_iter()
+                .flatten()
+            {
                 if let Some(path) = icon_path(&directory, value)
                     && !paths.contains(&path)
                 {
@@ -194,7 +197,11 @@ fn bleed(pixels: &mut RgbaImage, passes: usize) {
                         }
                     }
                 }
-                if let Some(average) = sum.map(|total| total.checked_div(count)).into_iter().collect::<Option<Vec<_>>>() {
+                if let Some(average) = sum
+                    .map(|total| total.checked_div(count))
+                    .into_iter()
+                    .collect::<Option<Vec<_>>>()
+                {
                     let pixel = pixels.get_pixel_mut(x, y);
                     for channel in 0..3 {
                         pixel[channel] = average[channel] as u8;
@@ -473,7 +480,10 @@ fn load_cached(directory: Option<&Path>, source: &Source) -> Option<Artwork> {
     // Written whole then renamed, so a power cut never leaves a torn file.
     let partial = path.with_extension("part");
     if std::fs::create_dir_all(directory).is_ok()
-        && artwork.pixels.save_with_format(&partial, image::ImageFormat::Png).is_ok()
+        && artwork
+            .pixels
+            .save_with_format(&partial, image::ImageFormat::Png)
+            .is_ok()
     {
         let _ = std::fs::rename(&partial, &path);
     }
@@ -486,7 +496,9 @@ impl Service {
             .then(|| crate::storage::default_path(true).ok())
             .flatten()
             .and_then(|preferences| Some(preferences.parent()?.join("icons")));
-        Self::with_loader(enabled, move |source| load_cached(directory.as_deref(), source))
+        Self::with_loader(enabled, move |source| {
+            load_cached(directory.as_deref(), source)
+        })
     }
 
     fn with_loader(

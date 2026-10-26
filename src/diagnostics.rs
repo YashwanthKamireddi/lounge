@@ -64,7 +64,9 @@ impl Profile {
     }
     /// The interval just recorded, when it counted toward the summary.
     pub fn last_interval(&self) -> Option<f64> {
-        (self.presented > WARMUP).then(|| self.intervals.last().copied()).flatten()
+        (self.presented > WARMUP)
+            .then(|| self.intervals.last().copied())
+            .flatten()
     }
     pub fn note_slow(&mut self, note: String) {
         self.slow.push(note);
@@ -97,7 +99,6 @@ fn summarize(samples: &[f64]) -> Option<Timing> {
         max_ms: *sorted.last()?,
     })
 }
-
 
 /// One presented frame, as the frame log sees it.
 pub struct Frame {
@@ -140,7 +141,13 @@ impl FrameLog {
     }
 
     /// A frame was presented. `profile` is the profiler in a profiling run.
-    pub fn presented(&mut self, state: &State, stats: &RenderStats, profile: Option<&mut Profile>, frame: Frame) {
+    pub fn presented(
+        &mut self,
+        state: &State,
+        stats: &RenderStats,
+        profile: Option<&mut Profile>,
+        frame: Frame,
+    ) {
         // TV debug log: every frame that misses the panel's refresh.
         if self.slow_log {
             let now = Instant::now();
@@ -150,7 +157,8 @@ impl FrameLog {
             // In Move every frame is logged, with the memory pages read
             // back from swap since the last one, to tell a drawing
             // stall from a paging one.
-            let slow = interval > 30. && interval < 1000. && state.animating() && self.was_animating;
+            let slow =
+                interval > 30. && interval < 1000. && state.animating() && self.was_animating;
             if slow || state.moving.is_some() {
                 let faults = crate::debug::major_faults();
                 eprintln!(
@@ -210,7 +218,6 @@ impl FrameLog {
             }
             self.last_drawable = Some(drawable);
         }
-
     }
 }
 
