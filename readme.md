@@ -43,7 +43,7 @@ Native, fast and quiet, so the only thing you notice is what you came to watch.
     <td align="center"><sub><b>The app switcher</b>: Back on Home shows what is open</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app opens a glass menu beside it"></td>
+    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app shows Move and Hide as glass pills against it"></td>
     <td width="50%"><img src="docs/readme/move.jpg" alt="Moving an app along the dock"></td>
   </tr>
   <tr>
@@ -60,7 +60,7 @@ Native, fast and quiet, so the only thing you notice is what you came to watch.
   </tr>
   <tr>
     <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings in the Light appearance"></td>
-    <td width="50%"><img src="docs/readme/light-menu.jpg" alt="The app menu in the Light appearance"></td>
+    <td width="50%"><img src="docs/readme/light-menu.jpg" alt="App actions in the Light appearance"></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Light</b>, <b>Dark</b> or <b>Automatic</b> by time of day</sub></td>
