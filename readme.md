@@ -12,16 +12,16 @@ Native, fast and quiet, so the only thing you notice is what you came to watch.
 [![webOS](https://img.shields.io/badge/LG%20webOS-7.6%20verified-1a1f45.svg)](#requirements)
 [![Rust](https://img.shields.io/badge/Rust-OpenGL%20ES-1a1f45.svg)](#how-it-works)
 
-[Features](#features) · [Install](#install) · [Make it your Home](#make-lounge-your-home) · [How it works](#how-it-works) · [Build](#build-it-yourself)
+[Features](#features) · [Tour](#a-tour) · [Why Lounge](#how-lounge-differs) · [Install](#install) · [Make it your Home](#make-lounge-your-home) · [Make it yours](#make-it-yours) · [Build](#build-it-yourself)
 
-<img src="docs/readme/home.jpg" alt="Lounge home screen: a glass dock of apps over a photo of Yosemite" width="100%">
+<img src="docs/readme/home.jpg" alt="Lounge home screen: a glass dock of apps over the northern lights" width="100%">
 
 </div>
 
 ## Features
 
-- **A real tvOS home.** A glass dock of favourites over full-screen Top Shelf art, an app grid
-  that slides up beneath it, and your HDMI inputs as tiles.
+- **A real tvOS home.** A glass dock of favourites over your wallpaper, an app grid that slides
+  up beneath it, and your HDMI inputs as tiles.
 - **Turns on into Lounge.** Power-on, the remote's Home key and backing out of an app all land on
   Lounge, with no LG Home in between.
 - **Smooth on modest hardware.** Built for a one-core TV GPU: it repaints only what changed and
@@ -29,25 +29,69 @@ Native, fast and quiet, so the only thing you notice is what you came to watch.
 - **Out of your apps' way.** Behind YouTube, Netflix or any other app it draws nothing and hands
   memory back, so the app you are watching keeps the TV to itself.
 - **Yours.** Light, Dark or Automatic appearance, nine wallpapers, a profile picture, hidden apps,
-  rearranging, and weather in the corner.
+  rearranging, and live weather in the corner.
+
+## A tour
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/readme/apps.jpg" alt="App grid with Live TV, Settings, Search and HDMI inputs"></td>
-    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app opens a glass menu to move or hide it"></td>
+    <td width="50%"><img src="docs/readme/apps.jpg" alt="The app grid with Live TV, Settings, Search and HDMI inputs"></td>
+    <td width="50%"><img src="docs/readme/switcher.jpg" alt="The app switcher: open apps as large cards"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Every app and input, one press away</sub></td>
-    <td align="center"><sub>Hold OK to move or hide an app</sub></td>
+    <td align="center"><sub><b>Every app and input</b>, one press below the dock</sub></td>
+    <td align="center"><sub><b>The app switcher</b>: Back on Home shows what is open</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/readme/settings.jpg" alt="Settings: choosing a wallpaper"></td>
+    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app opens a glass menu beside it"></td>
+    <td width="50%"><img src="docs/readme/move.jpg" alt="Moving an app along the dock"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Hold OK</b> on an app to move or hide it</sub></td>
+    <td align="center"><sub><b>Move</b>: the app lifts and slides where you want it</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/readme/settings.jpg" alt="Settings, tinted by the wallpaper"></td>
+    <td width="50%"><img src="docs/readme/wallpapers.jpg" alt="Choosing a wallpaper"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Settings</b>, tinted by your wallpaper</sub></td>
+    <td align="center"><sub><b>Nine wallpapers</b>, each with its own glass</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings in the Light appearance"></td>
+    <td width="50%"><img src="docs/readme/light-menu.jpg" alt="The app menu in the Light appearance"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Light</b>, <b>Dark</b> or <b>Automatic</b> by time of day</sub></td>
+    <td align="center"><sub>Menus, banners and search follow the appearance</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/readme/search.jpg" alt="Search with a one-row keyboard"></td>
     <td width="50%" valign="middle">
-      <b>Screenshots</b> are the desktop preview, which renders exactly what the TV draws, with
-      sample apps.
+      <b>Search</b> finds any app as you type, on a one-row keyboard made for the remote.<br><br>
+      <sub>Screenshots are the desktop preview, which renders exactly what the TV draws, with
+      sample apps.</sub>
     </td>
   </tr>
 </table>
+
+## How Lounge differs
+
+Most home-screen replacements for LG TVs are web pages running in the TV's built-in browser.
+Lounge is a native program, and it takes over Home with webOS's own settings rather than scripts.
+
+|                      | **Lounge**                                                                                                         | Typical web-page launcher                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Runs as              | Native Rust + OpenGL ES, drawing straight to the screen                                                            | HTML/CSS in LG's browser engine                                    |
+| Start-up             | About half a second on a fresh TV                                                                                  | A browser page has to load first                                   |
+| Behind a playing app | Draws nothing, hands memory back                                                                                   | The page and its engine stay in memory                             |
+| Taking over Home     | LG's default-Home setting and a compositor key filter: no boot scripts of its own, nothing mounted over LG's files | Boot scripts, a mount over LG Home, or a watcher on another device |
+| Power-on             | Lands on Lounge, verified with power cycles                                                                        | Varies by launcher                                                 |
+| Look                 | tvOS: glass dock, focus lift, a context menu that keeps its app lit                                                | Varies                                                             |
+
+Lounge also keeps itself small on purpose: no screensaver, no video wallpapers, no extra
+services. The TV's memory belongs to what you are watching.
 
 ## Requirements
 
@@ -106,6 +150,25 @@ keys, sends every press straight to Lounge.
 `io.github.yashwanthkamireddi.lounge` to `KeepOnLaunchEx`, and taking `com.webos.app.home` out of it, keeps Lounge
 loaded behind apps while LG Home is freed when an app opens. Takes effect after a restart; keep a
 copy of the original file to undo.
+
+## Make it yours
+
+**Profile picture.** Lounge shows your LG account's initial in the time pill. To use a photo
+instead, copy JPEG or PNG files into Lounge's folder on the TV, then choose one in
+Settings › General › Profile picture (several can take turns):
+
+```sh
+D=/media/developer/io.github.yashwanthkamireddi.lounge
+mkdir -p $D/avatars && cp my-photo.jpg $D/avatars/
+chown -R --reference=$D $D/avatars    # Lounge must own its folder
+```
+
+Lounge reads the folder when it starts: quit it from Settings › General and open it again.
+
+**Top Shelf art.** Like tvOS, a picture can fill the screen behind the dock while an app is
+focused. LG apps do not provide one, so Lounge ships none: put your own 16:9 images in
+`local/heroes/`, named by app ID (`netflix.jpg`, `youtube.leanback.v4.jpg`), and build. The
+Top Shelf Art switch appears in Settings › General once any are present.
 
 ## How it works
 
@@ -192,6 +255,14 @@ Favorites, hidden apps, settings, weather location and cached readings stay in l
 in an app-owned persistent directory outside the installed payload.
 Weather search/forecast requests go to Open-Meteo, with embedded TLS roots and bounded responses.
 There is no browser geolocation, IP-based location lookup, telemetry or runtime font download.
+
+## Use at your own risk
+
+Lounge runs on rooted TVs and changes how they start and what the Home key opens. Every change
+is one setting that can be undone, and none touches LG's firmware or files, but rooting and
+modifying a TV is your decision and your responsibility. Lounge is provided as is, without
+warranty of any kind (see the [license](license)); its authors are not liable for any damage to
+your TV, loss of data, voided warranty or anything else that comes from installing or using it.
 
 ## Credits
 
