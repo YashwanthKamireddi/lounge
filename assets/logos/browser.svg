@@ -1,4 +1,4 @@
-<!-- Original Luma browser artwork, MIT. One flat white symbol, as tvOS icons are: a globe in clean lines. -->
+<!-- Original Lounge browser artwork, MIT. One flat white symbol, as tvOS icons are: a globe in clean lines. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
   <circle cx="64" cy="64" r="48"/>
   <ellipse cx="64" cy="64" rx="20" ry="48"/>

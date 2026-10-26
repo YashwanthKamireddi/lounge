@@ -8,18 +8,18 @@ use crate::{
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::PathBuf, sync::mpsc, thread};
 
-pub const APP_ID: &str = "com.ecklf.luma";
+pub const APP_ID: &str = "io.github.yashwanthkamireddi.lounge";
 pub const HOME_ID: &str = "com.webos.app.home";
 
-/// While Luma is hidden, LG's stock Home surfacing (an app was closed, or the
-/// TV woke) is answered at once by bringing Luma forward. Push-based: no polling.
+/// While Lounge is hidden, LG's stock Home surfacing (an app was closed, or the
+/// TV woke) is answered at once by bringing Lounge forward. Push-based: no polling.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 pub fn watch_foreground(
     alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
     wake: Wake,
 ) -> Result<(), String> {
     use std::sync::atomic::{AtomicBool, Ordering};
-    // webOS's own foreground event decides, not Luma's window flag: SDL
+    // webOS's own foreground event decides, not Lounge's window flag: SDL
     // reports visibility late and out of order, and trusting it left LG Home
     // on screen after quitting some system apps.
     let returning = std::sync::Arc::new(AtomicBool::new(false));
@@ -42,12 +42,12 @@ pub fn watch_foreground(
                 return;
             }
             let front = reply.get("appId").and_then(Value::as_str).unwrap_or_default().to_owned();
-            eprintln!("Luma foreground: {front:?} at {} ms", clock_ms());
+            eprintln!("Lounge foreground: {front:?} at {} ms", clock_ms());
             note_opened(&front);
             let closed = std::mem::replace(&mut previous, front.clone());
             // An app closing leaves nothing in front for a moment before
             // webOS raises LG Home: act then, so LG Home never shows. LG Home
-            // itself in front is the fallback. Luma launching an app (it was
+            // itself in front is the fallback. Lounge launching an app (it was
             // in front) is not a close.
             let app_closed = front.is_empty() && !closed.is_empty() && closed != APP_ID && closed != HOME_ID;
             if (front != HOME_ID && !app_closed) || returning.swap(true, Ordering::AcqRel) {
@@ -75,14 +75,14 @@ pub fn watch_foreground(
                         return;
                     }
                 }
-                // Raising an already-running Luma is cheap, so re-assert
+                // Raising an already-running Lounge is cheap, so re-assert
                 // often: LG Home loses the race within a frame or two.
                 for _ in 0..12 {
                     raise_self();
                     wake();
                     thread::sleep(std::time::Duration::from_millis(250));
                     let now = front_now();
-                    eprintln!("Luma return: front is now {now:?} at {} ms", clock_ms());
+                    eprintln!("Lounge return: front is now {now:?} at {} ms", clock_ms());
                     if now != HOME_ID && !now.is_empty() {
                         break;
                     }
@@ -102,7 +102,7 @@ fn clock_ms() -> u128 {
 }
 
 /// Waking from standby (LG's Quick Start+) is a power-on as far as anyone
-/// watching knows: Luma comes to the front, as it does after a cold start.
+/// watching knows: Lounge comes to the front, as it does after a cold start.
 /// Only a wake counts; the screen coming back from Screen Off or the
 /// screensaver leaves whatever was playing in front.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
@@ -126,7 +126,7 @@ pub fn watch_power() -> Result<(), String> {
             // Turning off: the state stays "Active" while LG works through
             // "Request Power Off" / "Prepare Active Standby", then becomes
             // "Active Standby" (or "Suspend"). webOS asks every app to quit
-            // on the way; Luma stays resident instead (see `STANDBY`).
+            // on the way; Lounge stays resident instead (see `STANDBY`).
             let processing = reply.get("processing").and_then(Value::as_str).unwrap_or("");
             let Ok(mut previous) = PREVIOUS.lock() else {
                 return;
@@ -138,11 +138,11 @@ pub fn watch_power() -> Result<(), String> {
             *previous = state.to_owned();
             drop(previous);
             if woke {
-                status("woke from standby: Luma to the front");
+                status("woke from standby: Lounge to the front");
                 // LG's quick-boot daemon closed every app at power-off; webOS
                 // replaces a run that stayed (it kills it, ~1.9 s, then starts
-                // a fresh one). So this run asks for Luma and steps aside at
-                // once: the fresh Luma starts without that wait.
+                // a fresh one). So this run asks for Lounge and steps aside at
+                // once: the fresh Lounge starts without that wait.
                 thread::spawn(|| {
                     thread::spawn(raise_self);
                     thread::sleep(std::time::Duration::from_millis(150));
@@ -170,7 +170,7 @@ pub fn power_step(previous: &str, state: &str, processing: &str) -> (bool, bool)
 }
 
 /// The TV is turning off, or is off (Active Standby, Suspend): a quit webOS
-/// sends then is the power-off sweep, not a request to close Luma. Luma
+/// sends then is the power-off sweep, not a request to close Lounge. Lounge
 /// stays resident, hidden, so the wake brings it straight back to the front
 /// (LG's own power-on otherwise restores the last input).
 pub static STANDBY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -181,7 +181,7 @@ pub fn watch_power() -> Result<(), String> {
 }
 
 /// Subscribes again after a stream ended (LG's service restarted, say), so
-/// Luma never stops listening until a relaunch: after 3 s, then 10, then
+/// Lounge never stops listening until a relaunch: after 3 s, then 10, then
 /// every 30 s until the bus takes it.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + Send + 'static) {
@@ -211,7 +211,7 @@ fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + 
                     status(&format!("{what}: on again (attempt {})", attempt + 1));
                     return;
                 }
-                Err(error) => eprintln!("Luma {what}: {error}; trying again"),
+                Err(error) => eprintln!("Lounge {what}: {error}; trying again"),
             }
         }
     });
@@ -240,13 +240,13 @@ pub fn watch_running(cache: std::sync::Arc<std::sync::Mutex<Option<Vec<String>>>
     )
 }
 
-/// The remote's Home key launches Luma (Glasshouse's key filter). When Luma
+/// The remote's Home key launches Lounge (Glasshouse's key filter). When Lounge
 /// is already in front, LG's SDL swallows that launch, so no window event
 /// arrives; webOS still reports it as a lifecycle "launch", which calls `home`.
 ///
 /// LG Home being launched (LG ThinQ's Home button and others go straight to
 /// it, past the remote's key filter) is answered the same moment, before it
-/// draws, by raising Luma: `take_home` is false in safe mode.
+/// draws, by raising Lounge: `take_home` is false in safe mode.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 pub fn watch_launches(home: Wake, take_home: bool) -> Result<(), String> {
     crate::luna::subscribe(
@@ -263,7 +263,7 @@ pub fn watch_launches(home: Wake, take_home: bool) -> Result<(), String> {
                 return;
             }
             match reply.get("appId").and_then(Value::as_str) {
-                // Luma raising itself (wake, LG Home taken over) is not the
+                // Lounge raising itself (wake, LG Home taken over) is not the
                 // Home key: that would close Settings and jump to the top.
                 Some(APP_ID) if raised_self_recently() => {}
                 Some(APP_ID) => home(),
@@ -296,24 +296,24 @@ pub fn watch_foreground(
     Err("Foreground events need an ARM webOS build".into())
 }
 
-/// Marks Luma's own launches of itself (bringing itself back over LG Home),
+/// Marks Lounge's own launches of itself (bringing itself back over LG Home),
 /// so the relaunch webOS reports for them is not taken for the Home key.
 fn self_launch() -> Value {
-    json!({"luma": "self"})
+    json!({"lounge": "self"})
 }
 
-/// When Luma last launched itself (see `raise_self`).
+/// When Lounge last launched itself (see `raise_self`).
 static RAISED: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 
-/// Notes that Luma is launching itself: the launch event that follows is
-/// Luma's own, not the Home key.
+/// Notes that Lounge is launching itself: the launch event that follows is
+/// Lounge's own, not the Home key.
 fn note_raised() {
     if let Ok(mut raised) = RAISED.lock() {
         *raised = Some(std::time::Instant::now());
     }
 }
 
-/// Brings Luma to the front by launching itself (see `note_raised`).
+/// Brings Lounge to the front by launching itself (see `note_raised`).
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 fn raise_self() {
     note_raised();
@@ -330,13 +330,13 @@ fn raised_self_recently() -> bool {
 }
 
 
-/// Wakes Luma's event loop from another thread (see main's `wake`).
+/// Wakes Lounge's event loop from another thread (see main's `wake`).
 pub type Wake = std::sync::Arc<dyn Fn() + Send + Sync>;
 
 pub enum Request {
     Refresh,
     Launch(String),
-    /// Which app webOS currently shows (read while Luma is hidden).
+    /// Which app webOS currently shows (read while Lounge is hidden).
     Foreground,
     Running,
     Close(String),
@@ -386,11 +386,11 @@ impl Platform {
                             let _ = responses.send(Response::Inventory(inventory));
                             let profile = if webos {
                                 read_profile().unwrap_or_else(|error| {
-                                    eprintln!("Luma profile: {error}");
+                                    eprintln!("Lounge profile: {error}");
                                     None
                                 })
                             } else {
-                                crate::model::Profile::from_fields("Luma", Some("#7360E7"))
+                                crate::model::Profile::from_fields("Lounge", Some("#7360E7"))
                             };
                             let _ = responses.send(Response::Profile(profile));
                         });
@@ -451,7 +451,7 @@ impl Platform {
                                 };
                                 call("luna://com.webos.applicationManager/launch", payload).map(|_| ())
                             };
-                            // Luma raising itself is no app launch: no reply,
+                            // Lounge raising itself is no app launch: no reply,
                             // so it never clears an app's opening or shows its error.
                             if id != APP_ID {
                                 let _ = responses.send(Response::Launched(result));
@@ -478,11 +478,11 @@ impl Platform {
     }
 }
 
-/// What Luma's TV connections are doing, one line each, in /tmp (memory,
+/// What Lounge's TV connections are doing, one line each, in /tmp (memory,
 /// gone at reboot): readable on the TV without a debug restart.
-const STATUS: &str = "/tmp/luma-status";
+const STATUS: &str = "/tmp/lounge-status";
 
-/// A new Luma starts its own section of the status log: the previous run's
+/// A new Lounge starts its own section of the status log: the previous run's
 /// last lines are kept (how it ended matters most, e.g. across a power
 /// cycle), bounded so the file in /tmp (memory) never grows.
 pub fn status_reset() {
@@ -496,7 +496,7 @@ pub fn status_reset() {
 
 /// Records `line` (also on stderr). Only a handful are written per run.
 pub fn status(line: &str) {
-    eprintln!("Luma {line}");
+    eprintln!("Lounge {line}");
     use std::io::Write;
     let _ = std::fs::OpenOptions::new()
         .create(true)
@@ -511,8 +511,8 @@ pub fn status(line: &str) {
         });
 }
 
-/// LG's preloader starts Luma once at boot (a one-shot entry in its
-/// supportAppList). Luma comes forward only over the boot screen, LG Home; with
+/// LG's preloader starts Lounge once at boot (a one-shot entry in its
+/// supportAppList). Lounge comes forward only over the boot screen, LG Home; with
 /// an app in front, or no answer, it stands aside before any window exists.
 pub fn preload_may_show() -> bool {
     call("luna://com.webos.applicationManager/getForegroundAppInfo", json!({}))
@@ -531,7 +531,7 @@ fn call(uri: &str, payload: Value) -> Result<Value, String> {
     };
     response.and_then(checked_response).map_err(|error| {
         let error = format!("{uri}: {error}");
-        eprintln!("Luma TV service: {error}");
+        eprintln!("Lounge TV service: {error}");
         error
     })
 }
@@ -583,7 +583,7 @@ fn inventory_read(uri: &str, field: &str) -> Result<Value, String> {
     )?;
     inventory_payload(&envelope, field).map_err(|error| {
         let error = format!("{uri}: {error}");
-        eprintln!("Luma TV inventory: {error}");
+        eprintln!("Lounge TV inventory: {error}");
         error
     })
 }
@@ -756,8 +756,8 @@ fn inventory_payload(envelope: &Value, field: &str) -> Result<Value, String> {
 
 /// Apps someone brought to the front since the TV started, one id per line.
 /// /tmp is memory, so the list starts empty at every boot and outlives a
-/// restart of Luma itself.
-const OPENED: &str = "/tmp/luma-opened";
+/// restart of Lounge itself.
+const OPENED: &str = "/tmp/lounge-opened";
 
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 fn note_opened(id: &str) {
@@ -806,17 +806,17 @@ fn running_apps() -> Result<Vec<String>, String> {
     let started = std::time::Instant::now();
     match call("luna://com.webos.applicationManager/running", json!({})) {
         Ok(reply) if reply.get("running").is_some() => {
-            eprintln!("Luma running: bus {:?}", started.elapsed());
+            eprintln!("Lounge running: bus {:?}", started.elapsed());
             return Ok(card_ids(&reply["running"]));
         }
-        Ok(reply) => eprintln!("Luma running: bus reply without list: {reply}"),
-        Err(error) => eprintln!("Luma running: bus refused ({error})"),
+        Ok(reply) => eprintln!("Lounge running: bus reply without list: {reply}"),
+        Err(error) => eprintln!("Lounge running: bus refused ({error})"),
     }
     let ids = card_ids(&inventory_read(
         "luna://com.webos.applicationManager/running",
         "running",
     )?);
-    eprintln!("Luma running: elevated {:?}", started.elapsed());
+    eprintln!("Lounge running: elevated {:?}", started.elapsed());
     Ok(ids)
 }
 
@@ -856,7 +856,7 @@ fn inventory() -> Result<(Inventory, Option<String>), String> {
     match inputs {
         Ok(inputs) => {
             eprintln!(
-                "Luma TV inventory: {} apps, {} inputs",
+                "Lounge TV inventory: {} apps, {} inputs",
                 apps.len(),
                 inputs.len()
             );
@@ -903,7 +903,10 @@ pub fn normalize_apps(raw: &Value) -> Result<Vec<App>, String> {
         };
         let live = id == "com.webos.app.livetv";
         let visible = entry.get("visible");
+        // Earlier launchers this one replaces (Luma and its prototypes) are
+        // never listed as apps.
         if id == APP_ID
+            || id == "com.ecklf.luma"
             || id == "com.luma.native"
             || id == "com.luma.launcher"
             || id == "com.luma.launcher.native"

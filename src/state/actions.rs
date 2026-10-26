@@ -339,7 +339,7 @@ impl State {
         vec![]
     }
 
-    /// The remote's Home key. Pressed with Luma in front it is tvOS's Home:
+    /// The remote's Home key. Pressed with Lounge in front it is tvOS's Home:
     /// whatever is open closes and the home screen returns to its top. On the
     /// way back from an app the home stays as it was left, with anything that
     /// was still open closed.

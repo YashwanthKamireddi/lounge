@@ -1,4 +1,4 @@
-# Luma development
+# Lounge development
 
 ## Layout
 
@@ -16,7 +16,7 @@ dist/                        Generated ARM IPK, checksum and Homebrew feed
 
 React, JSX, Vite, browser tests and web rendering are no longer part of the project. Node/pnpm
 remain build/deployment tools for Sharp, the webOS CLI and formatting/linting. The installed app
-is the Rust executable `luma`, with app ID `com.ecklf.luma`.
+is the Rust executable `lounge`, with app ID `io.github.yashwanthkamireddi.lounge`.
 
 ## Toolchain and commands
 
@@ -168,7 +168,7 @@ The gallery also runs as part of `pnpm test:smoke`. Asset source/licence details
 
 Live TV (`com.webos.app.livetv`) and Web Browser (`com.webos.app.browser`) also have dedicated
 SVG-backed demo cards: a blue/cyan TV display with a live indicator, and a matching globe with a
-navigation pointer. Both are original Luma vector artwork. The existing card caption remains available when
+navigation pointer. Both are original Lounge vector artwork. The existing card caption remains available when
 names are visible. `Brand::artwork_size()` sets optical sizing per brand, keeping heavy wordmarks
 such as Hulu, Joyn and Plex closer to the visual weight of Apple TV, YouTube, Das Erste and ARTE.
 
@@ -218,13 +218,13 @@ Do not infer 60 fps from a successful VSync request; measure actual TV pacing an
 
 SAM passes launch metadata as a JSON object in `argv[1]`. The CLI skips that object while leaving
 the original process arguments available to SDL/libhelpers. To expose the actual developer-mode
-sandbox's stdout/stderr, close Luma and run in the TV's root SSH shell:
+sandbox's stdout/stderr, close Lounge and run in the TV's root SSH shell:
 
 ```sh
-APP=/media/developer/apps/usr/palm/applications/com.ecklf.luma
+APP=/media/developer/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge
 XDG_RUNTIME_DIR=/tmp/xdg RUST_BACKTRACE=1 /usr/bin/jailer \
-  -t native_devmode -i com.ecklf.luma -p "$APP" \
-  "$APP/luma" '{"@system_native_app":true,"nid":"com.ecklf.luma"}'
+  -t native_devmode -i io.github.yashwanthkamireddi.lounge -p "$APP" \
+  "$APP/lounge" '{"@system_native_app":true,"nid":"io.github.yashwanthkamireddi.lounge"}'
 ```
 
 Startup prints accepted launch parameters, SDL driver, actual sample count, cumulative stage
@@ -245,9 +245,9 @@ failures preserve the last valid inputs. No failed inventory read substitutes de
 
 ### Home integration
 
-Luma becomes Home through webOS itself, with no scripts: settings `general.defaultApps.home`
+Lounge becomes Home through webOS itself, with no scripts: settings `general.defaultApps.home`
 for Back out of an app, the compositor key-filter chain for the Home button, and LG's memory
-manager override for residency. See [the readme](readme.md#making-luma-the-home-app).
+manager override for residency. See [the readme](readme.md#making-lounge-the-home-app).
 
 ## Manual extra-app preview
 
@@ -272,8 +272,8 @@ on the persistent developer partition, not the reboot-cleared `/tmp`. No setting
 in `/tmp` and no system/app-payload permissions are widened. Existing JSON preferences and a
 valid weather cache from beside this installation's old executable are imported once, without
 overwriting the chosen destination. Invalid existing preferences still report an error.
-Startup prints `Luma persistent storage:` with the chosen path. Desktop preview retains the legacy
-`$XDG_CONFIG_HOME/luma-native/preferences.json` path, or `~/.config/luma-native/preferences.json`,
+Startup prints `Lounge persistent storage:` with the chosen path. Desktop preview retains the legacy
+`$XDG_CONFIG_HOME/lounge/preferences.json` path, or `~/.config/lounge/preferences.json`,
 so existing preview choices survive flattening. `--preferences PATH` isolates a manual run.
 Invalid preference files report an error rather than being overwritten. Writes use atomic
 temporary-file renames; use one instance per preferences file. Browser local storage is not
@@ -294,7 +294,7 @@ telemetry are used. Weather attribution: Open-Meteo, [CC BY 4.0](https://creativ
 
 ## Compatibility
 
-Luma's native startup, rendering and app/input discovery have been verified on rooted webOS 26.
+Lounge's native startup, rendering and app/input discovery have been verified on rooted webOS 26.
 External testing confirms compatibility with webOS 6 and newer. On webOS 26 use elevated Homebrew Channel
 0.8.0-rc1+ for `lunabus.query`. Root SSH execution does not establish the normal jailed caller
 permissions; check TV-menu startup, launching/reopening and remote/pointer behavior manually.
@@ -304,7 +304,7 @@ versions. Its [library guide](https://www.webosbrew.org/develop/guides/library-v
 internal releases to marketing names: 7/22, 8/23, 9/24, 10/25, 11/26. SDL-webOS's newer
 [`2.30.12-webos.6`](https://github.com/webosbrew/SDL-webOS/releases/tag/release-2.30.12-webos.6)
 reports hotplug verification on webOS 3.4, 4 and 10. That is subsystem evidence for a newer
-prerelease than the pinned `.5` library, not a full Luma compatibility guarantee.
+prerelease than the pinned `.5` library, not a full Lounge compatibility guarantee.
 
 ## Checks and CI
 
@@ -336,7 +336,7 @@ Add a changeset to feature/fix PRs that should be included in the next app relea
 pnpm changeset
 ```
 
-Select `lg-luma`, choose patch/minor/major and describe the change. Commit the generated file
+Select `lounge`, choose patch/minor/major and describe the change. Commit the generated file
 under `.changeset/` with the PR. Documentation-only and maintenance PRs that do not need a release
 can omit it. Keep the existing app version in ordinary PRs.
 
@@ -354,7 +354,7 @@ installing dependencies or running code from the PR.
 After changesets merge into `main`, `.github/workflows/release-pr.yml` creates or updates the
 **Version Packages** PR on `changeset-release/main`. Changesets combines the pending notes using
 the highest requested bump. The custom `pnpm version:release` command updates `package.json`
-and `CHANGELOG.md`, then synchronizes `appinfo.json`, the root `Cargo.toml`, the `luma` entry in
+and `CHANGELOG.md`, then synchronizes `appinfo.json`, the root `Cargo.toml`, the `lounge` entry in
 `Cargo.lock`, and the versioned IPK examples in `readme.md`. Dependency pins and supporting Rust
 crate versions are preserved. The package stays private and is never published to npm.
 

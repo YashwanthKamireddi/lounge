@@ -1,6 +1,6 @@
 //! Replies from the platform worker (the TV's services) and what each one
 //! changes: the inventory, the profile, closes and launches, and the
-//! foreground poll that brings a hidden Luma back over LG Home.
+//! foreground poll that brings a hidden Lounge back over LG Home.
 use crate::{
     i18n,
     platform::{self, Platform, Request, Response},
@@ -20,7 +20,7 @@ pub struct Replies {
     pub inventory_retry: Option<Instant>,
     /// A foreground poll is out (polling only when push events are off).
     pub foreground_pending: bool,
-    /// When Luma last raised itself over LG Home from a poll.
+    /// When Lounge last raised itself over LG Home from a poll.
     pub last_redirect: Option<Instant>,
 }
 
@@ -35,7 +35,7 @@ impl Replies {
         }
     }
 
-    /// Applies one reply. `visible`: Luma is on screen.
+    /// Applies one reply. `visible`: Lounge is on screen.
     pub fn apply(
         &mut self,
         response: Response,
@@ -70,7 +70,7 @@ impl Replies {
             Response::Inventory(Err(error)) => {
                 if let Some(delay) = state.inventory_failed(error) {
                     eprintln!(
-                        "Luma TV inventory: retry {} in {} s",
+                        "Lounge TV inventory: retry {} in {} s",
                         state.inventory_failures,
                         delay.as_secs()
                     );
@@ -88,7 +88,7 @@ impl Replies {
             Response::Running(_) => {}
             Response::Closed(id, result) => {
                 if let Err(error) = result {
-                    eprintln!("Luma close {id}: {error}");
+                    eprintln!("Lounge close {id}: {error}");
                     state.notify(i18n::t("appCloseError"));
                 }
             }

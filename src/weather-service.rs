@@ -75,7 +75,7 @@ impl Client {
             .agent
             .get(endpoint)
             .header("Accept", "application/json")
-            .header("User-Agent", "LumaNative");
+            .header("User-Agent", "LoungeNative");
         for (key, value) in query {
             request = request.query(key, value);
         }
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn cache_writes_are_ordered_and_flushed_before_shutdown() {
         let directory =
-            std::env::temp_dir().join(format!("luma-weather-cache-{}", std::process::id()));
+            std::env::temp_dir().join(format!("lounge-weather-cache-{}", std::process::id()));
         let path = directory.join("preferences.weather.json");
         let cache = Cache {
             key: "48.2085,16.3721".into(),

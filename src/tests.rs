@@ -129,13 +129,13 @@ fn partial_refresh_preserves_valid_inputs_and_never_invents_tv_apps() {
         crate::model::Inventory::default(),
         Some("Inputs unavailable".into()),
     );
-    // Only Luma's own Settings/Search and input tiles remain; no TV app is made up.
+    // Only Lounge's own Settings/Search and input tiles remain; no TV app is made up.
     assert!(
         state
             .inventory
             .apps
             .iter()
-            .all(|app| app.brand.starts_with("luma-"))
+            .all(|app| app.brand.starts_with("lounge-"))
     );
     assert_eq!(state.inventory.inputs.len(), 3);
 }
@@ -211,7 +211,7 @@ fn auto_input_visibility_requires_a_positive_connection_report() {
 
 #[test]
 fn preferences_round_trip_and_corrupt_data_is_not_silently_overwritten() {
-    let directory = std::env::temp_dir().join(format!("luma-native-test-{}", std::process::id()));
+    let directory = std::env::temp_dir().join(format!("lounge-test-{}", std::process::id()));
     let path = directory.join("preferences.json");
     let mut preferences = Preferences {
         favorites: Some(vec![]),
@@ -228,7 +228,7 @@ fn preferences_round_trip_and_corrupt_data_is_not_silently_overwritten() {
     assert_eq!(loaded.input_modes["com.webos.app.hdmi1"], InputMode::Off);
     std::fs::write(&path, "broken").unwrap();
     assert!(storage::load(&path).is_err());
-    // Starting up, a damaged file is kept aside (never overwritten) and Luma
+    // Starting up, a damaged file is kept aside (never overwritten) and Lounge
     // starts with defaults rather than not at all.
     let recovered = storage::load_or_recover(&path).unwrap();
     assert_eq!(recovered.background, Preferences::default().background);
@@ -904,7 +904,7 @@ fn a_heavy_frame_advances_the_glide_by_its_real_time() {
 
 #[test]
 fn background_writer_keeps_the_newest_preferences_and_finishes_every_save() {
-    let directory = std::env::temp_dir().join(format!("luma-writer-{}", std::process::id()));
+    let directory = std::env::temp_dir().join(format!("lounge-writer-{}", std::process::id()));
     let path = directory.join("preferences.json");
     let mut writer = crate::storage::Writer::new(path.clone());
     for background in ["slate", "midnight", "forest"] {
@@ -927,7 +927,7 @@ fn automatic_appearance_follows_the_clock_and_cross_fades() {
     state.hour = 21;
     state.tick();
     assert_eq!(state.light(), 0., "evening is dark");
-    // 06:00 arrives while Luma is on screen: it fades to light, not cuts.
+    // 06:00 arrives while Lounge is on screen: it fades to light, not cuts.
     state.hour = 6;
     state.tick();
     assert!(state.animating());
@@ -960,7 +960,7 @@ fn a_plugged_in_input_appears_right_after_search_whatever_the_saved_order() {
 fn a_slow_tv_service_at_boot_is_retried_before_any_error_shows() {
     let mut state = State::new(Preferences::default());
     state.loading = true;
-    // Only Luma's own tiles: no apps yet.
+    // Only Lounge's own tiles: no apps yet.
     state.refresh_tiles();
     for attempt in 1..=crate::state::INVENTORY_RETRIES {
         assert_eq!(state.inventory_failed("timeout".into()), Some(crate::state::INVENTORY_RETRY_DELAY));
@@ -976,7 +976,7 @@ fn a_slow_tv_service_at_boot_is_retried_before_any_error_shows() {
 }
 
 #[test]
-fn power_steps_recorded_on_the_tv_wake_luma_only_from_standby() {
+fn power_steps_recorded_on_the_tv_wake_lounge_only_from_standby() {
     use crate::platform::power_step;
     // Replay a sequence the TV sent (2026-10-25), returning each step's
     // (off or turning off, woke).
@@ -1002,7 +1002,7 @@ fn power_steps_recorded_on_the_tv_wake_luma_only_from_standby() {
         ("Active", ""),
     ]);
     assert!(quick[..6].iter().all(|(going, woke)| *going && !woke), "off the whole way: quits are ignored");
-    assert_eq!(quick[6], (false, true), "back on: Luma wakes to the front");
+    assert_eq!(quick[6], (false, true), "back on: Lounge wakes to the front");
     // Full standby (Suspend) and resume.
     let full = replay(&[
         ("Screen Off", "Prepare Suspend"),

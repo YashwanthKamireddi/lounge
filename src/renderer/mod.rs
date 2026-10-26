@@ -122,7 +122,7 @@ impl Drop for Texture {
 }
 
 struct Glyph {
-    geometry: Vec<luma_vector_geometry::Vertex>,
+    geometry: Vec<lounge_vector_geometry::Vertex>,
     frame: u64,
 }
 

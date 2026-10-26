@@ -10,7 +10,7 @@ pub(super) fn tab_style() -> TextStyle {
     text(29., 650, 0.).leading(36. / 29.)
 }
 
-/// tvOS glass platter; Luma has no backdrop blur, so it is slightly more opaque.
+/// tvOS glass platter; Lounge has no backdrop blur, so it is slightly more opaque.
 pub(super) const PLATTER: u32 = 0x1d1d1d;
 
 pub(super) fn c(rgb: u32, alpha: f32) -> Color {

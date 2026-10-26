@@ -279,13 +279,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
-name = "luma"
+name = "lounge"
 version = "2.1.0"
 dependencies = [
  "gl",
  "image",
  "libc",
- "luma-vector-geometry",
+ "lounge-vector-geometry",
  "owned_ttf_parser",
  "sdl2",
  "serde",
@@ -295,17 +295,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "luma-vector-assets"
+name = "lounge-vector-assets"
 version = "0.1.0"
 dependencies = [
- "luma-vector-geometry",
+ "lounge-vector-geometry",
  "serde",
  "serde_json",
  "usvg",
 ]
 
 [[package]]
-name = "luma-vector-geometry"
+name = "lounge-vector-geometry"
 version = "0.1.0"
 dependencies = [
  "lyon_tessellation",

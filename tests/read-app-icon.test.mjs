@@ -65,6 +65,8 @@ function readIcon({ metadata = {}, installations = [], chunk = 16384 } = {}) {
   return { icons: reply.icons.map((hex) => Buffer.from(hex, 'hex')), opened, errors };
 }
 
+// The helper returns only the first readable icon in preference order: each
+// elevated read stays small, and the launcher needs one icon per app.
 test('runtime helper discovers manifest artwork without any bundled icon map', () => {
   const { icons } = readIcon({
     installations: [
@@ -77,7 +79,7 @@ test('runtime helper discovers manifest artwork without any bundled icon map', (
   });
   assert.deepEqual(
     icons.map((bytes) => bytes.toString()),
-    ['large', 'regular'],
+    ['large'],
   );
 });
 
@@ -116,8 +118,8 @@ test('missing, unsupported and oversized large icons fall back to regular or def
   assert.equal(icons[0].toString(), 'default');
 });
 
-test('artwork responses have an aggregate byte limit and do not duplicate the same path', () => {
-  const { icons } = readIcon({
+test('one icon is read, once, even when two sources name the same file', () => {
+  const { icons, opened } = readIcon({
     metadata: { large_icon: 'large.png', icon: 'regular.png' },
     installations: [
       {
@@ -132,8 +134,9 @@ test('artwork responses have an aggregate byte limit and do not duplicate the sa
   });
   assert.deepEqual(
     icons.map((data) => data.length),
-    [400 * 1024, 7],
+    [400 * 1024],
   );
+  assert.equal(opened.filter((file) => file.endsWith('/large.png')).length, 1);
 });
 
 test('invalid paths and unrelated manifests cannot select artwork outside app directories', () => {

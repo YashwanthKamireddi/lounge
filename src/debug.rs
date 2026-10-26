@@ -1,12 +1,12 @@
-/// webOS sends a launched app's stderr to /dev/null. When `/tmp/luma-debug`
-/// exists (developer use only), send it to `/tmp/luma.log` instead.
+/// webOS sends a launched app's stderr to /dev/null. When `/tmp/lounge-debug`
+/// exists (developer use only), send it to `/tmp/lounge.log` instead.
 pub(crate) fn debug_log() {
     #[cfg(feature = "webos")]
-    if std::path::Path::new("/tmp/luma-debug").exists()
+    if std::path::Path::new("/tmp/lounge-debug").exists()
         && let Ok(file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open("/tmp/luma.log")
+            .open("/tmp/lounge.log")
     {
         use std::os::fd::AsRawFd;
         // SAFETY: dup2 onto the process's own stderr descriptor; `file`

@@ -108,13 +108,13 @@ pub struct Frame {
     pub exclude: bool,
     pub width: u32,
     pub height: u32,
-    /// Time since Luma started.
+    /// Time since Lounge started.
     pub uptime: Duration,
     /// Log the drawable size whenever it changes (diagnostic runs).
     pub verbose: bool,
 }
 
-/// Per-frame logging: the TV's slow-frame log (`/tmp/luma-debug`), the
+/// Per-frame logging: the TV's slow-frame log (`/tmp/lounge-debug`), the
 /// profiler's notes on slow frames, and drawable size changes.
 pub struct FrameLog {
     slow_log: bool,
@@ -145,7 +145,7 @@ impl FrameLog {
         if self.slow_log {
             let now = Instant::now();
             let interval = now.duration_since(self.last_presented).as_secs_f64() * 1000.;
-            // The first frame after an idle gap is not slow: Luma sat
+            // The first frame after an idle gap is not slow: Lounge sat
             // still (correctly) until the next key arrived.
             // In Move every frame is logged, with the memory pages read
             // back from swap since the last one, to tell a drawing
@@ -154,7 +154,7 @@ impl FrameLog {
             if slow || state.moving.is_some() {
                 let faults = crate::debug::major_faults();
                 eprintln!(
-                    "Luma {} at {} ms: {interval:.1} ms (compose {:.1}, cpu {:.1}, build {:.1}, draws {}, uploads {}, page faults +{}) page {:?} overlay {}",
+                    "Lounge {} at {} ms: {interval:.1} ms (compose {:.1}, cpu {:.1}, build {:.1}, draws {}, uploads {}, page faults +{}) page {:?} overlay {}",
                     if slow { "slow frame" } else { "move frame" },
                     frame.uptime.as_millis(),
                     frame.compose_ms,
@@ -201,7 +201,7 @@ impl FrameLog {
         if self.last_drawable != Some(drawable) {
             if frame.verbose || self.slow_log {
                 eprintln!(
-                    "Luma drawable: {}x{}, density {:.3}x, 4K buffer: {}",
+                    "Lounge drawable: {}x{}, density {:.3}x, 4K buffer: {}",
                     frame.width,
                     frame.height,
                     drawable.scale(),

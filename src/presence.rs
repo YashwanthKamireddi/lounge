@@ -1,11 +1,11 @@
-//! Whether Luma is on screen, and the moments that decide what an event
+//! Whether Lounge is on screen, and the moments that decide what an event
 //! means: a window shown again is a return from an app (refill, re-read the
-//! inventory), and a Home launch well after Luma came to the front is the
-//! Home key pressed on Luma itself.
+//! inventory), and a Home launch well after Lounge came to the front is the
+//! Home key pressed on Lounge itself.
 use std::time::{Duration, Instant};
 
 /// How long after coming to the front a Home launch still belongs to that
-/// return rather than being Home pressed on Luma.
+/// return rather than being Home pressed on Lounge.
 const SETTLE: Duration = Duration::from_millis(800);
 /// How long after a raise was asked for the hidden loop answers quickly.
 const RAISING: Duration = Duration::from_secs(2);
@@ -15,7 +15,7 @@ pub struct Presence {
     pub visible: bool,
     /// Left since last shown (hidden, or focus went to an app).
     away: bool,
-    /// When Luma last came back to the front.
+    /// When Lounge last came back to the front.
     shown_at: Instant,
     /// Until when a raise is in progress (see `raising`).
     raising_until: Instant,
@@ -33,8 +33,8 @@ impl Presence {
         self.away = true;
     }
 
-    /// Focus left Luma. Only an app Luma is launching makes this a leave
-    /// (some firmware sends no Hidden for it): a system panel over Luma
+    /// Focus left Lounge. Only an app Lounge is launching makes this a leave
+    /// (some firmware sends no Hidden for it): a system panel over Lounge
     /// (LG's quick settings, input list) takes focus without hiding it, and
     /// closing the panel is not a return from an app.
     pub fn leave(&mut self, launching: bool) {
@@ -52,7 +52,7 @@ impl Presence {
         returned
     }
 
-    /// Something is bringing Luma back: answer webOS quickly for a while.
+    /// Something is bringing Lounge back: answer webOS quickly for a while.
     pub fn raise(&mut self) {
         self.raising_until = Instant::now() + RAISING;
     }
@@ -62,7 +62,7 @@ impl Presence {
     }
 
     /// On screen long enough that a Home launch is the Home key pressed on
-    /// Luma, not the launch that brought it back.
+    /// Lounge, not the launch that brought it back.
     pub fn settled(&self) -> bool {
         self.visible && self.shown_at.elapsed() > SETTLE
     }
@@ -82,13 +82,13 @@ mod tests {
         assert!(!presence.show(), "the same return's next event is not another");
         assert!(!presence.settled(), "just back: a Home launch now belongs to the return");
         std::thread::sleep(SETTLE + Duration::from_millis(20));
-        assert!(presence.settled(), "in front a while: Home is pressed on Luma");
+        assert!(presence.settled(), "in front a while: Home is pressed on Lounge");
         // Focus lost to a system panel (verified on the TV with quick
         // settings: FocusLost, FocusGained, never Hidden): not a return.
         presence.leave(false);
         assert!(!presence.show(), "a closed system panel is not a return");
-        assert!(presence.settled(), "and Home stays Home pressed on Luma");
-        // Focus lost to an app Luma launched (no Hidden on some firmware).
+        assert!(presence.settled(), "and Home stays Home pressed on Lounge");
+        // Focus lost to an app Lounge launched (no Hidden on some firmware).
         presence.leave(true);
         assert!(presence.show());
         // Raising answers quickly only for a while.

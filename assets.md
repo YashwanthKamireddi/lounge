@@ -1,7 +1,7 @@
-# Luma assets and references
+# Lounge assets and references
 
 - `assets/mark.svg`, `assets/app-icon.svg`, and the Midnight/Slate/Prism SVG wallpapers:
-  original Luma artwork, MIT. webOS supplies the app icon panel using `iconColor`.
+  original Lounge artwork, MIT. webOS supplies the app icon panel using `iconColor`.
 - `assets/wallpapers/dunes.jpg`: Unsplash photo `1509316785289-025f5b846b35`,
   https://images.unsplash.com/photo-1509316785289-025f5b846b35, [Unsplash License](https://unsplash.com/license).
 - `assets/wallpapers/san-francisco.jpg`: Unsplash photo `1501594907352-04cda38ebc29`,
@@ -19,7 +19,7 @@
 - Lucide interface icons: exported standalone SVG sources in `assets/ui-icons/`, ISC license
   bundled at `assets/licenses/lucide.txt`. PlayStation/Apple TV input paths were supplied by the
   user; the brand marks belong to Sony/Apple. Spotify/Kodi symbol treatments use the original
-  native artwork. Logos identify third-party apps; Luma is unaffiliated with their owners.
+  native artwork. Logos identify third-party apps; Lounge is unaffiliated with their owners.
 - SDL-webOS 2.30.12 (`release-2.30.12-webos.5`, standard SDL ABI), zlib license.
   `tools/webos-runtime.mjs` records archive/library SHA-256. Notice at `assets/licenses/sdl2.txt`.
 
@@ -90,7 +90,7 @@ to compiled `.lvec` derivatives.
 
 ### Live TV and browser cards
 
-`live-tv.svg` and `browser.svg` are original Luma artwork, MIT. Both share a blue/cyan material
+`live-tv.svg` and `browser.svg` are original Lounge artwork, MIT. Both share a blue/cyan material
 with a light rim and white details. Live TV uses a rounded display, play symbol and live
 indicator. Browser uses a globe with a navigation pointer. The gradients and highlights are vector
 geometry, with no embedded images, runtime fonts, filters or raster effects. Each utility card
@@ -99,7 +99,7 @@ uses its native app's exact ID.
 On TV, installed-app PNG/JPEG/WebP artwork is read from that TV's installed applications at runtime.
 Previously collected PNG/JPEG artwork remains in the repository for desktop previews and is
 excluded from native TV packages. Names and marks remain the property of the respective app
-owners. Luma's folded-light L logo is original artwork; its SVG geometry produces the small/large
+owners. Lounge's folded-light L logo is original artwork; its SVG geometry produces the small/large
 webOS installation icons.
 
 Weather data: [Open-Meteo](https://open-meteo.com/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

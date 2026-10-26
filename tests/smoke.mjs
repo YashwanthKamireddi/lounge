@@ -12,8 +12,8 @@ const run = (command, args) => {
   if (result.error) throw result.error;
   assert.equal(result.status, 0, `${command} failed`);
 };
-run('cargo', ['build', '--locked', '--package', 'luma']);
-const binary = path.resolve(root, process.env.CARGO_TARGET_DIR ?? 'target', 'debug/luma');
+run('cargo', ['build', '--locked', '--package', 'lounge']);
+const binary = path.resolve(root, process.env.CARGO_TARGET_DIR ?? 'target', 'debug/lounge');
 const temporary = await fs.mkdtemp(path.join(out, 'smoke-'));
 try {
   const preferences = path.join(temporary, 'preferences.json');
@@ -66,7 +66,7 @@ try {
   assert.deepEqual(home.focus, { App: 'com.webos.app.livetv' });
   const hidden = await scenario('apps', 'apps,down,menu,down,enter');
   assert.ok(hidden.preferences.hidden.includes('com.webos.app.livetv'));
-  assert.deepEqual(hidden.focus, { App: 'luma.settings' });
+  assert.deepEqual(hidden.focus, { App: 'lounge.settings' });
   // Reload from disk and show Live TV again from Settings › General › Hidden apps.
   const restored = await scenario(
     'restored',

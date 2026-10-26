@@ -78,7 +78,7 @@ pub(crate) fn hit(
         .map(|control| control.target.clone())
 }
 
-/// The remote, as Luma reads it: what each key does, an OK held for the menu,
+/// The remote, as Lounge reads it: what each key does, an OK held for the menu,
 /// and a held arrow moving at an even pace.
 pub(crate) struct Remote {
     /// OK (or a click) held down on a target, until released or cancelled.

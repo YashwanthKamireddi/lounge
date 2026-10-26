@@ -169,7 +169,7 @@ pub fn refill(preload: &Sender<String>, state: &State, assets: &Assets, renderer
 /// After the first frame: fetch every app's icon in the
 /// background, so no tile shows a placeholder on scrolling.
 pub fn prefetch(preload: &Sender<String>, state: &State, assets: &Assets) {
-    // Only apps Luma ships no artwork for read their icon from
+    // Only apps Lounge ships no artwork for read their icon from
     // the TV; every other tile is complete from the first frame.
     for source in state
         .inventory

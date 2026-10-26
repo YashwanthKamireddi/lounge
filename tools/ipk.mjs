@@ -1,4 +1,4 @@
-// Inspect the actual IPK, and normalize only Luma-owned entries. The webOS CLI
+// Inspect the actual IPK, and normalize only Lounge-owned entries. The webOS CLI
 // emits world-writable directories; boot scripts need app-owned 0755 parents.
 import { gunzipSync, gzipSync } from 'node:zlib';
 
@@ -53,7 +53,7 @@ export function normalizeAndVerifyPackage(bytes, manifest) {
   const tar = gunzipSync(member.data);
   const files = entries(tar);
   const owned = files.filter((file) => file.name.split('/').includes(manifest.id));
-  if (!owned.length) throw new Error('The IPK contains no Luma app directory.');
+  if (!owned.length) throw new Error('The IPK contains no Lounge app directory.');
   if (
     owned.some((file) => /\/assets\/(app-icons(?:\/|$)|icons\.json$|colors\.json$)/.test(file.name))
   )
@@ -140,7 +140,7 @@ export function normalizeAndVerifyPackage(bytes, manifest) {
   for (const file of vectorFiles) {
     if (
       file.data.length < 20 ||
-      file.data.subarray(0, 8).toString() !== 'LUMAVEC1' ||
+      file.data.subarray(0, 8).toString() !== 'LOUNGEV1' ||
       file.data.readUInt32LE(16) === 0 ||
       file.data.readUInt32LE(16) % 3 !== 0 ||
       file.data.length !== 20 + file.data.readUInt32LE(16) * 36
@@ -165,7 +165,7 @@ export function normalizeAndVerifyPackage(bytes, manifest) {
     if (entry.data.length % 2) parts.push(Buffer.from('\n'));
   }
   console.log(
-    `Verified IPK contents: ${owned.length} Luma entries; app metadata, assets and modes checked.`,
+    `Verified IPK contents: ${owned.length} Lounge entries; app metadata, assets and modes checked.`,
   );
   return Buffer.concat(parts);
 }

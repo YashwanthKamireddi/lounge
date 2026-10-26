@@ -11,7 +11,7 @@ await fs.mkdir(out, { recursive: true });
 const temporary = await fs.mkdtemp(path.join(out, 'weather-smoke-'));
 const preferences = path.join(temporary, 'preferences.json');
 const cache = path.join(temporary, 'preferences.weather.json');
-const binary = path.resolve(root, process.env.CARGO_TARGET_DIR ?? 'target', 'debug/luma');
+const binary = path.resolve(root, process.env.CARGO_TARGET_DIR ?? 'target', 'debug/lounge');
 const vienna = {
   name: 'Vienna',
   region: 'Vienna',
@@ -145,7 +145,7 @@ const forecastCount = () => requests.filter((request) => request.path === '/v1/f
 const searchCount = () => requests.filter((request) => request.path === '/v1/search').length;
 const locationPage = 'settings,down,down,enter,down,enter';
 try {
-  await run('cargo', ['build', '--locked', '--package', 'luma']);
+  await run('cargo', ['build', '--locked', '--package', 'lounge']);
   await writePreferences();
   await scenario('unconfigured', 'home,down');
   assert.equal(requests.length, 0, 'No geolocation or automatic city discovery');

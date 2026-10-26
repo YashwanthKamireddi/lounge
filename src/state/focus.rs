@@ -37,7 +37,7 @@ impl State {
                 self.shelf_pending = None;
             }
             // The first real focus (out of the startup placeholder) appears
-            // already settled: webOS is animating Luma's window in, and a
+            // already settled: webOS is animating Lounge's window in, and a
             // tile growing at the same time read as a second opening.
             let first = matches!(previous, Target::Nav(_)) && self.page == Page::Apps;
             let now = (!self.preferences.reduced_motion && !first).then(Instant::now);

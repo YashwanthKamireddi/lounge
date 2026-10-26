@@ -1,7 +1,7 @@
 //! Explicit manual scroll preview. Never used as a TV inventory fallback.
 use crate::{i18n, model::Inventory};
 
-const PREFIX: &str = "com.luma.scroll-preview.";
+const PREFIX: &str = "com.lounge.scroll-preview.";
 
 pub fn is_placeholder(id: &str) -> bool {
     id.starts_with(PREFIX)
@@ -13,7 +13,7 @@ pub fn append(inventory: &mut Inventory, count: usize) {
     }
     let templates = inventory.apps.clone();
     if templates.is_empty() {
-        eprintln!("Luma scroll preview: no real apps to use as artwork templates");
+        eprintln!("Lounge scroll preview: no real apps to use as artwork templates");
         return;
     }
     let mut added = 0;
@@ -34,7 +34,7 @@ pub fn append(inventory: &mut Inventory, count: usize) {
         added += 1;
     }
     eprintln!(
-        "Luma scroll preview: {added} placeholder apps appended to {} real apps",
+        "Lounge scroll preview: {added} placeholder apps appended to {} real apps",
         templates.len()
     );
 }

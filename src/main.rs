@@ -66,7 +66,7 @@ fn main() {
         default_hook(info);
     }));
     if let Err(error) = run() {
-        eprintln!("Luma native: {error}");
+        eprintln!("Lounge native: {error}");
         platform::status(&format!("stopped: {error}"));
         std::process::exit(1);
     }
@@ -157,7 +157,7 @@ fn run() -> Result<(), String> {
         platform::status_reset();
     }
     // On the TV each stage goes to the status log: how long a cold start
-    // takes (at power-on Luma always starts cold) is read there.
+    // takes (at power-on Lounge always starts cold) is read there.
     let startup_stage = |stage: &str| {
         if webos {
             platform::status(&format!("startup: {stage} at {} ms", startup.elapsed().as_millis()));
@@ -175,13 +175,13 @@ fn run() -> Result<(), String> {
             std::env::set_var("APPID", surface_id);
             std::env::set_var("SDL_VIDEO_WAYLAND_WMCLASS", surface_id);
         }
-        eprintln!("Luma webOS surface: {surface_id}");
+        eprintln!("Lounge webOS surface: {surface_id}");
         sdl2::hint::set("SDL_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
         // SDL-webOS answers tvpower's screen saver requests with
         // `ack: !suspend_screensaver`, and SDL suspends the screen saver
-        // unless this allows it: LG's screen saver never started while Luma
+        // unless this allows it: LG's screen saver never started while Lounge
         // was in front. A launcher has no video to keep on screen (upstream
-        // Luma b1dcbcf).
+        // Lounge b1dcbcf).
         sdl2::hint::set("SDL_VIDEO_ALLOW_SCREENSAVER", "1");
         if options.preload {
             if !platform::preload_may_show() {
@@ -233,7 +233,7 @@ fn run() -> Result<(), String> {
     state.set_avatars(avatars::load(&storage));
     if options.test_extra_apps > 0 {
         eprintln!(
-            "Luma scroll preview: explicit {}-app expansion; preferences {}",
+            "Lounge scroll preview: explicit {}-app expansion; preferences {}",
             options.test_extra_apps,
             preferences_path.display()
         );
@@ -290,10 +290,10 @@ fn run() -> Result<(), String> {
     let frame = 0u64;
     let presence = presence::Presence::new();
     // LG's own Home coming to the front (an app was closed) is answered by
-    // bringing Luma back, so the stock launcher never lingers. Push events when the hub allows them; otherwise poll while hidden.
+    // bringing Lounge back, so the stock launcher never lingers. Push events when the hub allows them; otherwise poll while hidden.
     let watching = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    // When the watcher raises Luma it posts this event: a hidden Luma sleeps
-    // long, and webOS shows its window only once Luma answers, so the event
+    // When the watcher raises Lounge it posts this event: a hidden Lounge sleeps
+    // long, and webOS shows its window only once Lounge answers, so the event
     // wakes the loop at once and keeps it brisk while the window comes back.
     // SAFETY: registering an SDL user event type has no preconditions.
     let wake_type = unsafe { sdl.event()?.register_event()? };
@@ -308,7 +308,7 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
-    // The Home key, seen as Luma's own launch (see `watch_launches`).
+    // The Home key, seen as Lounge's own launch (see `watch_launches`).
     // SAFETY: as above.
     let home_type = unsafe { sdl.event()?.register_event()? };
     let home_sender = sdl.event()?.event_sender();
@@ -322,14 +322,14 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
-    // Crash guard: if Luma crashed twice within two minutes, this run does
+    // Crash guard: if Lounge crashed twice within two minutes, this run does
     // not pull itself back over LG Home, so a broken build can never trap the
     // TV in a relaunch loop. A clean exit clears the record.
     let crash_guard = default_preferences.with_file_name("running.marker");
     let safe_mode = webos && crash_guard::begin(&crash_guard);
     let crash_guard_clear = webos.then(|| Instant::now() + Duration::from_secs(crash_guard::HEALTHY_SECONDS));
     if safe_mode {
-        eprintln!("Luma safe mode: two recent crashes; not taking over Home this run");
+        eprintln!("Lounge safe mode: two recent crashes; not taking over Home this run");
     }
     if webos && !safe_mode {
         match platform::watch_foreground(watching.clone(), wake.clone()) {
@@ -343,7 +343,7 @@ fn run() -> Result<(), String> {
     if webos {
         match platform::watch_launches(home, !safe_mode) {
             Ok(()) => platform::status("launch events (Home key): on"),
-            Err(error) => platform::status(&format!("launch events: {error}; Home only raises Luma")),
+            Err(error) => platform::status(&format!("launch events: {error}; Home only raises Lounge")),
         }
         match platform::watch_running(platform.running.clone()) {
             Ok(()) => platform::status("running events: on"),
@@ -351,7 +351,7 @@ fn run() -> Result<(), String> {
         }
         if !safe_mode {
             match platform::watch_power() {
-                Ok(()) => platform::status("power events (wake to Luma): on"),
+                Ok(()) => platform::status("power events (wake to Lounge): on"),
                 Err(error) => platform::status(&format!("power events: {error}")),
             }
         }
@@ -360,8 +360,8 @@ fn run() -> Result<(), String> {
         }
     }
     // Developer flag: log every input event (stderr goes to /dev/null otherwise).
-    let log_events = webos && std::path::Path::new("/tmp/luma-events").exists();
-    let frame_log = diagnostics::FrameLog::new(webos && std::path::Path::new("/tmp/luma-debug").exists());
+    let log_events = webos && std::path::Path::new("/tmp/lounge-events").exists();
+    let frame_log = diagnostics::FrameLog::new(webos && std::path::Path::new("/tmp/lounge-debug").exists());
     let partial = damage::Partial::new();
     // Back from an app: queue what the trim freed, after the first frame.
     let rewarm = false;
@@ -429,7 +429,7 @@ fn run() -> Result<(), String> {
 
 /// The running launcher: everything its event loop owns, from the window
 /// and renderer to the loop's own counters and flags. `run` sets it up;
-/// `Shell::run` turns events into frames until Luma quits.
+/// `Shell::run` turns events into frames until Lounge quits.
 struct Shell {
     startup: Instant,
     options: Options,
@@ -487,7 +487,7 @@ impl Shell {
         }
     }
 
-    /// The event loop: input, replies and timers in, frames out, until Luma
+    /// The event loop: input, replies and timers in, frames out, until Lounge
     /// quits; then everything is saved and a scripted run's report written.
     fn run(mut self) -> Result<(), String> {
         while self.running {
@@ -589,21 +589,21 @@ impl Shell {
             return;
         }
         let mut pending = vec![];
-        // Debug log only (stderr is /dev/null unless /tmp/luma-debug): which
+        // Debug log only (stderr is /dev/null unless /tmp/lounge-debug): which
         // key codes the TV remote really sends.
         if self.webos && self.log_events {
             if !matches!(event, Event::MouseMotion { .. }) {
-                eprintln!("Luma event: {event:?}");
+                eprintln!("Lounge event: {event:?}");
             }
         } else if self.webos && let Event::KeyDown { keycode, scancode, repeat: false, .. } = &event {
             eprintln!(
-                "Luma key at {} ms: {keycode:?} ({:?}) scancode {scancode:?}",
+                "Lounge key at {} ms: {keycode:?} ({:?}) scancode {scancode:?}",
                 self.startup.elapsed().as_millis(),
                 keycode.map(i32::from)
             );
         }
         match event {
-            // The TV turning off asks every app to quit: Luma stays,
+            // The TV turning off asks every app to quit: Lounge stays,
             // hidden, so it is there to take the screen at power-on.
             Event::Quit { .. } if self.webos && platform::STANDBY.load(std::sync::atomic::Ordering::Relaxed) => {
                 platform::status("quit asked while turning off: staying resident for power-on");
@@ -622,9 +622,9 @@ impl Shell {
                 self.presence.raise();
             }
             Event::User { type_, .. } if type_ == self.home_type => {
-                // The launch that brings Luma back from an app lands just
+                // The launch that brings Lounge back from an app lands just
                 // after its window shows: only a launch well after that is
-                // Home pressed on Luma itself.
+                // Home pressed on Lounge itself.
                 self.remote.press = None;
                 // webOS's relaunch reaches SDL just after this event: hidden,
                 // the loop would sleep up to 2 s before pumping it.
@@ -879,7 +879,7 @@ impl Shell {
             self.state.finish_text_input();
         }
         // On the TV, text input summons LG's on-screen keyboard: only when that
-        // keyboard is the one asked for, never over Luma's own (two keyboards
+        // keyboard is the one asked for, never over Lounge's own (two keyboards
         // at once). On the desktop it carries a real keyboard's typing to both.
         let keyboard = if self.webos {
             matches!(self.state.overlay, Some(Overlay::SystemKeyboard))
@@ -899,7 +899,7 @@ impl Shell {
 
     /// A profiling run ends after its frames, or after 90 s whatever
     /// happens: hidden behind another app it presents nothing, and must
-    /// never linger beside the real Luma.
+    /// never linger beside the real Lounge.
     fn final_frame(&self) -> bool {
         self.options.frames.is_some_and(|limit| self.frame + 1 >= limit)
             || (self.presence.visible
@@ -948,7 +948,7 @@ impl Shell {
                     if self.webos {
                         let stats = self.renderer.stats();
                         eprintln!(
-                            "Luma vector text: {} glyphs, {} text runs, {} KiB glyph geometry, {} KiB GPU text",
+                            "Lounge vector text: {} glyphs, {} text runs, {} KiB glyph geometry, {} KiB GPU text",
                             stats.cached_glyphs,
                             stats.cached_text_runs,
                             stats.glyph_geometry_bytes / 1024,
@@ -1005,7 +1005,7 @@ impl Shell {
     /// Saves, stops text input and writes a scripted run's reports.
     fn finish(mut self) -> Result<(), String> {
         save_order(&mut self.state, &self.writer);
-        // Every save queued so far reaches the disk before Luma exits.
+        // Every save queued so far reaches the disk before Lounge exits.
         self.writer.finish();
         crash_guard::end(&self.crash_guard);
         if self.text_active {

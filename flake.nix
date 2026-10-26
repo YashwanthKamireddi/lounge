@@ -1,5 +1,5 @@
 {
-  description = "Luma Rust/SDL2 development and packaging environment";
+  description = "Lounge Rust/SDL2 development and packaging environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -51,7 +51,7 @@
         in
         {
           default = pkgs.mkShell ({
-            name = "luma";
+            name = "lounge";
             packages = [
               pkgs.nodejs_24
               pnpm
@@ -75,7 +75,7 @@
       formatter = forEachSystem (
         pkgs:
         pkgs.writeShellApplication {
-          name = "luma-nixfmt";
+          name = "lounge-nixfmt";
           runtimeInputs = [ pkgs.nixfmt ];
           text = ''
             exec nixfmt "$@" flake.nix

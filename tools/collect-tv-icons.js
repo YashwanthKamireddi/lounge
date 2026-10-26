@@ -4,7 +4,7 @@
 var fs = require('fs'),
   path = require('path'),
   execSync = require('child_process').execSync,
-  out = '/tmp/luma-artwork',
+  out = '/tmp/lounge-artwork',
   map = Object.create(null),
   seen = Object.create(null),
   visible = Object.create(null);
@@ -56,6 +56,7 @@ function shouldCollect(id, visibility) {
   var live = id === 'com.webos.app.livetv';
   return !(
     [
+      'io.github.yashwanthkamireddi.lounge',
       'com.ecklf.luma',
       'com.luma.native',
       'com.luma.launcher',

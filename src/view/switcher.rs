@@ -34,7 +34,7 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         }
     }
     // Each open app is its own card (no frame, no second logo), as upstream
-    // Luma and tvOS show it: the focused one lifted, the rest dimmed back.
+    // Lounge and tvOS show it: the focused one lifted, the rest dimmed back.
     let (w, h, pitch) = (720., 412., 800.);
     let top = 300. + 40. * (1. - appear);
     // After a close the cards right of the gap wait a beat (the thrown one

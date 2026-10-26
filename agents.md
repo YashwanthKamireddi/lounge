@@ -1,8 +1,8 @@
-# Luma agent context
+# Lounge agent context
 
 ## Project
 
-Luma is a native Rust/SDL2/OpenGL ES 2 launcher for rooted LG webOS TVs. Rust source is in
+Lounge is a native Rust/SDL2/OpenGL ES 2 launcher for rooted LG webOS TVs. Rust source is in
 `src/`, original assets/strings in `assets/`, shared vector geometry in `vector-geometry/`,
 the host SVG compiler in `tools/vector-assets/`, packaging/tooling in `tools/`, and desktop smoke
 scripts in `tests/`. There is no React/JSX/browser application. Read `development.md` for details.
@@ -27,7 +27,7 @@ contact real weather APIs or a TV. Respect any user instruction to use manual TV
 instead of running automated tests. Builds/lint may still be run. Do not claim hardware behavior
 from desktop checks. Add a `pnpm changeset` file for release-worthy changes and leave version
 bumps to the automated Version Packages PR. Its `pnpm version:release` command synchronizes
-`package.json`, `appinfo.json`, the root `Cargo.toml`, the `luma` entry in `Cargo.lock` and README
+`package.json`, `appinfo.json`, the root `Cargo.toml`, the `lounge` entry in `Cargo.lock` and README
 IPK examples. Supporting Rust crates retain independent versions. `pnpm version:check` checks
 consistency without writing files. Code or behavior changes should use semantic versioning:
 patch for backward-compatible fixes, minor for backward-compatible features, and major for
@@ -36,7 +36,7 @@ a changeset.
 
 ## Build and identity
 
-`com.ecklf.luma` is the native app's ID and `luma` its executable. Root `appinfo.json` is the
+`io.github.yashwanthkamireddi.lounge` is the native app's ID and `lounge` its executable. Root `appinfo.json` is the
 package metadata source. It installs separately from the former web app `com.luma.launcher` and
 prototypes `com.luma.launcher.native` and `com.luma.native`, all excluded from app inventory. Preferences are local JSON
 per installation; browser local storage and preferences from other IDs are not migrated.

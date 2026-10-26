@@ -16,8 +16,8 @@ function run(command, args) {
 }
 
 // Force the desktop feature set even after a previous all-features lint/build.
-run('cargo', ['build', '--locked', '--package', 'luma', '--no-default-features']);
-const binary = path.resolve(root, process.env.CARGO_TARGET_DIR ?? 'target', 'debug/luma');
+run('cargo', ['build', '--locked', '--package', 'lounge', '--no-default-features']);
+const binary = path.resolve(root, process.env.CARGO_TARGET_DIR ?? 'target', 'debug/lounge');
 const temporary = await fs.mkdtemp(path.join(scratch, 'documentation-'));
 const preferences = path.join(temporary, 'preferences.json');
 const configuration = {

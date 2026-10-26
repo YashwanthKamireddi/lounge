@@ -79,7 +79,7 @@ jobs:
       - name: Upload release files
         uses: actions/upload-artifact@v7
         with:
-          name: luma-release
+          name: lounge-release
           if-no-files-found: error
           path: |
             dist/*.ipk
@@ -110,7 +110,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: luma-release
+          name: lounge-release
           path: release
       - name: Publish tested release files
         env:
@@ -149,5 +149,5 @@ jobs:
             gh release create "$RELEASE_TAG" "${files[@]}" \
               --target "$COMMIT_SHA" \
               --generate-notes \
-              --title "Luma ${RELEASE_TAG#v}"
+              --title "Lounge ${RELEASE_TAG#v}"
           fi

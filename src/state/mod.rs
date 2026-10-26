@@ -43,8 +43,8 @@ pub const GRID_GAP: f32 = 304.;
 pub const ROW_PITCH: f32 = 304.;
 pub const GRID_LEFT: f32 = 90.;
 pub const GRID_STEP: f32 = 354.;
-pub const SETTINGS_TILE: &str = "luma.settings";
-pub const SEARCH_TILE: &str = "luma.search";
+pub const SETTINGS_TILE: &str = "lounge.settings";
+pub const SEARCH_TILE: &str = "lounge.search";
 pub const HOME_DASHBOARD: &str = "com.webos.app.homeconnect";
 pub const PAGE_MS: f32 = 280.;
 pub const SWITCHER_CLOSE_MS: u64 = 320;
@@ -602,9 +602,9 @@ impl State {
             ids.iter()
                 .position(|id| id == &app.id)
                 .unwrap_or(match app.brand.as_str() {
-                    "luma-settings" => usize::MAX - 3,
-                    "luma-search" => usize::MAX - 2,
-                    "luma-input" => usize::MAX - 1,
+                    "lounge-settings" => usize::MAX - 3,
+                    "lounge-search" => usize::MAX - 2,
+                    "lounge-input" => usize::MAX - 1,
                     _ => usize::MAX,
                 })
         };
@@ -613,13 +613,13 @@ impl State {
         // end of the grid.
         let search = apps.iter().find(|app| app.id == SEARCH_TILE).map_or(usize::MAX - 2, |app| rank(app));
         let place = |app: &App| {
-            if app.brand == "luma-input" { (search, 1) } else { (rank(app), 0) }
+            if app.brand == "lounge-input" { (search, 1) } else { (rank(app), 0) }
         };
         apps.sort_by(|a, b| {
             place(a).cmp(&place(b)).then_with(|| {
                 // Inputs in port order (HDMI 1, 2, …), as LG lists them;
                 // everything else A-Z.
-                if a.brand == "luma-input" && b.brand == "luma-input" {
+                if a.brand == "lounge-input" && b.brand == "lounge-input" {
                     let port = |app: &App| app.id.trim_start_matches(|c: char| !c.is_ascii_digit()).parse::<u8>().unwrap_or(u8::MAX);
                     port(a).cmp(&port(b))
                 } else {
@@ -670,14 +670,14 @@ impl State {
 
     /// A failed inventory load. Right after a cold boot, or when the TV is
     /// short of memory, the Homebrew service that reads the inventory can
-    /// take longer than one request allows (Luma now starts early, from LG's
+    /// take longer than one request allows (Lounge now starts early, from LG's
     /// preloader). While no apps are shown yet the screen keeps loading and
     /// the caller retries after the returned delay; the error and its Retry
     /// button only appear once those retries are used up (upstream 945598a).
     pub fn inventory_failed(&mut self, error: String) -> Option<Duration> {
         self.dirty = true;
-        // Luma's own tiles (Settings, Search) are always there; apps are not.
-        let no_apps = self.inventory.apps.iter().all(|app| app.brand.starts_with("luma-"));
+        // Lounge's own tiles (Settings, Search) are always there; apps are not.
+        let no_apps = self.inventory.apps.iter().all(|app| app.brand.starts_with("lounge-"));
         if no_apps && self.inventory_failures < INVENTORY_RETRIES {
             self.inventory_failures += 1;
             return Some(INVENTORY_RETRY_DELAY);
@@ -693,7 +693,7 @@ impl State {
     pub fn refresh_tiles(&mut self) {
         self.inventory
             .apps
-            .retain(|app| !app.brand.starts_with("luma-"));
+            .retain(|app| !app.brand.starts_with("lounge-"));
         let tile = |id: &str, title: &str, brand: &str| App {
             id: id.into(),
             title: title.into(),
@@ -702,15 +702,15 @@ impl State {
             icon: None,
         };
         let mut tiles = vec![
-            tile(SETTINGS_TILE, i18n::t("settings"), "luma-settings"),
-            tile(SEARCH_TILE, i18n::t("search"), "luma-search"),
+            tile(SETTINGS_TILE, i18n::t("settings"), "lounge-settings"),
+            tile(SEARCH_TILE, i18n::t("search"), "lounge-search"),
         ];
         for input in &self.inventory.inputs {
             if self.preferences.input_visible(input)
                 && !self.inventory.apps.iter().any(|app| app.id == input.id)
             {
                 // The name the owner gave the input on the TV, else its port.
-                tiles.push(tile(&input.id, &input.title, "luma-input"));
+                tiles.push(tile(&input.id, &input.title, "lounge-input"));
             }
         }
         self.inventory.apps.extend(tiles);

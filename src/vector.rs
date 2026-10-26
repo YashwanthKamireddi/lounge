@@ -20,7 +20,7 @@ impl Mesh {
     /// Parse and upload a mesh whose file was read elsewhere (a background
     /// worker), so the drawing thread never waits on storage.
     pub fn from_bytes(path: &Path, bytes: &[u8]) -> Result<Self, String> {
-        if bytes.len() < 20 || &bytes[..8] != b"LUMAVEC1" {
+        if bytes.len() < 20 || &bytes[..8] != b"LOUNGEV1" {
             return Err(format!("Invalid vector artwork header: {}", path.display()));
         }
         let float = |offset| f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());

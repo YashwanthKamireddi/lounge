@@ -103,7 +103,7 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
             false,
         );
         // No outline: tvOS icons have none, and a border pass shades the whole tile.
-    } else if app.brand == "luma-input" {
+    } else if app.brand == "lounge-input" {
         // An input: the system tiles' grey with the HDMI glyph over its
         // port's name (the glyph alone cannot tell HDMI 1 from HDMI 2).
         out.draw.push(Draw::RoundedGradient(rect, radius, c(0x9a9aa0, 1.), c(0x6e6e74, 1.)));
@@ -127,8 +127,8 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
         );
     } else {
         let logo = crate::branding::for_key(&app.brand);
-        // Artwork Luma ships always wins: it is there from the first frame,
-        // never swapped later. Only an app Luma has no artwork for reads its
+        // Artwork Lounge ships always wins: it is there from the first frame,
+        // never swapped later. Only an app Lounge has no artwork for reads its
         // icon from the TV (once; it is cached on disk after).
         let installed = logo.is_none().then(|| assets.icons.get(&app.id)).flatten();
         let artwork = (logo.is_none() && installed.is_none())
@@ -138,24 +138,26 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
                     .and_then(|source| assets.artwork.get(source))
             })
             .flatten();
-        if let Some(rgb) = artwork
+        if let Some([top, bottom]) = artwork
             .as_ref()
-            .map(|image| &image.color)
-            .or_else(|| installed.and_then(|_| assets.colors.get(&app.id)))
+            .map(|image| image.backdrop)
+            .or_else(|| installed.and_then(|_| assets.colors.get(&app.id)).map(|rgb| [*rgb; 2]))
         {
-            out.shape(
-                rect,
-                radius,
-                [
-                    rgb[0] as f32 / 255.,
-                    rgb[1] as f32 / 255.,
-                    rgb[2] as f32 / 255.,
-                    1.,
-                ],
-            );
+            let color = |rgb: [u8; 3]| rgb.map(|c| c as f32 / 255.);
+            let [top, bottom] = [color(top), color(bottom)];
+            if top == bottom {
+                out.shape(rect, radius, [top[0], top[1], top[2], 1.]);
+            } else {
+                out.draw.push(Draw::RoundedGradient(
+                    rect,
+                    radius,
+                    [top[0], top[1], top[2], 1.],
+                    [bottom[0], bottom[1], bottom[2], 1.],
+                ));
+            }
         } else if let Some(icon) = match app.brand.as_str() {
-            "luma-settings" => Some("gear"),
-            "luma-search" => Some("search"),
+            "lounge-settings" => Some("gear"),
+            "lounge-search" => Some("search"),
             _ => None,
         } {
             // tvOS system tiles: light grey with a large white glyph.

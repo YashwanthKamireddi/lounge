@@ -1,5 +1,5 @@
 #!/bin/sh
-# Frame pacing of the installed Luma on the TV, for comparing builds.
+# Frame pacing of the installed Lounge on the TV, for comparing builds.
 #
 #   ssh lg-tv 'sh -s' < tools/tv-bench.sh            # every scenario
 #   ssh lg-tv 'sh -s grid "--skip occlusion"' < tools/tv-bench.sh
@@ -7,22 +7,22 @@
 # Runs the installed binary under the developer jailer with a scripted path,
 # three times per scenario, 1000 presented frames each, and prints the median
 # of each run's mean, p95 and slow-frame count (single runs vary too much on
-# this TV to compare builds). Run it only while nobody is watching: Luma is
+# this TV to compare builds). Run it only while nobody is watching: Lounge is
 # restarted, and an app left in the background may be reloaded by webOS.
-# Ends by relaunching Luma cleanly.
-APP=/media/developer/apps/usr/palm/applications/com.ecklf.luma
+# Ends by relaunching Lounge cleanly.
+APP=/media/developer/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge
 ONLY=$1
 EXTRA=$2
 
-# Never leave a benchmark copy of Luma running beside the real one: on exit
-# or interruption it is stopped and the real Luma relaunched.
+# Never leave a benchmark copy of Lounge running beside the real one: on exit
+# or interruption it is stopped and the real Lounge relaunched.
 finish() {
-	for pid in $(pgrep -f '[j]ailer -t native_devmode -i com.ecklf.luma'); do kill "$pid"; done
+	for pid in $(pgrep -f '[j]ailer -t native_devmode -i io.github.yashwanthkamireddi.lounge'); do kill "$pid"; done
 	for pid in $(pgrep -f '[-]-profile-frames'); do kill "$pid"; done
-	rm -f /tmp/luma-bench.json
-	luna-send -n 1 luna://com.webos.applicationManager/closeByAppId '{"id":"com.ecklf.luma"}' >/dev/null
+	rm -f /tmp/lounge-bench.json
+	luna-send -n 1 luna://com.webos.applicationManager/closeByAppId '{"id":"io.github.yashwanthkamireddi.lounge"}' >/dev/null
 	sleep 2
-	luna-send -n 1 luna://com.webos.applicationManager/launch '{"id":"com.ecklf.luma"}' >/dev/null
+	luna-send -n 1 luna://com.webos.applicationManager/launch '{"id":"io.github.yashwanthkamireddi.lounge"}' >/dev/null
 }
 trap finish EXIT
 trap 'exit 130' INT TERM HUP
@@ -35,15 +35,15 @@ scenario() {
 	[ -n "$ONLY" ] && [ "$ONLY" != "$name" ] && return
 	results=""
 	for run in 1 2 3; do
-		luna-send -n 1 luna://com.webos.applicationManager/closeByAppId '{"id":"com.ecklf.luma"}' >/dev/null
+		luna-send -n 1 luna://com.webos.applicationManager/closeByAppId '{"id":"io.github.yashwanthkamireddi.lounge"}' >/dev/null
 		sleep 1.5
-		rm -f /tmp/luma-bench.json
-		(cd /tmp && XDG_RUNTIME_DIR=/tmp/xdg timeout 120 /usr/bin/jailer -t native_devmode -i com.ecklf.luma -p "$APP" \
-			"$APP/luma" '{"@system_native_app":true,"nid":"com.ecklf.luma"}' \
-			--script "$script" --profile-frames 1000 $EXTRA --diagnostics /tmp/luma-bench.json >/dev/null 2>&1)
+		rm -f /tmp/lounge-bench.json
+		(cd /tmp && XDG_RUNTIME_DIR=/tmp/xdg timeout 120 /usr/bin/jailer -t native_devmode -i io.github.yashwanthkamireddi.lounge -p "$APP" \
+			"$APP/lounge" '{"@system_native_app":true,"nid":"io.github.yashwanthkamireddi.lounge"}' \
+			--script "$script" --profile-frames 1000 $EXTRA --diagnostics /tmp/lounge-bench.json >/dev/null 2>&1)
 		line=$(python3 -c "
 import json
-d = json.load(open('/tmp/luma-bench.json'))
+d = json.load(open('/tmp/lounge-bench.json'))
 p = d['profile']
 print(p['pacing']['mean_ms'], p['pacing']['p95_ms'], len(p['slow_frames']), d['display_mode']['refresh_hz'])
 " 2>/dev/null)

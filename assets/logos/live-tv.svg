@@ -1,4 +1,4 @@
-<!-- Original Luma Live TV artwork, MIT. One flat white symbol, as tvOS icons are: a screen carrying a live broadcast mark. -->
+<!-- Original Lounge Live TV artwork, MIT. One flat white symbol, as tvOS icons are: a screen carrying a live broadcast mark. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
   <rect x="12" y="22" width="104" height="70" rx="16" stroke-width="8"/>
   <path d="M46 108h36" stroke-width="8"/>

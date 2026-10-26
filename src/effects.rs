@@ -38,7 +38,7 @@ pub(crate) fn effects(
                 }
                 state.note_launch(&id);
                 if !state.launching {
-                    // webOS plays its own native launch transition; Luma adds
+                    // webOS plays its own native launch transition; Lounge adds
                     // nothing over it (a second animation read as a flicker).
                     if platform.webos {
                         state.launching = true;

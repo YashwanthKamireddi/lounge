@@ -41,7 +41,7 @@ fn begin_at(marker: &Path, now: u64) -> bool {
 }
 
 /// After a healthy minute, a later end is no crash loop: LG's memory manager
-/// killing a background Luma must not put the next run in safe mode.
+/// killing a background Lounge must not put the next run in safe mode.
 pub const HEALTHY_SECONDS: u64 = 60;
 
 /// A clean exit, or a run that stayed up HEALTHY_SECONDS: nothing crashed.
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn two_quick_crashes_mean_safe_mode_and_a_clean_exit_resets() {
-        let directory = std::env::temp_dir().join(format!("luma-guard-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!("lounge-guard-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         let marker = directory.join("running.marker");
         let _ = fs::remove_file(&marker);

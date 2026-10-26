@@ -1,6 +1,6 @@
 //! Host-only SVG compiler. No XML parser or tessellator is linked into the TV app.
-use luma_vector_geometry as geometry;
-use luma_vector_geometry::lyon_tessellation::{
+use lounge_vector_geometry as geometry;
+use lounge_vector_geometry::lyon_tessellation::{
     FillRule,
     math::{Point, point},
     path::Path,
@@ -12,7 +12,7 @@ use usvg::{
     tiny_skia_path::{PathSegment, Transform},
 };
 
-const MAGIC: &[u8; 8] = b"LUMAVEC1";
+const MAGIC: &[u8; 8] = b"LOUNGEV1";
 const MAX_VERTICES: usize = 1_000_000;
 
 #[derive(Deserialize)]
@@ -286,7 +286,7 @@ impl Compiler {
             builder.end(true);
         }
         let path = builder.build();
-        for triangle in geometry::tessellate(&path, self.tolerance, rule)?.chunks_exact(3) {
+        for triangle in geometry::tessellate(&path, self.tolerance, rule)?.as_chunks::<3>().0 {
             self.triangle(
                 std::array::from_fn(|index| Vertex {
                     position: triangle[index].position,

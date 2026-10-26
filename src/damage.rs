@@ -29,7 +29,7 @@ pub fn diff(previous: &[Draw], current: &[Draw]) -> Option<Rect> {
     // Walk the new list against the old one. A draw inserted or removed (a
     // focus ring, a label) shifts every later index: realign by looking a
     // few draws ahead in the old list, rather than counting everything after
-    // it as changed and so repainting the whole screen (upstream Luma
+    // it as changed and so repainting the whole screen (upstream Lounge
     // 8592248). State draws (clip, fade, soft) have no bounds: any change
     // to them still repaints everything.
     let mut old = 0;
@@ -146,7 +146,7 @@ impl Tracker {
             // Nothing changed: still name (and redraw) one pixel inside the
             // screen. An empty area becomes a rect outside the surface for
             // EGL, which leaves Mali nothing to preserve: it presents black
-            // (upstream Luma d5f778c).
+            // (upstream Lounge d5f778c).
             return Some(Rect::new(0., 0., 1., 1.));
         }
         (area.w * area.h <= FULL_SHARE * SCREEN.w * SCREEN.h).then_some(area)
@@ -263,7 +263,7 @@ impl Partial {
         #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
         {
             let egl = Egl::current();
-            eprintln!("Luma partial repaint: {}", if egl.is_some() { "on" } else { "off" });
+            eprintln!("Lounge partial repaint: {}", if egl.is_some() { "on" } else { "off" });
             Self { egl, tracker: Tracker::default(), last: Vec::new() }
         }
         #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
@@ -309,7 +309,7 @@ impl Partial {
         let _ = draw;
     }
 
-    /// Every buffer is stale (Luma was hidden): the next frame repaints all.
+    /// Every buffer is stale (Lounge was hidden): the next frame repaints all.
     pub fn invalidate(&mut self) {
         #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
         self.last.clear();

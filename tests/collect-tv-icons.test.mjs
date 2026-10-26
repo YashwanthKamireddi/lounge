@@ -11,7 +11,7 @@ const roots = [
   '/media/cryptofs/apps/usr/palm/applications',
   '/usr/palm/applications',
 ];
-const out = '/tmp/luma-artwork';
+const out = '/tmp/lounge-artwork';
 
 function collect({
   apps = [],

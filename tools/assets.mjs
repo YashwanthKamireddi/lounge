@@ -54,7 +54,7 @@ if (useSfPro) {
   await fs.writeFile(
     path.join(out, 'font-license.txt'),
     'SF Pro is copyright Apple Inc. and licensed by Apple for its platforms. This copy was\n' +
-      'supplied by the device owner from local/fonts for personal use; it is not part of Luma.\n',
+      'supplied by the device owner from local/fonts for personal use; it is not part of Lounge.\n',
   );
 } else {
   await fs.copyFile(path.join(source, 'fonts/ofl.txt'), path.join(out, 'font-license.txt'));

@@ -1,18 +1,24 @@
 {
-  "id": "com.ecklf.luma",
+  "id": "io.github.yashwanthkamireddi.lounge",
   "version": "2.1.0",
-  "vendor": "Luma",
+  "vendor": "Yashwanth Kamireddi",
   "type": "native",
-  "main": "luma",
-  "title": "Luma",
+  "main": "lounge",
+  "title": "Lounge",
   "icon": "app-icon.png",
   "largeIcon": "app-icon-large.png",
-  "appDescription": "A remote-first native webOS launcher.",
+  "appDescription": "A calm, tvOS-style home screen for LG TVs.",
   "resolution": "1920x1080",
-  "appCategory": ["home"],
-  "requiredACG": ["application.launcher", "application.query", "lunabus.query"],
+  "appCategory": [
+    "home"
+  ],
+  "requiredACG": [
+    "application.launcher",
+    "application.query",
+    "lunabus.query"
+  ],
   "handlesRelaunch": false,
-  "iconColor": "#25272d",
+  "iconColor": "#1e2240",
   "spinnerOnLaunch": false,
   "noSplashOnLaunch": true,
   "nativeLifeCycleInterfaceVersion": 2

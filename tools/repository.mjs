@@ -14,7 +14,7 @@ const requestedTag =
 if (requestedTag && requestedTag !== tag)
   throw new Error(`Release tag must be ${tag}, matching the packaged app version.`);
 
-const repository = process.env.GITHUB_REPOSITORY || 'ecklf/lg-luma';
+const repository = process.env.GITHUB_REPOSITORY || 'YashwanthKamireddi/lounge';
 if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('Invalid GitHub repository name.');
 const sourceUrl = `https://github.com/${repository}`;
 const releaseUrl = `${sourceUrl}/releases/download/${tag}`;

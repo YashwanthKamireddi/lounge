@@ -6,7 +6,7 @@ use sdl2::{
     video::{GLContext, GLProfile, Window},
 };
 
-/// Opens Luma's window, `requested` large, and makes its GL context current. `startup_stage`
+/// Opens Lounge's window, `requested` large, and makes its GL context current. `startup_stage`
 /// logs each step's time on the TV.
 pub fn open(
     sdl: &Sdl,
@@ -30,7 +30,7 @@ pub fn open(
             std::env::var_os("WAYLAND_DISPLAY"),
         )
     })?;
-    eprintln!("Luma SDL video driver: {}", video.current_video_driver());
+    eprintln!("Lounge SDL video driver: {}", video.current_video_driver());
     startup_stage("SDL video");
     let attributes = video.gl_attr();
     if webos {
@@ -46,7 +46,7 @@ pub fn open(
     // Stencil: opaque tiles mask out what lies behind them (renderer::find_occluders).
     attributes.set_stencil_size(8);
     let create_window = || {
-        let mut builder = video.window("Luma", requested.width, requested.height);
+        let mut builder = video.window("Lounge", requested.width, requested.height);
         builder.opengl().allow_highdpi().position_centered();
         if options.fullscreen || (webos && options.resolution.is_none()) {
             builder.fullscreen_desktop();
@@ -89,7 +89,7 @@ pub fn open(
     }
     let mut samples = 0;
     unsafe { gl::GetIntegerv(gl::SAMPLES, &mut samples) };
-    eprintln!("Luma GL multisampling: {samples} samples");
+    eprintln!("Lounge GL multisampling: {samples} samples");
     startup_stage("window and GL context");
     Ok((video, window, _context))
 }

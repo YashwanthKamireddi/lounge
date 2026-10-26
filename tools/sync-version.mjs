@@ -18,7 +18,7 @@ function updateTomlVersion(source, header, version, filename) {
     .map((section) => {
       if (
         section.split(/\r?\n/, 1)[0].trim() !== header ||
-        !/^name[ \t]*=[ \t]*"luma"[ \t]*\r?$/m.test(section)
+        !/^name[ \t]*=[ \t]*"lounge"[ \t]*\r?$/m.test(section)
       ) {
         return section;
       }
@@ -31,7 +31,7 @@ function updateTomlVersion(source, header, version, filename) {
       );
     })
     .join('');
-  if (packages !== 1) throw new Error(`Expected one luma package in ${filename}.`);
+  if (packages !== 1) throw new Error(`Expected one lounge package in ${filename}.`);
   return updated;
 }
 
@@ -45,9 +45,9 @@ export async function syncVersions(directory = root, { check = false } = {}) {
   const filenames = ['appinfo.json', 'Cargo.toml', 'Cargo.lock', 'readme.md'];
   const sources = await Promise.all(filenames.map(read));
   JSON.parse(sources[0]);
-  const ipkPattern = /\bcom\.ecklf\.luma_\d+\.\d+\.\d+_arm\.ipk\b/g;
+  const ipkPattern = /\bio\.github\.yashwanthkamireddi\.lounge_\d+\.\d+\.\d+_arm\.ipk\b/g;
   if (![...sources[3].matchAll(ipkPattern)].length) {
-    throw new Error('Expected versioned Luma IPK examples in readme.md.');
+    throw new Error('Expected versioned Lounge IPK examples in readme.md.');
   }
   const updated = [
     replaceVersion(
@@ -58,7 +58,7 @@ export async function syncVersions(directory = root, { check = false } = {}) {
     ),
     updateTomlVersion(sources[1], '[package]', version, 'Cargo.toml'),
     updateTomlVersion(sources[2], '[[package]]', version, 'Cargo.lock'),
-    sources[3].replace(ipkPattern, `com.ecklf.luma_${version}_arm.ipk`),
+    sources[3].replace(ipkPattern, `io.github.yashwanthkamireddi.lounge_${version}_arm.ipk`),
   ];
   const changed = filenames.filter((_filename, index) => sources[index] !== updated[index]);
   if (check && changed.length) {

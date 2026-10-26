@@ -33,4 +33,4 @@ export PKG_CONFIG_PATH=
 # so pkg-config must not prepend the target sysroot to those build-host paths.
 export PKG_CONFIG_SYSROOT_DIR=/
 export PKG_CONFIG_LIBDIR="$ROOT/.build/sdl-webos/pkgconfig"
-exec cargo build --locked --manifest-path "$ROOT/Cargo.toml" --package luma --target armv7-unknown-linux-gnueabi --features webos --release
+exec cargo build --locked --manifest-path "$ROOT/Cargo.toml" --package lounge --target armv7-unknown-linux-gnueabi --features webos --release

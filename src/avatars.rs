@@ -1,7 +1,7 @@
 //! Profile pictures for the status pill: the owner's own pictures, kept in
 //! an `avatars` folder beside the preferences. Each is cut square (centred),
 //! fitted inside the round frame (see `fit_circle`) and scaled once, with a
-//! high-quality filter, to the two sizes Luma draws (the pill and the
+//! high-quality filter, to the two sizes Lounge draws (the pill and the
 //! Settings preview); the results are cached beside the originals and only
 //! redone when a picture changes.
 use image::{ImageReader, RgbaImage, imageops::FilterType};
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn pictures_are_cut_square_cached_and_named() {
-        let directory = std::env::temp_dir().join(format!("luma-avatars-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!("lounge-avatars-{}", std::process::id()));
         let folder = directory.join("avatars");
         std::fs::create_dir_all(&folder).unwrap();
         image::RgbaImage::from_pixel(90, 60, image::Rgba([200, 30, 40, 255]))

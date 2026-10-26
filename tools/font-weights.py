@@ -1,7 +1,7 @@
 """Freeze the bundled variable font at the UI's weights and optical sizes.
 
 With a second argument, that variable font (Apple's SF Pro, kept untracked in
-local/fonts) is first cut to the text Luma shows: Latin and Latin Extended,
+local/fonts) is first cut to the text Lounge shows: Latin and Latin Extended,
 at its regular width, without the symbol glyphs it also carries.
 """
 import sys

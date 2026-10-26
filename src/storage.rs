@@ -15,7 +15,7 @@ pub fn default_path(webos: bool) -> Result<PathBuf, String> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")))
         .ok_or("Set HOME, XDG_CONFIG_HOME or --preferences for native preferences")?;
-    Ok(base.join("luma-native/preferences.json"))
+    Ok(base.join("lounge/preferences.json"))
 }
 
 #[cfg(all(feature = "webos", unix))]
@@ -83,7 +83,7 @@ fn tv_path() -> Result<PathBuf, String> {
                 .mode(0o600)
                 .open(&probe)?;
             let result = file
-                .write_all(b"Luma storage probe")
+                .write_all(b"Lounge storage probe")
                 .and_then(|_| file.sync_all());
             drop(file);
             // Only remove a probe that this process created successfully.
@@ -109,7 +109,7 @@ fn tv_path() -> Result<PathBuf, String> {
                     preferences.sanitize();
                     save(&path, &preferences)?;
                     eprintln!(
-                        "Luma preferences migrated from {} to {}",
+                        "Lounge preferences migrated from {} to {}",
                         legacy.display(),
                         path.display()
                     );
@@ -128,10 +128,10 @@ fn tv_path() -> Result<PathBuf, String> {
                 && let Some(reading) = crate::weather_service::load_cache(&old_cache)
                 && let Err(error) = crate::weather_service::save_cache(&cache, &reading)
             {
-                eprintln!("Luma weather cache migration: {error}");
+                eprintln!("Lounge weather cache migration: {error}");
             }
         }
-        eprintln!("Luma persistent storage: {}", directory.display());
+        eprintln!("Lounge persistent storage: {}", directory.display());
         return Ok(path);
     }
     Err(format!(
@@ -154,8 +154,8 @@ pub fn load(path: &Path) -> Result<Preferences, String> {
 }
 
 /// As `load`, but a damaged file (a power cut mid-write, say) never stops
-/// Luma from starting: it is kept aside as `<name>.bad-<time>`, never
-/// overwritten, and Luma starts with defaults. Unreadable storage still fails.
+/// Lounge from starting: it is kept aside as `<name>.bad-<time>`, never
+/// overwritten, and Lounge starts with defaults. Unreadable storage still fails.
 pub fn load_or_recover(path: &Path) -> Result<Preferences, String> {
     match load(path) {
         Ok(preferences) => Ok(preferences),
@@ -166,7 +166,7 @@ pub fn load_or_recover(path: &Path) -> Result<Preferences, String> {
             let kept = path.with_extension(format!("json.bad-{stamp}"));
             fs::rename(path, &kept)
                 .map_err(|e| format!("{error}; could not keep it aside as {}: {e}", kept.display()))?;
-            eprintln!("Luma {error}; kept as {} and started with defaults", kept.display());
+            eprintln!("Lounge {error}; kept as {} and started with defaults", kept.display());
             Ok(Preferences::default())
         }
         Err(error) => Err(error),

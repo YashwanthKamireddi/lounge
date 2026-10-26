@@ -4,7 +4,7 @@ use super::*;
 /// Stem emboldening for small text, in physical pixels per edge: thin stems
 /// get an opaque core instead of only grey edge pixels, which the TV's 2x
 /// scale-up to 4K softens further. Full strength up to 16 physical pixels,
-/// none from 28 (upstream Luma 3359618).
+/// none from 28 (upstream Lounge 3359618).
 pub(super) fn embolden(physical_size: f32) -> f32 {
     0.25 * ((28. - physical_size) / 12.).clamp(0., 1.)
 }
@@ -22,7 +22,7 @@ pub(super) fn load_font(directory: &Path, id: u16) -> Result<Font, String> {
     let font = Font::from_bytes(bytes).map_err(|e| format!("Font {}: {e}", path.display()))?;
     if cfg!(feature = "webos") {
         eprintln!(
-            "Luma font: {name} loaded in {} ms",
+            "Lounge font: {name} loaded in {} ms",
             started.elapsed().as_millis()
         );
     }
@@ -50,7 +50,7 @@ impl Renderer {
         }
     }
 
-    pub(super) fn glyph(&mut self, c: char, font: u16) -> Result<&[luma_vector_geometry::Vertex], String> {
+    pub(super) fn glyph(&mut self, c: char, font: u16) -> Result<&[lounge_vector_geometry::Vertex], String> {
         let key = (c, font);
         if !self.glyphs.contains_key(&key) {
             let geometry = self.fonts[&font].geometry(c)?;
@@ -100,7 +100,7 @@ impl Renderer {
 
     pub(super) fn trim_text_geometry(&mut self) {
         let glyph_bytes =
-            |glyph: &Glyph| glyph.geometry.len() * size_of::<luma_vector_geometry::Vertex>();
+            |glyph: &Glyph| glyph.geometry.len() * size_of::<lounge_vector_geometry::Vertex>();
         let mut bytes: usize = self.glyphs.values().map(glyph_bytes).sum();
         if bytes > GLYPH_GEOMETRY_BUDGET || self.glyphs.len() > 4096 {
             let mut old: Vec<_> = self
@@ -304,7 +304,7 @@ impl Renderer {
                     }
                 }
                 Err(error) => {
-                    eprintln!("Luma glyph {c:?}: {error}");
+                    eprintln!("Lounge glyph {c:?}: {error}");
                     failures += 1;
                 }
             }
@@ -315,7 +315,7 @@ impl Renderer {
             match vector::Mesh::upload(1., 1., &vertices) {
                 Ok(mesh) => Some(mesh),
                 Err(error) => {
-                    eprintln!("Luma text: {error}");
+                    eprintln!("Lounge text: {error}");
                     failures += 1;
                     None
                 }

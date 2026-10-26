@@ -40,13 +40,13 @@ jobs:
       - name: Create or update the PR comment
         uses: changesets/action/pr-comment@v2
         with:
-          update-id: luma-changeset-status
+          update-id: lounge-changeset-status
           body: |
             ${{ needs.status.outputs.comment-body }}
 
             ---
 
-            **For code or behavior changes:** run `pnpm changeset`, select `lg-luma`, and commit the generated `.changeset/*.md` file with this PR.
+            **For code or behavior changes:** run `pnpm changeset`, select `lounge`, and commit the generated `.changeset/*.md` file with this PR.
 
             Choose the semantic version bump that matches the change:
             - **patch** for backward-compatible bug fixes.

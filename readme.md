@@ -1,44 +1,41 @@
-# Luma
+<p align="center"><img src="docs/logo.png" width="128" alt="Lounge"></p>
 
-A native launcher for rooted LG webOS TVs, inspired by Apple TV.
+# Lounge
+
+A calm, tvOS-style home screen for rooted LG webOS TVs. Native Rust and OpenGL ES, not a web
+page: on a fresh TV it starts in about half a second, draws only what changed, and keeps out of
+the way of the apps you watch.
 
 > [!NOTE]
-> Tested on **LG OLED55C57** running **webOS 26**.\
-> External testing confirms compatibility with **webOS 6 and newer**.
+> Built and verified on an **LG 65UQ801C0SB** running **webOS 7.6**. Lounge started as a fork of
+> [lg-luma](https://github.com/ecklf/lg-luma), which reports webOS 6 and newer; Lounge's own
+> changes (power-on, Home key, memory behind apps) are tested on webOS 7.6 only.
 
 <table>
   <tr>
-    <td width="50%" align="center">
-      <img src="docs/home.png" alt="Luma native Home screen, desktop preview">
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/apps.png" alt="Luma native app library, desktop preview">
-    </td>
+    <td width="50%" align="center"><img src="docs/home.png" alt="Lounge Home screen, desktop preview"></td>
+    <td width="50%" align="center"><img src="docs/apps.png" alt="Lounge app library, desktop preview"></td>
   </tr>
   <tr>
-    <td width="50%" align="center">
-      <img src="docs/settings.png" alt="Luma native General settings with Quit app, desktop preview">
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/inputs.png" alt="Luma native input settings, desktop preview">
-    </td>
+    <td width="50%" align="center"><img src="docs/settings.png" alt="Lounge Settings, desktop preview"></td>
+    <td width="50%" align="center"><img src="docs/inputs.png" alt="Lounge General settings, desktop preview"></td>
   </tr>
 </table>
 
+## What it does
+
+- A tvOS home: a glass dock of favourites, Top Shelf art, an app grid with HDMI inputs, and an
+  app switcher.
+- Turns on into Lounge: power-on and the remote's Home key land on it, with no LG Home in between.
+- Light, Dark or Automatic appearance, wallpapers, a profile picture, hidden apps, weather.
+- Light on the TV: behind a playing app it gives memory back and draws nothing.
+
 ## Installation
 
-### Homebrew Channel
-
-```text
-https://github.com/ecklf/lg-luma/releases/latest/download/repo.json
-```
-
-### SSH
-
-On your computer, replace `TV_IP`:
+Build the package (see [Development](#development)), then from your computer, replacing `TV_IP`:
 
 ```sh
-scp -O dist/com.ecklf.luma_2.1.0_arm.ipk root@TV_IP:/tmp/luma.ipk
+scp -O dist/io.github.yashwanthkamireddi.lounge_2.1.0_arm.ipk root@TV_IP:/tmp/lounge.ipk
 ssh root@TV_IP
 ```
 
@@ -46,34 +43,34 @@ In the TV's root shell:
 
 ```sh
 luna-send -i luna://com.webos.appInstallService/dev/install \
-  '{"id":"com.ecklf.luma","ipkUrl":"/tmp/luma.ipk","subscribe":true}'
+  '{"id":"io.github.yashwanthkamireddi.lounge","ipkUrl":"/tmp/lounge.ipk","subscribe":true}'
 ```
 
-## Making Luma the Home app
+## Making Lounge the Home app
 
-Luma replaces LG Home through webOS's own mechanisms: nothing runs at boot and nothing is
+Lounge replaces LG Home through webOS's own mechanisms: nothing runs at boot and nothing is
 mounted over LG's files. Verified on webOS 7.6 (UQ80); each step is one setting and undoes
 cleanly. Run in the TV's root SSH shell.
 
-**Back out of an app opens Luma.** webOS opens the app registered as the default Home. On
+**Back out of an app opens Lounge.** webOS opens the app registered as the default Home. On
 webOS 7 the setting does not exist until written:
 
 ```sh
 luna-send -n 1 luna://com.webos.settingsservice/setSystemSettings \
-  '{"category":"general","settings":{"defaultApps":{"home":"com.ecklf.luma"}}}'
+  '{"category":"general","settings":{"defaultApps":{"home":"io.github.yashwanthkamireddi.lounge"}}}'
 ```
 
-Leaving an app then shows Luma directly, without LG Home in between. To undo, set
+Leaving an app then shows Lounge directly, without LG Home in between. To undo, set
 `defaultApps` back to `{}`.
 
-**The Home button opens Luma.** The remote's Home key is handled by the compositor's key-filter
+**The Home button opens Lounge.** The remote's Home key is handled by the compositor's key-filter
 chain (configd `com.webos.surfacemanager.keyFilters`), loaded at boot. A filter that maps Home to
-`com.ecklf.luma`, such as [Glasshouse](https://github.com/rorygallagher2024/glasshouse)'s remote
-keys, sends every press straight to Luma.
+`io.github.yashwanthkamireddi.lounge`, such as [Glasshouse](https://github.com/rorygallagher2024/glasshouse)'s remote
+keys, sends every press straight to Lounge.
 
-**Luma stays resident, LG Home does not.** LG's memory manager (`memchute`) reads
+**Lounge stays resident, LG Home does not.** LG's memory manager (`memchute`) reads
 `/home/root/memorymanager-conf.json` before its built-in `/etc/palm` copy. Adding
-`com.ecklf.luma` to `KeepOnLaunchEx`, and taking `com.webos.app.home` out of it, keeps Luma
+`io.github.yashwanthkamireddi.lounge` to `KeepOnLaunchEx`, and taking `com.webos.app.home` out of it, keeps Lounge
 loaded behind apps while LG Home is freed when an app opens. Takes effect after a restart; keep a
 copy of the original file to undo.
 
@@ -97,23 +94,18 @@ checksum-pinned SDL-webOS library; both downloads are cached under `.build/`.
 Output:
 
 ```text
-dist/com.ecklf.luma_2.1.0_arm.ipk
+dist/io.github.yashwanthkamireddi.lounge_2.1.0_arm.ipk
 dist/sha256sums
 dist/repo.json
 dist/app-icon-large.png
 ```
 
 Open [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop), connect to the TV's
-IP on port **22** as **root**, and install the IPK. Open **Luma** from the TV menu. Homebrew
-Channel must be elevated; on webOS 26 use **0.8.0-rc1 or newer** for its `lunabus.query` mapping.
-
-The native package uses **`com.ecklf.luma`** and installs separately from the old
-`com.luma.launcher` web app and the former `com.luma.launcher.native` / `com.luma.native` prototypes. Native preferences
-are local JSON files and are separate for each installation; browser preferences are not migrated.
-Homebrew Channel treats this ID as a separate app rather than an update to the old launcher.
+IP on port **22** as **root**, and install the IPK. Open **Lounge** from the TV menu. Homebrew
+Channel must be elevated.
 
 Wait for installation success; Ctrl+C closes an ongoing subscription. Fully close and reopen
-Luma after updating. The [development guide](development.md#tv-startup-diagnostics) has a jailed
+Lounge after updating. The [development guide](development.md#tv-startup-diagnostics) has a jailed
 launch command that exposes errors hidden by the normal menu launch.
 
 ## Preview
@@ -150,5 +142,9 @@ in an app-owned persistent directory outside the installed payload.
 Weather search/forecast requests go to Open-Meteo, with embedded TLS roots and bounded responses.
 There is no browser geolocation, IP-based location lookup, telemetry or runtime font download.
 
-Luma is licensed under MIT.
-Luma is not affiliated with LG, Apple, Plex or any app brands shown in its UI.
+## Credits
+
+Lounge is a fork of [lg-luma](https://github.com/ecklf/lg-luma) by ecklf and its contributors,
+under the MIT licence; their copyright notice is kept in [license](license).
+
+Lounge is not affiliated with LG, Apple or any app brand shown in its UI. MIT licensed.

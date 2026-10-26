@@ -11,15 +11,15 @@ const manifest = JSON.parse(await fs.readFile(path.join(root, 'appinfo.json'), '
 const project = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
 if (
   project.version !== manifest.version ||
-  manifest.id !== 'com.ecklf.luma' ||
+  manifest.id !== 'io.github.yashwanthkamireddi.lounge' ||
   manifest.type !== 'native' ||
-  manifest.main !== 'luma'
+  manifest.main !== 'lounge'
 ) {
   throw new Error(
-    'Native package metadata must use com.ecklf.luma, main luma, and synchronized versions.',
+    'Native package metadata must use io.github.yashwanthkamireddi.lounge, main lounge, and synchronized versions.',
   );
 }
-const binary = path.join(root, 'target/armv7-unknown-linux-gnueabi/release/luma');
+const binary = path.join(root, 'target/armv7-unknown-linux-gnueabi/release/lounge');
 const bytes = await fs.readFile(binary);
 if (
   bytes.length < 52 ||
@@ -59,7 +59,7 @@ for (const file of vectorManifest.assets) {
   const mesh = await fs.readFile(path.join(out, 'assets', file));
   if (
     mesh.length < 20 ||
-    mesh.subarray(0, 8).toString() !== 'LUMAVEC1' ||
+    mesh.subarray(0, 8).toString() !== 'LOUNGEV1' ||
     mesh.readUInt32LE(16) === 0 ||
     mesh.readUInt32LE(16) % 3 !== 0 ||
     mesh.length !== 20 + mesh.readUInt32LE(16) * 36
@@ -88,7 +88,7 @@ await fs.copyFile(
   path.join(out, 'assets/app-icon-large.png'),
   path.join(stage, 'app-icon-large.png'),
 );
-// No boot hooks or Home-takeover scripts ship: Home and Back reach Luma
+// No boot hooks or Home-takeover scripts ship: Home and Back reach Lounge
 // through webOS itself (the compositor key filter and settings
 // general.defaultApps), so nothing runs at boot or mounts over LG's files.
 await fs.copyFile(path.join(root, 'license'), path.join(stage, 'LICENSE'));
