@@ -164,10 +164,12 @@ chown -R $(stat -c %u:%g $D) $D/avatars    # Lounge must own its folder
 
 Lounge reads the folder when it starts: quit it from Settings › General and open it again.
 
-**Top Shelf art.** Like tvOS, a picture can fill the screen behind the dock while an app is
-focused. LG apps do not provide one, so Lounge ships none: put your own 16:9 images in
-`local/heroes/`, named by app ID (`netflix.jpg`, `youtube.leanback.v4.jpg`), and build. The
-Top Shelf Art switch appears in Settings › General once any are present.
+**App cards and Top Shelf art.** Every card and Top Shelf picture ships in the package, so it is
+on screen from the first frame: `assets/tiles/` holds each app's tvOS card and `assets/heroes/`
+its 16:9 Top Shelf picture, both named by app ID (`netflix.png`, `youtube.leanback.v4.jpg`). To
+add or replace one for your own build, put it in `local/tiles/` or `local/heroes/` under the same
+name and build; those win over the bundled ones. The Top Shelf Art switch appears in Settings ›
+General once any pictures are present.
 
 ## How it works
 

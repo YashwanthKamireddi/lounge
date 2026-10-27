@@ -162,7 +162,8 @@ const tileSources = new Map();
 for (const directory of ['assets/tiles', 'local/tiles']) {
   for (const file of await fs.readdir(path.join(root, directory)).catch(() => [])) {
     const id = file.replace(/\.(png|jpe?g)$/i, '');
-    if (id !== file && /^[a-zA-Z0-9._-]+$/.test(id)) tileSources.set(id, path.join(root, directory, file));
+    if (id !== file && /^[a-zA-Z0-9._-]+$/.test(id))
+      tileSources.set(id, path.join(root, directory, file));
   }
 }
 for (const [id, source] of tileSources) {
@@ -184,16 +185,23 @@ for (const [id, source] of tileSources) {
 }
 await fs.writeFile(path.join(out, 'tiles.json'), `${JSON.stringify(tileColors, null, 2)}\n`);
 
-// Optional owner-supplied Top Shelf art in untracked local/heroes/, named by
-// app ID. 1280x720 keeps each texture at 3.7 MB on the TV.
+// Top Shelf art named by app ID, as the tiles: the bundled set in
+// assets/heroes/, then owner overrides in untracked local/heroes/.
+// 1280x720 keeps each texture at 3.7 MB on the TV.
 const heroes = path.join(out, 'heroes');
 await fs.rm(heroes, { recursive: true, force: true });
 await fs.mkdir(heroes);
-const heroIds = [];
-for (const file of await fs.readdir(path.join(root, 'local/heroes')).catch(() => [])) {
-  const id = file.replace(/\.(png|jpe?g)$/i, '');
-  if (id === file || !/^[a-zA-Z0-9._-]+$/.test(id)) continue;
-  await sharp(path.join(root, 'local/heroes', file))
+const heroSources = new Map();
+for (const directory of ['assets/heroes', 'local/heroes']) {
+  for (const file of await fs.readdir(path.join(root, directory)).catch(() => [])) {
+    const id = file.replace(/\.(png|jpe?g)$/i, '');
+    if (id !== file && /^[a-zA-Z0-9._-]+$/.test(id))
+      heroSources.set(id, path.join(root, directory, file));
+  }
+}
+const heroIds = [...heroSources.keys()];
+for (const [id, source] of heroSources) {
+  await sharp(source)
     .resize(1280, 720, { fit: 'cover', kernel: 'lanczos3' })
     .jpeg({ quality: 88 })
     .toFile(path.join(heroes, `${id}.jpg`));
@@ -203,7 +211,6 @@ for (const file of await fs.readdir(path.join(root, 'local/heroes')).catch(() =>
     .blur(12)
     .png({ compressionLevel: 9 })
     .toFile(path.join(heroes, `${id}-glass.png`));
-  heroIds.push(id);
 }
 await fs.writeFile(path.join(out, 'heroes.json'), `${JSON.stringify(heroIds.sort())}\n`);
 await fs.copyFile(path.join(source, 'icon-colours.json'), path.join(out, 'colors.json'));
