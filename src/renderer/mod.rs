@@ -211,8 +211,10 @@ pub struct Renderer {
     /// The GPU takes ASTC textures (the TV's Mali does; desktop GL may not).
     astc: bool,
     program: GLuint,
-    dissolve_program: GLuint,
-    dissolve_uniforms: [GLint; 5],
+    /// The dissolve's two-image mix, and its one-image variant for a mix of
+    /// exactly 0 or 1 (see dissolve.frag).
+    dissolve_programs: [GLuint; 2],
+    dissolve_uniforms: [[GLint; 5]; 2],
     paint_uniforms: Uniforms,
     vector_uniforms: Uniforms,
     text_uniforms: Uniforms,
@@ -334,21 +336,29 @@ impl Renderer {
                 return Err(error);
             }
         };
-        let dissolve_program = match link(
-            &(vertex_prefix_dissolve + include_str!("shaders/paint.vert")),
-            &(fragment_prefix_dissolve + include_str!("shaders/dissolve.frag")),
-            &[c"a_position", c"a_uv", c"a_color", c"a_shape", c"a_params"],
-        ) {
-            Ok(program) => program,
-            Err(error) => {
-                unsafe {
-                    gl::DeleteProgram(program);
-                    gl::DeleteProgram(vector_program);
-                    gl::DeleteProgram(text_program);
+        let mut dissolve_programs = [0; 2];
+        for (index, define) in ["", "#define DISSOLVE_SINGLE\n"].into_iter().enumerate() {
+            dissolve_programs[index] = match link(
+                &(vertex_prefix_dissolve.clone() + include_str!("shaders/paint.vert")),
+                &(fragment_prefix_dissolve.clone()
+                    + define
+                    + include_str!("shaders/dissolve.frag")),
+                &[c"a_position", c"a_uv", c"a_color", c"a_shape", c"a_params"],
+            ) {
+                Ok(program) => program,
+                Err(error) => {
+                    unsafe {
+                        for program in [program, vector_program, text_program]
+                            .into_iter()
+                            .chain(dissolve_programs.into_iter().filter(|&p| p != 0))
+                        {
+                            gl::DeleteProgram(program);
+                        }
+                    }
+                    return Err(error);
                 }
-                return Err(error);
-            }
-        };
+            };
+        }
         if cfg!(feature = "webos") {
             crate::platform::status(&format!(
                 "startup: renderer font {} ms, shaders and setup {} ms",
@@ -356,8 +366,12 @@ impl Renderer {
                 began.elapsed().as_millis() - font_ms
             ));
         }
-        let dissolve_uniforms = [c"u_texture", c"u_texture2", c"u_mix", c"u_tint2", c"u_lift"]
-            .map(|name| unsafe { gl::GetUniformLocation(dissolve_program, name.as_ptr()) });
+        // The one-image variant has no u_texture2/u_mix: their location is
+        // -1, which GL ignores when set.
+        let dissolve_uniforms = dissolve_programs.map(|program| {
+            [c"u_texture", c"u_texture2", c"u_mix", c"u_tint2", c"u_lift"]
+                .map(|name| unsafe { gl::GetUniformLocation(program, name.as_ptr()) })
+        });
         let mut buffer = 0;
         let mut vao = 0;
         unsafe {
@@ -381,7 +395,7 @@ impl Renderer {
         let white = texture(1, 1, &[255; 4]);
         Ok(Self {
             paint_uniforms: Uniforms::of(program),
-            dissolve_program,
+            dissolve_programs,
             dissolve_uniforms,
             vector_uniforms: Uniforms::of(vector_program),
             text_uniforms: Uniforms::of(text_program),
@@ -1071,9 +1085,24 @@ impl Renderer {
                         tint,
                         lift,
                     } => {
+                        // At a mix of exactly 0 or 1 only one image shows (Home
+                        // and Settings at rest): the one-sample variant draws
+                        // it with that image's tint at half the texture fetches
+                        // of this full-screen pass. Recorded frames matched the
+                        // two-image pass bit for bit, except the light Settings
+                        // push, where GL's mix(a, b, 1) rounds up to 1/255 off
+                        // b on a few hundred edge pixels; this draws b exactly.
+                        let single = *amount == 0. || *amount == 1.;
+                        let (from, tint) = if *amount == 0. {
+                            (from, &[1.; 4])
+                        } else if single {
+                            (to, tint)
+                        } else {
+                            (from, tint)
+                        };
                         // Same vertex layout as paint; the output is opaque, so
                         // blending is off for this one full-screen pass.
-                        gl::UseProgram(self.dissolve_program);
+                        gl::UseProgram(self.dissolve_programs[usize::from(single)]);
                         gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
                         let mut offset = 0;
                         for (index, size) in [2, 2, 4, 4, 2].into_iter().enumerate() {
@@ -1088,15 +1117,18 @@ impl Renderer {
                             );
                             offset += size as usize;
                         }
-                        let [texture, texture2, mix, tint2, lift_uniform] = self.dissolve_uniforms;
+                        let [texture, texture2, mix, tint2, lift_uniform] =
+                            self.dissolve_uniforms[usize::from(single)];
                         gl::Uniform1i(texture, 0);
                         gl::Uniform1i(texture2, 1);
                         gl::Uniform1f(mix, *amount);
                         gl::Uniform4f(tint2, tint[0], tint[1], tint[2], tint[3]);
                         gl::Uniform4f(lift_uniform, lift[0], lift[1], lift[2], lift[3]);
-                        gl::ActiveTexture(gl::TEXTURE1);
-                        gl::BindTexture(gl::TEXTURE_2D, *to);
-                        gl::ActiveTexture(gl::TEXTURE0);
+                        if !single {
+                            gl::ActiveTexture(gl::TEXTURE1);
+                            gl::BindTexture(gl::TEXTURE_2D, *to);
+                            gl::ActiveTexture(gl::TEXTURE0);
+                        }
                         gl::BindTexture(gl::TEXTURE_2D, *from);
                         gl::Disable(gl::BLEND);
                         gl::DrawArrays(gl::TRIANGLES, *start as i32, 6);
@@ -1434,7 +1466,9 @@ impl Drop for Renderer {
         unsafe {
             gl::DeleteBuffers(1, &self.buffer);
             gl::DeleteProgram(self.program);
-            gl::DeleteProgram(self.dissolve_program);
+            for program in self.dissolve_programs {
+                gl::DeleteProgram(program);
+            }
             gl::DeleteProgram(self.vector_program);
             gl::DeleteProgram(self.text_program);
             if self.vao != 0 {
