@@ -52,7 +52,11 @@ export async function generateVectorAssets() {
       ].includes(name),
       light_ink: expanded && !['live-tv', 'browser'].includes(name),
       trim: expanded,
-      reference_size: 1536,
+      // Curves flatten to 0.15 px at this size. Logos draw at most ~310 px
+      // wide on the 1080p plane (a focused tile), ~620 px in a 4K capture
+      // (0.18 px there); 1536 was 5x finer than any frame shows, and 512
+      // cut the logo meshes from 7.0 to 4.4 MB.
+      reference_size: 512,
     });
   }
 
@@ -64,6 +68,7 @@ export async function generateVectorAssets() {
     assets.push({
       source: path.join(root, 'assets/ui-icons', file),
       output: path.join(out, 'ui-icons', `${name}.lvec`),
+      // Not lowered with the logos: the Settings glyph draws 220 px wide.
       reference_size: 256,
     });
   }
