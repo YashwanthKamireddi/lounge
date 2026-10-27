@@ -69,6 +69,18 @@ pub fn load(directory: &Path) -> Vec<Picture> {
     pictures
 }
 
+/// `load` on a worker, the pictures sent once ready. A changed picture is
+/// decoded (up to 4096², 80 MB), scaled and blurred: kept off start-up's way
+/// to the first frame.
+pub fn load_in_background(directory: PathBuf) -> std::sync::mpsc::Receiver<Vec<Picture>> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        crate::background_priority();
+        let _ = sender.send(load(&directory));
+    });
+    receiver
+}
+
 /// The cached small and large cuts of `source`, made when missing or older
 /// than the picture. None when it cannot be read.
 fn prepare(source: &Path, cache: &Path) -> Option<Picture> {
@@ -209,6 +221,12 @@ mod tests {
             .modified()
             .unwrap();
         assert_eq!(load(&directory), pictures);
+        // The worker finds the same pictures.
+        let worker = load_in_background(directory.clone());
+        assert_eq!(
+            worker.recv_timeout(std::time::Duration::from_secs(10)),
+            Ok(pictures.clone())
+        );
         assert_eq!(
             std::fs::metadata(&pictures[0].small)
                 .unwrap()
