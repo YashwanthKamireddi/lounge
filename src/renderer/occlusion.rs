@@ -75,12 +75,13 @@ impl Renderer {
                 {
                     Some((*rect, *radius))
                 }
-                // Tile artwork is full-bleed and opaque (only its corners are cut).
-                Draw::Image(path, rect, radius, false) if path.contains("/tiles/") => {
+                // Tile artwork is full-bleed and opaque (only its corners are
+                // cut), and so is any photo stretched over its whole rect.
+                Draw::Image(path, rect, radius, false) if self.opaque_picture(path) => {
                     Some((*rect, *radius))
                 }
                 Draw::TintedImage(path, rect, radius, false, tint)
-                    if path.contains("/tiles/") && tint[3] >= 0.999 =>
+                    if tint[3] >= 0.999 && self.opaque_picture(path) =>
                 {
                     Some((*rect, *radius))
                 }
@@ -108,5 +109,22 @@ impl Renderer {
                 self.occluder_at[index] = true;
             }
         }
+    }
+
+    /// Artwork that covers every pixel of its rect: tile art, and JPEG
+    /// photos (wallpaper previews, thumbnails, heroes; JPEG has no alpha).
+    /// A photo counts only once it is decoded: an occluder whose picture
+    /// failed to load would leave a hole down to the clear colour. On the
+    /// Background page this lets the preview frame and the visible
+    /// thumbnails mask their own shadows and the wallpaper beneath them.
+    fn opaque_picture(&self, path: &str) -> bool {
+        if path.contains("/tiles/") {
+            return true;
+        }
+        if !path.ends_with(".jpg") {
+            return false;
+        }
+        let path = self.artwork_variants.get(path).map_or(path, String::as_str);
+        matches!(self.textures.get(path), Some(Some(_)))
     }
 }
