@@ -10,7 +10,7 @@ use std::{
     fs::File,
     io::{Cursor, Read},
     path::{Component, Path, PathBuf},
-    sync::{Arc, mpsc},
+    sync::{Arc, Mutex, PoisonError, mpsc},
     thread,
 };
 
@@ -86,10 +86,97 @@ impl Source {
 }
 
 pub struct Artwork {
+    /// The renderer's texture for it: one per app, so an updated icon
+    /// replaces the old texture instead of leaving it behind.
     pub key: String,
-    pub pixels: RgbaImage,
+    /// The source the pixels came from (its hash): a different one under the
+    /// same key is a changed icon, uploaded again.
+    pub source: u64,
     /// The card behind the icon: top and bottom of a vertical gradient (equal when flat).
     pub backdrop: [[u8; 3]; 2],
+    size: (u32, u32),
+    /// The decoded icon (up to 256 KB) until the renderer has uploaded it;
+    /// after that only if it cannot be read back from `reload`. The GPU copy
+    /// is the one drawn, so holding a CPU copy of every icon behind it only
+    /// cost memory.
+    pixels: Mutex<Option<RgbaImage>>,
+    reload: Option<Reload>,
+}
+
+/// Where an icon's pixels can be read back from: its file in the icons cache,
+/// and whether they went through decode() (an icon read from that cache) or
+/// are the file's exact contents (an icon read from the app and saved there).
+struct Reload {
+    path: PathBuf,
+    decoded: bool,
+}
+
+impl Artwork {
+    fn new(pixels: RgbaImage, backdrop: [[u8; 3]; 2]) -> Self {
+        Self {
+            key: String::new(),
+            source: 0,
+            backdrop,
+            size: pixels.dimensions(),
+            pixels: Mutex::new(Some(pixels)),
+            reload: None,
+        }
+    }
+
+    /// Hands the pixels to `upload` (the renderer's texture upload), first
+    /// reading them back from the icons cache if an earlier upload let them
+    /// go (the texture was evicted since). None if they cannot be read.
+    pub fn upload<T>(&self, upload: impl FnOnce(&RgbaImage) -> T) -> Option<T> {
+        let mut held = self.pixels.lock().unwrap_or_else(PoisonError::into_inner);
+        let pixels = match held.take() {
+            Some(pixels) => pixels,
+            None => self.read_back()?,
+        };
+        let uploaded = upload(&pixels);
+        if self.reload.is_none() {
+            *held = Some(pixels);
+        }
+        Some(uploaded)
+    }
+
+    /// The texture already holds these pixels: let the CPU copy go if it can
+    /// be read back.
+    pub fn uploaded(&self) {
+        if self.reload.is_some() {
+            self.pixels
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take();
+        }
+    }
+
+    /// The decoded pixels this artwork holds in memory.
+    fn held_bytes(&self) -> usize {
+        self.pixels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map_or(0, |pixels| pixels.as_raw().len())
+    }
+
+    /// The same pixels again, from the icons cache.
+    fn read_back(&self) -> Option<RgbaImage> {
+        let reload = self.reload.as_ref()?;
+        let bytes = read_bounded(&reload.path, MAX_FILE)?;
+        let pixels = if reload.decoded {
+            decode(&bytes)?.pixels.into_inner().ok()??
+        } else {
+            image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+                .ok()?
+                .into_rgba8()
+        };
+        (pixels.dimensions() == self.size).then_some(pixels)
+    }
+
+    #[cfg(test)]
+    fn pixels(&self) -> RgbaImage {
+        self.pixels.lock().unwrap().clone().unwrap()
+    }
 }
 
 fn read_bounded(path: &Path, limit: usize) -> Option<Vec<u8>> {
@@ -141,11 +228,7 @@ fn decode(bytes: &[u8]) -> Option<Artwork> {
     let image = reader.decode().ok()?;
     let pixels = thumbnail(image.into_rgba8());
     let backdrop = backdrop(&pixels);
-    Some(Artwork {
-        key: String::new(),
-        pixels,
-        backdrop,
-    })
+    Some(Artwork::new(pixels, backdrop))
 }
 
 /// Scales with premultiplied alpha, so the colour of transparent pixels (often black) never
@@ -458,10 +541,14 @@ pub struct Service {
 /// after the first read every icon loads from local disk: no elevated read,
 /// no wait, across launches and reboots.
 fn disk_path(directory: &Path, source: &Source) -> PathBuf {
+    directory.join(format!("{}-{:016x}.png", source.id, source_hash(source)))
+}
+
+fn source_hash(source: &Source) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     source.hash(&mut hasher);
-    directory.join(format!("{}-{:016x}.png", source.id, hasher.finish()))
+    hasher.finish()
 }
 
 fn load_cached(directory: Option<&Path>, source: &Source) -> Option<Artwork> {
@@ -473,19 +560,33 @@ fn load_cached(directory: Option<&Path>, source: &Source) -> Option<Artwork> {
         return load(source);
     };
     let path = disk_path(directory, source);
-    if let Some(artwork) = read_bounded(&path, MAX_FILE).and_then(|bytes| decode(&bytes)) {
+    if let Some(mut artwork) = read_bounded(&path, MAX_FILE).and_then(|bytes| decode(&bytes)) {
+        artwork.reload = Some(Reload {
+            path,
+            decoded: true,
+        });
         return Some(artwork);
     }
-    let artwork = load(source)?;
+    let mut artwork = load(source)?;
     // Written whole then renamed, so a power cut never leaves a torn file.
     let partial = path.with_extension("part");
-    if std::fs::create_dir_all(directory).is_ok()
+    let saved = std::fs::create_dir_all(directory).is_ok()
         && artwork
             .pixels
-            .save_with_format(&partial, image::ImageFormat::Png)
-            .is_ok()
-    {
-        let _ = std::fs::rename(&partial, &path);
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|pixels| {
+                pixels
+                    .save_with_format(&partial, image::ImageFormat::Png)
+                    .is_ok()
+            })
+        && std::fs::rename(&partial, &path).is_ok();
+    if saved {
+        artwork.reload = Some(Reload {
+            path,
+            decoded: false,
+        });
     }
     Some(artwork)
 }
@@ -513,7 +614,8 @@ impl Service {
                 crate::background_priority();
                 while let Ok(request) = requests.recv() {
                     let image = loader(&request.source).map(|mut image| {
-                        image.key = format!("installed-icon:{}", request.token);
+                        image.key = format!("installed-icon:{}", request.source.id);
+                        image.source = source_hash(&request.source);
                         Arc::new(image)
                     });
                     if responses.send(Reply { request, image }).is_err() {
@@ -630,7 +732,7 @@ impl Service {
             .entries
             .values()
             .filter_map(|e| e.image.as_ref()?.as_ref())
-            .map(|i| i.pixels.as_raw().len())
+            .map(|i| i.held_bytes())
             .sum();
         let mut old: Vec<_> = cache
             .entries
@@ -646,7 +748,7 @@ impl Service {
             if let Some(entry) = cache.entries.remove(&source)
                 && let Some(Some(image)) = entry.image
             {
-                bytes -= image.pixels.as_raw().len();
+                bytes -= image.held_bytes();
             }
         }
         changed
