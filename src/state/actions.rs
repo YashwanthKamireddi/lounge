@@ -241,10 +241,10 @@ impl State {
                 return vec![Effect::Save];
             }
             Target::Background(index) => {
-                if self.preferences.background != BACKGROUNDS[index].0 {
-                    // The cross-fade starts once the new pictures are on the
-                    // GPU; from what shows now (the old wallpaper still
-                    // waiting, or the one a running fade is heading to).
+                // The cross-fade starts once the new pictures are on the GPU,
+                // from what shows now; a running fade finishes first.
+                let fading = matches!(self.previous_background, Some((_, Some(_))));
+                if self.preferences.background != BACKGROUNDS[index].0 && !fading {
                     let shown = self.wallpaper().to_owned();
                     self.previous_background = Some((shown, None));
                 }

@@ -541,7 +541,7 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
                 out.image(photo(previous), frame, 36., false);
                 if t > 0. {
                     out.draw.push(Draw::TintedImage(
-                        photo(&state.preferences.background),
+                        photo(state.wallpaper()),
                         frame,
                         36.,
                         false,

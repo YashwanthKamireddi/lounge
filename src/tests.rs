@@ -725,6 +725,45 @@ fn a_new_wallpaper_waits_for_its_pictures_then_fades_in_under_settings_tint() {
 }
 
 #[test]
+fn a_wallpaper_picked_mid_fade_waits_and_then_fades_in_from_where_that_one_ended() {
+    crate::clock::record();
+    let mut state = ready();
+    state.open(2);
+    state.section = 1;
+    state.focus = Target::Background(6);
+    state.activate();
+    let first = state.preferences.background.clone();
+    state.wallpaper_ready();
+    let fade = std::time::Duration::from_secs_f32(crate::state::WALLPAPER_FADE);
+    crate::clock::step(fade / 2);
+    let before = backgrounds(&state).pop().unwrap();
+    // Another pick mid-way: the running fade carries on unchanged.
+    state.focus = Target::Background(7);
+    state.activate();
+    let second = state.preferences.background.clone();
+    assert_ne!(first, second);
+    let after = backgrounds(&state).pop().unwrap();
+    assert_eq!((&after.from, &after.to), (&before.from, &before.to));
+    assert!((after.mix - before.mix).abs() < 1e-6);
+    // At its end the screen rests on the first pick, whole, until the second
+    // pick's pictures are ready, then fades from it to the second.
+    crate::clock::step(fade);
+    state.tick();
+    assert_eq!(state.wallpaper(), first);
+    assert!(state.wallpaper_change().is_none());
+    state.wallpaper_ready();
+    crate::clock::step(fade / 2);
+    // Every pass on screen (the page may still be opening) fades the same way.
+    for next in backgrounds(&state) {
+        assert!(next.from.contains(&first) && next.to.contains(&second));
+    }
+    crate::clock::step(fade);
+    state.tick();
+    assert!(state.previous_background.is_none() && state.fading_to.is_none());
+    assert_eq!(state.wallpaper(), second);
+}
+
+#[test]
 fn leaving_settings_dissolves_its_backdrop_into_the_photo_in_one_pass() {
     crate::clock::record();
     let mut state = ready();

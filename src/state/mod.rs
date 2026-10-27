@@ -259,6 +259,10 @@ pub struct State {
     /// way to the GPU: until then the old one stays, whole (see
     /// `preload::wallpaper`), so the fade never waits on a decode mid-way.
     pub previous_background: Option<(String, Option<Instant>)>,
+    /// What a running cross-fade is heading to. Another wallpaper picked
+    /// meanwhile waits for it to finish, then fades in from it: a fade never
+    /// jumps to its end or retargets mid-way.
+    pub fading_to: Option<String>,
     pub panel_started: Option<Instant>,
     pub weather: weather::Weather,
     pub keyboard_field: TextField,
@@ -408,6 +412,7 @@ impl State {
             pointer: false,
             pressed: None,
             previous_background: None,
+            fading_to: None,
             panel_started: None,
             weather: weather::Weather::default(),
             keyboard_field: TextField::Apps,
@@ -451,7 +456,11 @@ impl State {
     pub fn wallpaper(&self) -> &str {
         match &self.previous_background {
             Some((previous, None)) => previous,
-            _ => &self.preferences.background,
+            Some((_, Some(_))) => self
+                .fading_to
+                .as_deref()
+                .unwrap_or(&self.preferences.background),
+            None => &self.preferences.background,
         }
     }
 
@@ -459,8 +468,18 @@ impl State {
     pub fn wallpaper_ready(&mut self) {
         if let Some((_, start @ None)) = &mut self.previous_background {
             *start = Some(crate::clock::now());
+            self.fading_to = Some(self.preferences.background.clone());
             self.dirty = true;
         }
+    }
+
+    /// The fade's end: the wallpaper picked last fades in next, from there.
+    fn wallpaper_faded(&mut self) {
+        self.previous_background = self
+            .fading_to
+            .take()
+            .filter(|reached| *reached != self.preferences.background)
+            .map(|reached| (reached, None));
     }
 
     /// The wallpaper being left and how far the cross-fade from it has come
@@ -574,7 +593,7 @@ impl State {
             if self.preferences.reduced_motion
                 || crate::clock::since(start).as_secs_f32() >= WALLPAPER_FADE
             {
-                self.previous_background = None;
+                self.wallpaper_faded();
             }
         }
         if self
