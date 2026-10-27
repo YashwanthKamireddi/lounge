@@ -105,7 +105,7 @@ keeps its app lit while the rest of the screen steps back.
 your computer, replacing `TV_IP`:
 
 ```sh
-scp -O io.github.yashwanthkamireddi.lounge_1.0.0_arm.ipk root@TV_IP:/tmp/lounge.ipk
+scp -O io.github.yashwanthkamireddi.lounge_1.1.0_arm.ipk root@TV_IP:/tmp/lounge.ipk
 ssh root@TV_IP
 ```
 
@@ -209,7 +209,7 @@ checksum-pinned SDL-webOS library; both downloads are cached under `.build/`.
 Output:
 
 ```text
-dist/io.github.yashwanthkamireddi.lounge_1.0.0_arm.ipk
+dist/io.github.yashwanthkamireddi.lounge_1.1.0_arm.ipk
 dist/sha256sums
 dist/repo.json
 dist/app-icon-large.png
