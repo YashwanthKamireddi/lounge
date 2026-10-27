@@ -101,6 +101,9 @@ pub struct Artwork {
     /// cost memory.
     pixels: Mutex<Option<RgbaImage>>,
     reload: Option<Reload>,
+    /// Corner radius as a share of the drawn height: 0 for icons (drawn
+    /// inside their card), a card's own rounding for a picture that is one.
+    pub corner: f32,
 }
 
 /// Where an icon's pixels can be read back from: its file in the icons cache,
@@ -120,7 +123,20 @@ impl Artwork {
             size: pixels.dimensions(),
             pixels: Mutex::new(Some(pixels)),
             reload: None,
+            corner: 0.,
         }
+    }
+
+    /// A picture decoded elsewhere (a switcher snapshot), uploaded under
+    /// `key`; a new `source` there replaces the old texture. Its pixels stay
+    /// in memory while something holds it, to upload again after a trim.
+    pub fn picture(key: String, source: u64, pixels: RgbaImage, corner: f32) -> Arc<Self> {
+        Arc::new(Self {
+            key,
+            source,
+            corner,
+            ..Self::new(pixels, [[0; 3]; 2])
+        })
     }
 
     /// Hands the pixels to `upload` (the renderer's texture upload), first

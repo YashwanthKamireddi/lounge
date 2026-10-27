@@ -25,7 +25,7 @@ const SOFT_EDGE: f32 = 0.8;
 pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: OffsetDateTime) {
     // tvOS: no tab bar, one glass capsule at the top right: time, the local
     // weather and the profile's avatar. It only shows; nothing here is focused.
-    let clock = i18n::clock(now, state.preferences.hour_24);
+    let clock = i18n::clock(now, state.hour_24);
     let k = PILL_SCALE;
     let style = text(25. * k, 600, 0.);
     let reading = state
@@ -238,6 +238,12 @@ pub(super) fn options(
             if hidden { "eye-bold" } else { "eye-off-bold" },
         ));
     }
+    // Destructive, so last and in red (HIG context menus); only where webOS
+    // lets the owner remove the app, never dimmed elsewhere.
+    let destructive = state.can_uninstall(id).then_some(actions.len());
+    if destructive.is_some() {
+        actions.push((i18n::t("uninstall"), "trash-bold"));
+    }
     let style = text(24., 600, 0.);
     let widths: Vec<f32> = actions
         .iter()
@@ -294,8 +300,12 @@ pub(super) fn options(
         let (rim_top, rim_bottom) = out.theme.edge(0.5 * (1. - focus), 0.1 * (1. - focus));
         out.draw
             .push(Draw::GradientRing(pill, radius, 1.5, rim_top, rim_bottom));
-        let ink: [f32; 4] = std::array::from_fn(|i| light[i] + (dark[i] - light[i]) * focus);
-        let ink = [ink[0], ink[1], ink[2], 1.];
+        let ink: [f32; 4] = if destructive == Some(index) {
+            out.theme.destructive(focus)
+        } else {
+            let ink: [f32; 4] = std::array::from_fn(|i| light[i] + (dark[i] - light[i]) * focus);
+            [ink[0], ink[1], ink[2], 1.]
+        };
         out.icon(
             assets,
             icon,

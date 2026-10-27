@@ -70,7 +70,7 @@ try {
   // Reload from disk and show Live TV again from Settings › General › Hidden apps.
   const restored = await scenario(
     'restored',
-    'settings,wait,right,down,down,down,down,down,enter,enter',
+    'settings,wait,right,down,down,down,down,enter,enter',
   );
   assert.deepEqual(restored.preferences.hidden, []);
   const searched = await scenario('search', 'apps,type:YouTube');

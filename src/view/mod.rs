@@ -4,6 +4,7 @@
 //! dock and grid), `settings`, `switcher`, `overlays` (the status pill,
 //! context menu, search keyboard, notifications and hints), with the pieces
 //! they share in `scene` (the draw list), `tile`, `glass` and `shared`.
+mod alert;
 mod glass;
 mod home;
 mod overlays;
@@ -457,7 +458,10 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         out.modal = None;
         out.fade(start, 1. - t * t, 1.);
     }
-    if let Some(overlay @ (Overlay::Options { .. } | Overlay::Keyboard)) = &state.overlay {
+    if let Some(
+        overlay @ (Overlay::Options { .. } | Overlay::Keyboard | Overlay::Uninstall { .. }),
+    ) = &state.overlay
+    {
         // A context menu opens beside the tile it acts on, as on tvOS.
         let anchor = match overlay {
             Overlay::Options { id, .. } => out
@@ -483,6 +487,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         match overlay {
             Overlay::Options { id, .. } => options(&mut out, state, assets, id, anchor),
             Overlay::Keyboard => keyboard(&mut out, state, assets),
+            Overlay::Uninstall { id, .. } => alert::uninstall(&mut out, state, assets, id),
             Overlay::SystemKeyboard => {}
         }
         if opening.is_some() {

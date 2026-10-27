@@ -386,6 +386,8 @@ pub enum Request {
     /// The remote's Home key: Some(true/false) to give it to Lounge or back
     /// to LG, None to read which it is.
     Home(Option<bool>),
+    /// Remove an installed app (confirmed in Lounge's alert first).
+    Uninstall(String),
 }
 pub enum Response {
     Inventory(Result<(Inventory, Option<String>), String>),
@@ -396,6 +398,7 @@ pub enum Response {
     Closed(String, Result<(), String>),
     /// Whether the Home key opens Lounge, after the request.
     Home(Result<bool, String>),
+    Uninstalled(String, Result<(), String>),
 }
 
 pub struct Platform {
@@ -413,6 +416,8 @@ impl Platform {
     pub fn new(webos: bool, fixture: Option<PathBuf>) -> Self {
         let (sender, requests) = mpsc::channel();
         let (responses, receiver) = mpsc::channel();
+        // The preview's own removals: its sample apps stay gone on refresh.
+        let removed = std::sync::Arc::new(std::sync::Mutex::new(HashSet::<String>::new()));
         thread::spawn(move || {
             while let Ok(request) = requests.recv() {
                 let response = match request {
@@ -423,14 +428,20 @@ impl Platform {
                     Request::Refresh => {
                         let responses = responses.clone();
                         let fixture = fixture.clone();
+                        let removed = removed.clone();
                         thread::spawn(move || {
-                            let inventory = if webos {
+                            let mut inventory = if webos {
                                 inventory()
                             } else if let Some(directory) = &fixture {
                                 fixture_inventory(directory)
                             } else {
                                 Ok((demo_inventory(), None))
                             };
+                            if let (Ok((inventory, _)), Ok(removed)) =
+                                (&mut inventory, removed.lock())
+                            {
+                                inventory.apps.retain(|app| !removed.contains(&app.id));
+                            }
                             let _ = responses.send(Response::Inventory(inventory));
                             let profile = if webos {
                                 read_profile().unwrap_or_else(|error| {
@@ -467,6 +478,25 @@ impl Platform {
                             elevated_close(&id)
                         };
                         Response::Closed(id, result)
+                    }
+                    // Removal waits for webOS to finish (seconds), on its own
+                    // thread: a launch or close meanwhile never queues behind it.
+                    Request::Uninstall(id) => {
+                        let responses = responses.clone();
+                        let removed = removed.clone();
+                        thread::spawn(move || {
+                            let result = if webos {
+                                elevated_uninstall(&id)
+                            } else {
+                                crate::uninstall::command(&id).map(|_| {
+                                    if let Ok(mut removed) = removed.lock() {
+                                        removed.insert(id.clone());
+                                    }
+                                })
+                            };
+                            let _ = responses.send(Response::Uninstalled(id, result));
+                        });
+                        continue;
                     }
                     Request::Home(set) => Response::Home(if webos {
                         let result = home_button(set);
@@ -972,10 +1002,7 @@ fn home_button(set: Option<bool>) -> Result<bool, String> {
 }
 
 fn elevated_close(id: &str) -> Result<(), String> {
-    // `id` passed valid_app_id: only ASCII alphanumerics and . _ - reach the shell.
-    let command = format!(
-        "/usr/bin/luna-send -n 1 -w 4000 luna://com.webos.applicationManager/closeByAppId '{{\"id\":\"{id}\"}}'"
-    );
+    let command = close_command(id);
     let envelope = call(
         "luna://org.webosbrew.hbchannel.service/exec",
         json!({"command": command}),
@@ -1076,6 +1103,7 @@ pub fn normalize_apps(raw: &Value) -> Result<Vec<App>, String> {
         }
         let mut app = App::new(id, &title(entry.get("title").and_then(Value::as_str), id));
         app.icon = Some(app_artwork::Source::new(id, entry));
+        app.removable = crate::uninstall::removable(entry);
         apps.push(app);
     }
     apps.sort_by_key(|a| a.title.to_lowercase());
@@ -1153,6 +1181,77 @@ pub fn normalize_inputs(raw: &Value) -> Result<Vec<Input>, String> {
         });
     }
     Ok(inputs)
+}
+
+/// Quitting from the switcher. `closeByAppId` only sends a web app to the
+/// background (its page keeps running); WebAppMgr's `killApp` ends it. So
+/// `killApp` goes first, and anything it does not end (a native app, which
+/// WebAppMgr does not know, or firmware without the method) is closed by
+/// the application manager as before. `id` passed valid_app_id: only ASCII
+/// alphanumerics and . _ - reach the shell.
+pub fn close_command(id: &str) -> String {
+    format!(
+        "K=$(/usr/bin/luna-send -n 1 -w 3000 luna://com.palm.webappmanager/killApp '{{\"appId\":\"{id}\"}}' 2>/dev/null)\n\
+         case \"$K\" in *'\"returnValue\":true'*|*'\"returnValue\": true'*) printf '%s\\n' \"$K\"; exit 0;; esac\n\
+         /usr/bin/luna-send -n 1 -w 4000 luna://com.webos.applicationManager/closeByAppId '{{\"id\":\"{id}\"}}'"
+    )
+}
+
+/// Removes `id` through the elevated helper, waiting up to its own 15 s for
+/// webOS to finish. A reply lost on the way is checked against the TV's
+/// complete app list (never by asking for the removal a second time).
+fn elevated_uninstall(id: &str) -> Result<(), String> {
+    let command = crate::uninstall::command(id)?;
+    let exec = "luna://org.webosbrew.hbchannel.service/exec";
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    let reply = crate::luna::call_within(
+        exec,
+        &json!({"command": command}),
+        std::time::Duration::from_secs(20),
+    );
+    #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+    let reply: Result<Value, String> = {
+        let _ = (exec, command);
+        Err("Native Luna services are only available in an ARM webOS build".into())
+    };
+    let Err(error) = reply
+        .and_then(checked_response)
+        .and_then(|envelope| inventory_payload(&envelope, "id"))
+    else {
+        return Ok(());
+    };
+    for attempt in 0..3 {
+        if attempt > 0 {
+            thread::sleep(std::time::Duration::from_millis(500));
+        }
+        match inventory_read("luna://com.webos.applicationManager/listApps", "apps")
+            .and_then(|apps| crate::uninstall::confirms_removal(&apps, id))
+        {
+            Ok(true) => return Ok(()),
+            Ok(false) => {}
+            Err(read) => {
+                eprintln!("Lounge uninstall check: {read}");
+                break;
+            }
+        }
+    }
+    Err(error)
+}
+
+/// One reply from a TV service through Lounge's own bus connection (the
+/// role the hub gave this executable), for modules outside this worker.
+pub fn bus(uri: &str, payload: Value) -> Result<Value, String> {
+    call(uri, payload)
+}
+
+/// One fixed command run as root through Homebrew Channel's exec, and the
+/// `field` of the Luna-style JSON reply it prints.
+pub fn elevated(command: &str, field: &str) -> Result<Value, String> {
+    let envelope = call(
+        "luna://org.webosbrew.hbchannel.service/exec",
+        json!({"command": command}),
+    )?;
+    inventory_payload(&envelope, field)
 }
 
 #[cfg(test)]

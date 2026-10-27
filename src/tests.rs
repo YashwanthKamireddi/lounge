@@ -13,8 +13,8 @@ fn ready() -> State {
     state
 }
 
-fn controls(state: &State) -> Vec<crate::state::Control> {
-    let assets = view::Assets {
+fn test_assets() -> view::Assets {
+    view::Assets {
         root: PathBuf::new(),
         icons: BTreeMap::new(),
         colors: BTreeMap::new(),
@@ -23,8 +23,22 @@ fn controls(state: &State) -> Vec<crate::state::Control> {
         tiles: Default::default(),
         heroes: Default::default(),
         artwork: crate::app_artwork::Service::new(false),
-    };
-    view::scene(state, &assets, time::OffsetDateTime::UNIX_EPOCH).controls
+    }
+}
+
+fn controls(state: &State) -> Vec<crate::state::Control> {
+    view::scene(state, &test_assets(), time::OffsetDateTime::UNIX_EPOCH).controls
+}
+
+fn ui_text(state: &State) -> Vec<String> {
+    view::scene(state, &test_assets(), time::OffsetDateTime::UNIX_EPOCH)
+        .draw
+        .into_iter()
+        .filter_map(|draw| match draw {
+            crate::renderer::Draw::Text(value, ..) => Some(value),
+            _ => None,
+        })
+        .collect()
 }
 
 #[test]
@@ -457,7 +471,7 @@ fn home_key_closes_settings_and_keeps_focus_on_return() {
     assert_eq!(state.focus, Target::App("netflix".into()));
     // Home pressed inside Settings: Settings closes onto the home screen.
     state.open(2);
-    state.focus = Target::Setting(1);
+    state.focus = Target::Setting(0);
     state.home_key(true);
     assert_eq!(state.page, crate::state::Page::Apps);
     assert!(state.subpage.is_none() && state.overlay.is_none());
@@ -505,26 +519,76 @@ fn hidden_apps_come_back_from_general_settings() {
 }
 
 #[test]
-fn clock_format_subpage_saves_and_restores_its_parent_row() {
+fn the_clock_format_is_the_tvs_own_setting() {
+    // LG's own value decides: "HH24" or "HH12" from the system service.
+    assert_eq!(
+        crate::time_format::parse(&json!({"returnValue": true, "timeFormat": "HH24"})),
+        Some(true)
+    );
+    assert_eq!(
+        crate::time_format::parse(&json!({"timeFormat": "HH12"})),
+        Some(false)
+    );
+    assert_eq!(
+        crate::time_format::parse(&json!({"timeFormat": "HHMM"})),
+        None
+    );
+    assert_eq!(
+        crate::time_format::parse(&json!({"returnValue": false})),
+        None
+    );
+    assert_eq!(
+        crate::time_format::payload(true),
+        json!({"timeFormat": "HH24"})
+    );
+    // A preferences file from before loads whole; its old Lounge-only
+    // choice is no longer kept.
+    let preferences: Preferences = serde_json::from_value(json!({
+        "background": "forest",
+        "hour_24": true,
+    }))
+    .unwrap();
+    assert_eq!(preferences.background, "forest");
+    assert!(
+        !serde_json::to_string(&preferences)
+            .unwrap()
+            .contains("hour_24")
+    );
+    // Clock format opens on what the TV has, and a choice sets the TV (not
+    // Lounge's preferences file), returning to its row.
     let mut state = ready();
     state.open(2);
     state.focus = Target::Setting(1);
-    assert!(
-        state
-            .direction(Direction::Right, &controls(&state))
-            .is_empty()
-    );
+    state.direction(Direction::Right, &controls(&state));
     assert_eq!(state.subpage, Some(crate::state::Subpage::Clock));
     assert_eq!(state.focus, Target::Choice(0));
     state.direction(Direction::Down, &controls(&state));
-    assert_eq!(state.activate(), vec![Effect::Save]);
-    assert!(state.preferences.hour_24);
+    assert_eq!(state.activate(), vec![Effect::ClockFormat(true)]);
+    assert!(state.hour_24);
     assert!(state.subpage.is_none());
     assert_eq!(state.focus, Target::Setting(1));
+    assert!(ui_text(&state).iter().any(|line| line == "24-hour"));
     state.activate();
+    assert_eq!(state.focus, Target::Choice(1));
     state.direction(Direction::Left, &controls(&state));
     assert_eq!(state.focus, Target::Setting(1));
-    assert!(state.subpage.is_none());
+    // The pill shows the TV's format.
+    state.open(1);
+    let assets = test_assets();
+    let one_pm = time::OffsetDateTime::UNIX_EPOCH + time::Duration::hours(13);
+    let shown = |state: &State| {
+        view::scene(state, &assets, one_pm)
+            .draw
+            .into_iter()
+            .filter_map(|draw| match draw {
+                crate::renderer::Draw::Text(value, ..) => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(shown(&state).iter().any(|line| line == "13:00"));
+    state.hour_24 = false;
+    assert!(shown(&state).iter().any(|line| line == "1:00 PM"));
 }
 
 #[test]
@@ -573,7 +637,7 @@ fn a_notice_does_not_escape_modal_focus_and_closing_restores_the_app() {
             .iter()
             .all(|c| matches!(c.target, Target::Option(_)))
     );
-    // Move and Hide: Hide is the last row.
+    // Move, Hide, Uninstall: one row of pills, nothing below them.
     state.focus = Target::Option(1);
     state.direction(Direction::Down, &controls(&state));
     assert_eq!(state.focus, Target::Option(1));
@@ -1448,4 +1512,306 @@ fn focus_goes_to_the_tile_that_takes_a_vanished_tiles_place() {
     inventory.apps.retain(|app| app.id != tiles[7]);
     state.set_inventory(inventory, None);
     assert_eq!(state.focus, Target::App(order(&state)[7].clone()));
+}
+
+#[test]
+fn recents_name_only_snapshots_inside_each_apps_own_folder() {
+    let reply = json!({"returnValue": true, "recentsAppList": [
+        {"appId": "netflix", "cardSnapShotFilePath": "/tmp/snapshots/netflix/card_1.jpg"},
+        {"appId": "youtube.leanback.v4", "cardSnapShotFilePath": ""},
+        {"appId": "amazon", "cardSnapShotFilePath": "/tmp/snapshots/netflix/card.jpg"},
+        {"appId": "hotstar", "cardSnapShotFilePath": "/tmp/snapshots/hotstar/../../etc/shadow"},
+        {"appId": "plex", "cardSnapShotFilePath": "/tmp/snapshots/plex/card'$(reboot).jpg"},
+        {"appId": "spotify-beehive", "cardSnapShotFilePath": "/tmp/snapshots/spotify-beehive/card.bmp"},
+        {"appId": "bad id", "cardSnapShotFilePath": "/tmp/snapshots/bad id/card.jpg"},
+        {"appId": "org.jellyfin.webos", "cardSnapShotFilePath": "/tmp/snapshots/org.jellyfin.webos/RECENTS.PNG"},
+    ]});
+    assert_eq!(
+        crate::snapshots::parse(&reply),
+        vec![
+            (
+                "netflix".to_string(),
+                "/tmp/snapshots/netflix/card_1.jpg".to_string()
+            ),
+            (
+                "org.jellyfin.webos".to_string(),
+                "/tmp/snapshots/org.jellyfin.webos/RECENTS.PNG".to_string()
+            ),
+        ]
+    );
+    assert!(crate::snapshots::parse(&json!({"returnValue": false})).is_empty());
+    // As the 65UQ801C0SB (webOS 7.6) answers: its compositor takes none.
+    assert!(crate::snapshots::capture_disabled(&json!({
+        "configs": {"tv.hw.supportNMRM": false, "com.webos.surfacemanager.disableCapture": true},
+        "returnValue": true
+    })));
+    assert!(!crate::snapshots::capture_disabled(
+        &json!({"configs": {}, "returnValue": true})
+    ));
+}
+
+#[test]
+fn a_snapshot_is_cropped_from_its_centre_to_the_cards_shape() {
+    // A full 16:9 frame, red at the edges that the card's shape crops away.
+    let mut frame = image::RgbaImage::from_pixel(1920, 1080, image::Rgba([0, 0, 255, 255]));
+    for y in 0..1080 {
+        for x in (0..8).chain(1912..1920) {
+            frame.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+        }
+    }
+    let mut bytes = Vec::new();
+    frame
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let card = crate::snapshots::card(&bytes).unwrap();
+    assert_eq!(card.dimensions(), crate::snapshots::CARD);
+    assert!(card.pixels().all(|pixel| pixel[0] < 40 && pixel[2] > 200));
+    assert!(crate::snapshots::card(b"not a picture").is_none());
+}
+
+#[test]
+fn switcher_cards_show_snapshots_and_ask_for_them_as_they_open() {
+    let mut state = ready();
+    state.preferences.reduced_motion = true;
+    state.open(1);
+    state.open_switcher(vec!["netflix".into(), "youtube.leanback.v4".into()]);
+    assert_eq!(
+        state.snapshots_wanted,
+        Some(vec![
+            "netflix".to_string(),
+            "youtube.leanback.v4".to_string()
+        ])
+    );
+    let pictures = |state: &State| {
+        view::scene(state, &test_assets(), time::OffsetDateTime::UNIX_EPOCH)
+            .draw
+            .iter()
+            .filter(|draw| matches!(draw, crate::renderer::Draw::AppImage(image, ..) if image.key.starts_with("snapshot:")))
+            .count()
+    };
+    assert_eq!(pictures(&state), 0, "no snapshot read yet: the cards stay");
+    state.snapshots.insert_for_test(
+        "netflix",
+        crate::app_artwork::Artwork::picture(
+            "snapshot:netflix".into(),
+            1,
+            image::RgbaImage::new(8, 8),
+            crate::snapshots::CORNER,
+        ),
+    );
+    assert_eq!(pictures(&state), 1);
+    assert_eq!(state.snapshots.shown("netflix", true), 1.);
+    assert_eq!(state.snapshots.shown("youtube.leanback.v4", true), 0.);
+}
+
+#[test]
+fn quitting_ends_a_web_app_and_falls_back_to_closing_it() {
+    let command = crate::platform::close_command("youtube.leanback.v4");
+    let kill = command
+        .find("luna://com.palm.webappmanager/killApp '{\"appId\":\"youtube.leanback.v4\"}'")
+        .expect("WebAppMgr ends the page");
+    let close = command
+        .find("luna://com.webos.applicationManager/closeByAppId '{\"id\":\"youtube.leanback.v4\"}'")
+        .expect("anything else is closed as before");
+    assert!(kill < close);
+    // Only a successful kill skips the close.
+    assert!(command.contains("*'\"returnValue\":true'*"));
+    assert!(command.contains("exit 0;;"));
+}
+
+#[test]
+fn only_apps_the_owner_installed_can_be_uninstalled() {
+    use crate::uninstall::{allowed, removable};
+    for id in [
+        crate::platform::APP_ID,
+        crate::platform::HOME_ID,
+        "com.ecklf.luma",
+        "org.webosbrew.hbchannel",
+        "org.webosbrew.hbchannel.service",
+        "com.webos.app.browser",
+        "com.webos.app.hdmi1",
+        "com.lge.app.foo",
+        "com.palm.app.settings",
+        crate::state::SETTINGS_TILE,
+        crate::state::SEARCH_TILE,
+        "invalid';reboot",
+        "",
+    ] {
+        assert!(!allowed(id), "{id} must be protected");
+        assert!(crate::uninstall::command(id).is_err());
+    }
+    assert!(allowed("netflix") && allowed("com.disney.disneyplus-prod"));
+    let store = "/media/cryptofs/apps/usr/palm/applications/netflix";
+    assert!(removable(&json!({"id": "netflix", "folderPath": store})));
+    assert!(removable(
+        &json!({"id": "netflix", "removable": true, "folderPath": "/usr/palm/applications/netflix"})
+    ));
+    // webOS's own word is final; a system image app without one is not.
+    assert!(!removable(
+        &json!({"id": "netflix", "removable": false, "folderPath": store})
+    ));
+    assert!(!removable(
+        &json!({"id": "netflix", "systemApp": true, "folderPath": store})
+    ));
+    assert!(!removable(
+        &json!({"id": "netflix", "folderPath": "/usr/palm/applications/netflix"})
+    ));
+    assert!(!removable(
+        &json!({"id": "netflix", "folderPath": "/media/cryptofs/apps/../../usr/palm"})
+    ));
+    assert!(!removable(
+        &json!({"id": "com.webos.app.browser", "removable": true})
+    ));
+    let apps = normalize_apps(&json!([
+        {"id": "netflix", "title": "Netflix", "folderPath": store},
+        {"id": "com.webos.app.livetv", "title": "Live TV", "visible": true, "removable": true},
+    ]))
+    .unwrap();
+    assert!(
+        apps.iter()
+            .find(|app| app.id == "netflix")
+            .unwrap()
+            .removable
+    );
+    assert!(
+        !apps
+            .iter()
+            .find(|app| app.id == "com.webos.app.livetv")
+            .unwrap()
+            .removable
+    );
+    // A removal is only confirmed by a complete list without the app.
+    assert_eq!(
+        crate::uninstall::confirms_removal(&json!([{"id": "plex"}]), "netflix"),
+        Ok(true)
+    );
+    assert_eq!(
+        crate::uninstall::confirms_removal(&json!([{"id": "netflix"}]), "netflix"),
+        Ok(false)
+    );
+    assert!(crate::uninstall::confirms_removal(&json!([{"title": "?"}]), "netflix").is_err());
+    let command = crate::uninstall::command("netflix").unwrap();
+    assert!(command.starts_with("/usr/bin/node -e '") && command.ends_with(" 'netflix'"));
+    assert!(command.contains("com.webos.appInstallService/remove"));
+}
+
+/// Opens the context menu on `id` in the grid.
+fn menu_for(state: &mut State, id: &str) -> Vec<Target> {
+    state.open(1);
+    state.focus = Target::App(id.into());
+    state.options();
+    controls(state).into_iter().map(|c| c.target).collect()
+}
+
+#[test]
+fn uninstall_is_offered_last_and_only_where_webos_allows_it() {
+    let mut state = ready();
+    // Netflix, from the store: Move, Hide, Uninstall.
+    let targets = menu_for(&mut state, "netflix");
+    assert_eq!(
+        targets,
+        vec![Target::Option(0), Target::Option(1), Target::Option(2)]
+    );
+    assert!(ui_text(&state).iter().any(|line| line == "Uninstall"));
+    // LG's own apps, Homebrew Channel, inputs and Lounge's tiles: no Uninstall.
+    for id in [
+        "com.webos.app.livetv",
+        "org.webosbrew.hbchannel",
+        "com.webos.app.hdmi1",
+        crate::state::SEARCH_TILE,
+        crate::state::SETTINGS_TILE,
+    ] {
+        state.back();
+        let targets = menu_for(&mut state, id);
+        assert!(!targets.contains(&Target::Option(2)), "{id}");
+        state.focus = Target::Option(2);
+        state.activate();
+        assert!(
+            !matches!(state.overlay, Some(Overlay::Uninstall { .. })),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn the_uninstall_alert_opens_on_cancel_and_back_leaves_everything_as_it_was() {
+    let mut state = ready();
+    menu_for(&mut state, "netflix");
+    state.focus = Target::Option(2);
+    assert!(state.activate().is_empty());
+    assert!(matches!(&state.overlay, Some(Overlay::Uninstall { id, .. }) if id == "netflix"));
+    // Cancel is focused, and only the alert's two buttons take focus.
+    assert_eq!(state.focus, Target::Alert(1));
+    let targets: Vec<_> = controls(&state).into_iter().map(|c| c.target).collect();
+    assert_eq!(targets, vec![Target::Alert(0), Target::Alert(1)]);
+    let text = ui_text(&state);
+    assert!(text.iter().any(|line| line == "Uninstall “Netflix”?"));
+    assert!(text.iter().any(|line| line == "Cancel"));
+    // Up reaches Uninstall, Down returns to Cancel.
+    state.direction(Direction::Up, &controls(&state));
+    assert_eq!(state.focus, Target::Alert(0));
+    state.direction(Direction::Down, &controls(&state));
+    assert_eq!(state.focus, Target::Alert(1));
+    // Cancel (OK) and Back both close it onto the tile, removing nothing.
+    assert!(state.activate().is_empty());
+    assert!(state.overlay.is_none());
+    assert_eq!(state.focus, Target::App("netflix".into()));
+    menu_for(&mut state, "netflix");
+    state.focus = Target::Option(2);
+    state.activate();
+    assert!(state.back().is_empty());
+    assert!(state.overlay.is_none());
+    assert_eq!(state.focus, Target::App("netflix".into()));
+    assert!(state.uninstalling.is_empty());
+    assert!(state.apps().iter().any(|app| app.id == "netflix"));
+}
+
+#[test]
+fn an_uninstall_removes_the_tile_at_once_and_only_success_forgets_it() {
+    let mut state = ready();
+    state.preferences.favorites = Some(vec!["netflix".into(), "youtube.leanback.v4".into()]);
+    state.preferences.recent = vec!["netflix".into()];
+    let before: Vec<String> = {
+        state.open(1);
+        state.apps().iter().map(|app| app.id.clone()).collect()
+    };
+    let slot = before.iter().position(|id| id == "netflix").unwrap();
+    menu_for(&mut state, "netflix");
+    state.focus = Target::Option(2);
+    state.activate();
+    state.focus = Target::Alert(0);
+    assert_eq!(state.activate(), vec![Effect::Uninstall("netflix".into())]);
+    // Gone from the grid; focus on the tile that took its place.
+    assert!(state.overlay.is_none());
+    assert!(!state.apps().iter().any(|app| app.id == "netflix"));
+    assert_eq!(state.focus, Target::App(before[slot + 1].clone()));
+    // Asked once only: it is no longer offered while on its way.
+    assert!(!state.can_uninstall("netflix"));
+    // A reply for anything else changes nothing.
+    assert!(state.uninstalled("plex", Ok(())).is_empty());
+    // Refused: the tile comes back, every preference as it was.
+    assert!(
+        state
+            .uninstalled("netflix", Err("denied".into()))
+            .is_empty()
+    );
+    assert!(state.apps().iter().any(|app| app.id == "netflix"));
+    assert_eq!(state.preferences.recent, vec!["netflix".to_string()]);
+    assert!(state.notice.as_ref().unwrap().0.contains("Netflix"));
+    // Removed: Lounge forgets it and reads the app list again.
+    state.uninstalling.push("netflix".into());
+    assert_eq!(
+        state.uninstalled("netflix", Ok(())),
+        vec![Effect::Save, Effect::Refresh]
+    );
+    assert!(!state.inventory.apps.iter().any(|app| app.id == "netflix"));
+    assert_eq!(
+        state.preferences.favorites,
+        Some(vec!["youtube.leanback.v4".to_string()])
+    );
+    assert!(state.preferences.recent.is_empty());
+    assert!(state.uninstalling.is_empty());
 }
