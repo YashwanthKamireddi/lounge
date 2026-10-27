@@ -177,6 +177,24 @@ fn weather_tick(state: &mut State, service: &weather_service::Service, visible: 
 
 /// Lounge's start as the TV's Home, or a normal start that opens that Home instead. Some(result)
 /// ends this run before any window exists.
+/// As Home: mounts the updated executable in LG Home's place and becomes it (the same
+/// process, so webOS sees nothing change). Returns only if that failed.
+fn restart_updated_home(before: impl FnOnce()) {
+    match platform::refresh_home_mount() {
+        Ok(()) => {
+            use std::os::unix::process::CommandExt;
+            before();
+            platform::status("home: a package update replaced Lounge; starting the new one");
+            let error = std::process::Command::new(platform::LG_HOME_EXE)
+                .args(std::env::args_os().skip(1))
+                .env("LOUNGE_HOME_RESTARTED", "1")
+                .exec();
+            platform::status(&format!("home: could not start the new Lounge: {error}"));
+        }
+        Err(error) => platform::status(&format!("home: renewing the mount failed: {error}")),
+    }
+}
+
 fn home_start(options: &Options) -> Option<Result<(), String>> {
     if !platform::is_home() {
         return platform::redirect_to_home().then_some(Ok(()));
@@ -189,18 +207,7 @@ fn home_start(options: &Options) -> Option<Result<(), String>> {
     // A package update replaced the executable the mount holds: mount the new one and start
     // again from it, once (the same process, so webOS sees nothing change).
     if platform::home_mount_stale() && std::env::var_os("LOUNGE_HOME_RESTARTED").is_none() {
-        match platform::refresh_home_mount() {
-            Ok(()) => {
-                use std::os::unix::process::CommandExt;
-                platform::status("home: a package update replaced Lounge; starting the new one");
-                let error = std::process::Command::new(platform::LG_HOME_EXE)
-                    .args(std::env::args_os().skip(1))
-                    .env("LOUNGE_HOME_RESTARTED", "1")
-                    .exec();
-                platform::status(&format!("home: could not start the new Lounge: {error}"));
-            }
-            Err(error) => platform::status(&format!("home: renewing the mount failed: {error}")),
-        }
+        restart_updated_home(|| {});
     }
     if crash_guard::begin(std::path::Path::new(crash_guard::HOME_MARKER)) {
         platform::status("home: started 3 times in a minute without coming up; LG Home is back");
@@ -826,6 +833,12 @@ impl Shell {
                 WindowEvent::Hidden | WindowEvent::Minimized => {
                     self.presence.hide();
                     save_order(&mut self.state, &self.writer);
+                    // Resident as Home, an update only takes effect on a restart: behind
+                    // the app, where nobody sees it, Lounge becomes the new version.
+                    if platform::is_home() && platform::executable_replaced() {
+                        // Settings still queued are written first.
+                        restart_updated_home(|| self.writer.finish());
+                    }
                     release_memory(&mut self.renderer, &mut self.preload);
                     self.remote.press = None;
                     if matches!(self.state.overlay, Some(Overlay::SystemKeyboard)) {

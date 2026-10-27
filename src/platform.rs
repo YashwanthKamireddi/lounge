@@ -61,6 +61,12 @@ pub fn install_dir() -> Result<PathBuf, String> {
     installation().map(|found| found.directory)
 }
 
+/// This running executable's file was replaced since it started (a package update).
+pub fn executable_replaced() -> bool {
+    std::fs::read_link("/proc/self/exe")
+        .is_ok_and(|path| path.to_string_lossy().ends_with(" (deleted)"))
+}
+
 /// As Home: the mount still holds an executable a package update has since replaced.
 pub fn home_mount_stale() -> bool {
     is_home() && installation().is_ok_and(|found| !found.current)
