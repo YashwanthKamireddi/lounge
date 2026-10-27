@@ -106,7 +106,10 @@ impl Preload {
     /// decodes again in the background. Skipped as recent, a refill on a quick
     /// return (an app closed within seconds) left them to load on the drawing
     /// thread mid-scroll, ~140 ms each on the TV.
-    pub fn forget(&self) {
+    pub fn forget(&mut self) {
+        // The trim also let go of logo meshes no frame drew: each may be read
+        // again (one rebuilt on first draw would stall that frame).
+        self.vectors.clear();
         let _ = self.requests.send(Request::Forget);
     }
 
@@ -416,6 +419,13 @@ pub fn refill(
         for name in names {
             let path = assets.path(name);
             if !renderer.has(&path) && std::path::Path::new(&path).is_file() {
+                preload.request(path);
+            }
+        }
+        // Its logo mesh too, if the trim let it go (read once per trim).
+        if !assets.tiles.contains_key(&app.id) && app.brand != "generic" {
+            let path = assets.path(format!("logos/{}.lvec", app.brand));
+            if std::path::Path::new(&path).is_file() {
                 preload.request(path);
             }
         }

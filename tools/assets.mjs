@@ -150,16 +150,23 @@ for (const [id, relative] of Object.entries(map)) {
 }
 await fs.writeFile(path.join(out, 'icons.json'), `${JSON.stringify(icons, null, 2)}\n`);
 
-// Optional owner-supplied full-bleed card artwork in untracked local/tiles/,
-// named by exact app ID. Rendered at 2x the 270x154.4 card, as GLES2 has no mipmaps here.
+// Full-bleed tvOS card artwork named by exact app ID: the bundled set in
+// assets/tiles/, then any owner overrides in untracked local/tiles/. Baked into
+// the package (and ASTC), so every card is on screen from the first frame.
+// Rendered at 2x the 270x154.4 card, as GLES2 has no mipmaps here.
 const tiles = path.join(out, 'tiles');
 await fs.rm(tiles, { recursive: true, force: true });
 await fs.mkdir(tiles);
 const tileColors = {};
-for (const file of await fs.readdir(path.join(root, 'local/tiles')).catch(() => [])) {
-  const id = file.replace(/\.(png|jpe?g)$/i, '');
-  if (id === file || !/^[a-zA-Z0-9._-]+$/.test(id)) continue;
-  const input = sharp(path.join(root, 'local/tiles', file));
+const tileSources = new Map();
+for (const directory of ['assets/tiles', 'local/tiles']) {
+  for (const file of await fs.readdir(path.join(root, directory)).catch(() => [])) {
+    const id = file.replace(/\.(png|jpe?g)$/i, '');
+    if (id !== file && /^[a-zA-Z0-9._-]+$/.test(id)) tileSources.set(id, path.join(root, directory, file));
+  }
+}
+for (const [id, source] of tileSources) {
+  const input = sharp(source);
   const { width, height } = await input.metadata();
   const [w, h] = [540, 309];
   // Square store icons keep the whole mark; their edge colour fills the wider card.

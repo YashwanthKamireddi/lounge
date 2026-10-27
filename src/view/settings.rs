@@ -431,15 +431,25 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
         // Different panels cross: the old one goes as the new one comes.
         // The new one comes up over the old, which goes only once it is
         // mostly there.
+        // Two frosted cards in the same place are one card: it stays whole and
+        // only the glyphs and words cross (two half-faded cards dipped).
         Some((t, _, _)) if state.settings_ghost.is_some() && before != shown => {
+            let icon = settings_icon(state, assets, before) && settings_icon(state, assets, shown);
+            let card = glyph_card(state, assets, before) && glyph_card(state, assets, shown);
+            if icon {
+                about_icon(out, assets);
+            } else if card {
+                about_card(out);
+            }
+            let shared = icon || card;
             let start = out.draw.len();
-            about(out, state, assets, before);
+            about(out, state, assets, before, !shared);
             out.fade(start, 1. - smooth(0.35, 0.9, t), 1.);
             let start = out.draw.len();
-            about(out, state, assets, shown);
+            about(out, state, assets, shown, !shared);
             out.fade(start, smooth(0.1, 0.7, t), 1.);
         }
-        _ => about(out, state, assets, shown),
+        _ => about(out, state, assets, shown, true),
     }
     if let (Some((t, eased, direction)), Some(ghost)) = (push, &state.settings_ghost) {
         let start = out.draw.len();
@@ -482,7 +492,40 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
 /// The left panel for the section list (`None`) or a section. Background
 /// shows the picture itself; the others a frosted card with a solid glyph
 /// (solid, so overlapping strokes never double up as darker patches).
-fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>) {
+/// Whether `section`'s left panel is the frosted card with a glyph (not the
+/// wallpaper picture or a profile picture).
+fn glyph_card(state: &State, assets: &Assets, section: Option<usize>) -> bool {
+    section != Some(1)
+        && !(section == Some(0) && state.subpage == Some(Subpage::Avatar))
+        && !settings_icon(state, assets, section)
+}
+
+/// Whether `section`'s left panel is the Settings app's own icon, as tvOS
+/// shows it: the section list and General.
+fn settings_icon(state: &State, assets: &Assets, section: Option<usize>) -> bool {
+    (section.is_none() || (section == Some(0) && state.subpage != Some(Subpage::Avatar)))
+        && assets.tiles.contains_key(crate::state::SETTINGS_TILE)
+}
+
+const ABOUT_ICON: Rect = Rect::new(110., 300., 640., 366.);
+
+fn about_icon(out: &mut Scene, assets: &Assets) {
+    out.shadow(ABOUT_ICON, 40., 40., 18., 0.35);
+    out.image(
+        assets.path(format!("tiles/{}.png", crate::state::SETTINGS_TILE)),
+        ABOUT_ICON,
+        40.,
+        false,
+    );
+}
+
+const ABOUT_CARD: Rect = Rect::new(190., 250., 480., 480.);
+
+fn about_card(out: &mut Scene) {
+    out.shape(ABOUT_CARD, 110., out.theme.wash(0.2));
+}
+
+fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>, card: bool) {
     // Choosing a profile picture: the focused one, large and round.
     if section == Some(0) && state.subpage == Some(Subpage::Avatar) {
         let choices = state.avatar_choices();
@@ -531,7 +574,11 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
             ("aboutInputs", "input-hdmi-bold"),
         ][section],
     };
-    if glyph.is_empty() {
+    if settings_icon(state, assets, section) {
+        if card {
+            about_icon(out, assets);
+        }
+    } else if glyph.is_empty() {
         let frame = Rect::new(110., 310., 640., 360.);
         out.shadow(frame, 36., 40., 18., 0.35);
         let photo = |id: &str| assets.path(format!("wallpapers/{id}.jpg"));
@@ -552,9 +599,15 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
             None => out.image(photo(state.wallpaper()), frame, 36., false),
         }
     } else {
-        let card = Rect::new(190., 250., 480., 480.);
-        out.shape(card, 110., out.theme.wash(0.2));
-        out.icon(assets, glyph, card.inset(130.), [0.15, 0.16, 0.19, 1.]);
+        if card {
+            about_card(out);
+        }
+        out.icon(
+            assets,
+            glyph,
+            ABOUT_CARD.inset(130.),
+            [0.15, 0.16, 0.19, 1.],
+        );
     }
     out.text(
         i18n::t(about),

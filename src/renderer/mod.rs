@@ -1652,7 +1652,9 @@ fn trim_geometry(
 ) {
     text_runs.retain(|_, run| run.frame == frame);
     text_runs.shrink_to_fit();
-    vectors.retain(|_, entry| entry.frame == frame);
+    // Interface glyphs stay: they are small, any screen may need one at once,
+    // and one rebuilt on first draw would stall that frame.
+    vectors.retain(|path, entry| entry.frame == frame || path.contains("ui-icons/"));
     vectors.shrink_to_fit();
     *glyphs = HashMap::new();
 }
