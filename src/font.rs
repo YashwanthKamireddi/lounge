@@ -81,9 +81,13 @@ impl Font {
         if outline.open {
             outline.builder.end(true);
         }
-        // Flatten at subpixel precision for glyphs up to 256 physical px/em,
-        // covering the current 1080p and 4K typography with the same geometry.
-        geometry::tessellate(&outline.builder.build(), 0.15 / 256., FillRule::NonZero)
+        // Flatten to within 0.15 px at 64 px/em: at most 0.21 px off the true
+        // curve for the largest text (the 90 px greeting) on the 1080p plane
+        // and 0.42 px in a 4K capture, where it differed from the previous
+        // 256 px/em geometry only in single anti-aliased edge pixels (no
+        // visible change at 6x zoom). It cut glyphs from 506 to 323 vertices
+        // on average (a Settings page: 33.3k to 20.7k text triangles).
+        geometry::tessellate(&outline.builder.build(), 0.15 / 64., FillRule::NonZero)
     }
 }
 
