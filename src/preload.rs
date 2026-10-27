@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn a_logo_mesh_is_read_once() {
+    fn a_logo_mesh_is_read_once_until_a_trim_lets_it_go() {
         let folder = folder("logo");
         let logo = folder.join("brand.lvec").to_string_lossy().into_owned();
         std::fs::write(&logo, b"mesh").unwrap();
@@ -583,10 +583,16 @@ mod tests {
             arrival(&mut preload),
             Some((_, Some(Preloaded::Vector(_))))
         ));
-        // An inventory refresh asks again (and the worker's memory was cleared).
+        // An inventory refresh asks again: still on the GPU, not read again.
+        preload.request(logo.clone());
+        assert!(arrival(&mut preload).is_none());
+        // Behind an app the trim let it go: asked for on return, read again.
         preload.forget();
         preload.request(logo);
-        assert!(arrival(&mut preload).is_none());
+        assert!(matches!(
+            arrival(&mut preload),
+            Some((_, Some(Preloaded::Vector(_))))
+        ));
         std::fs::remove_dir_all(folder).unwrap();
     }
 }
