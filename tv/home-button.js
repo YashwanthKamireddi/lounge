@@ -63,11 +63,14 @@ try {
   var rest = chain.filter(function (entry) {
     return !ours(entry);
   });
+  var changed =
+    !fs.existsSync(FILE) || fs.readFileSync(FILE, 'utf8') !== fs.readFileSync(NEXT, 'utf8');
+  // A Lounge update carries a newer filter: where it is switched on, the read
+  // at start-up puts the new one in (only when it differs, as each chain
+  // write reloads every filter).
+  if (mode === 'status' && inChain && changed) mode = 'on';
   if (mode === 'on') {
-    var changed =
-      !inChain ||
-      !fs.existsSync(FILE) ||
-      fs.readFileSync(FILE, 'utf8') !== fs.readFileSync(NEXT, 'utf8');
+    changed = changed || !inChain;
     fs.renameSync(NEXT, FILE);
     // After Glasshouse's filter: where Glasshouse maps Home itself, it keeps the key.
     var at =
