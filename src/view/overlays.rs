@@ -69,15 +69,8 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
         c(PLATTER, 0.34),
     );
     // One thin specular rim, as Apple's glass has: bright where light falls,
-    // faint below. (Two stacked rims read as a soft band once the TV
-    // doubles every pixel to 4K.)
-    out.draw.push(Draw::GradientRing(
-        pill,
-        pill.h / 2.,
-        1.5,
-        c(0xffffff, 0.55),
-        c(0xffffff, 0.06),
-    ));
+    // faint below.
+    out.rim(pill, pill.h / 2., 0.55, 0.06);
     let size = 46. * k;
     let circle = Rect::new(
         pill.x + pill.w - 30. * k - size / 2.,
@@ -291,15 +284,12 @@ pub(super) fn options(
             0.28 + 0.12 * focus,
         );
         out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-        let (top, bottom) = out.theme.lens();
-        out.draw
-            .push(Draw::Glass(backdrop.clone(), pill, radius, top, bottom));
-        out.shape(pill, radius, out.theme.veil(0.34));
-        out.shape(pill, radius, c(0xffffff, 0.97 * focus));
+        out.glass_over(backdrop.clone(), pill, radius, out.theme.veil(0.34));
+        if focus > 0. {
+            out.shape(pill, radius, c(0xffffff, 0.97 * focus));
+        }
         out.draw.push(Draw::Soft(None));
-        let (rim_top, rim_bottom) = out.theme.edge(0.5 * (1. - focus), 0.1 * (1. - focus));
-        out.draw
-            .push(Draw::GradientRing(pill, radius, 1.5, rim_top, rim_bottom));
+        out.rim(pill, radius, 0.5 * (1. - focus), 0.1 * (1. - focus));
         let ink: [f32; 4] = if destructive == Some(index) {
             out.theme.destructive(focus)
         } else {
@@ -515,25 +505,13 @@ pub(super) fn toast(out: &mut Scene, state: &State, assets: &Assets, notice: &st
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
     out.glass(
         assets,
-        &state.preferences.background,
+        state.wallpaper(),
         rect,
         32.,
         out.theme.veil(0.6 - 0.12 * f32::from(u8::from(focused))),
     );
-    out.draw.push(Draw::RoundedGradient(
-        rect,
-        32.,
-        c(0xffffff, 0.12),
-        c(0xffffff, 0.02),
-    ));
     out.draw.push(Draw::Soft(None));
-    out.draw.push(Draw::GradientRing(
-        rect,
-        32.,
-        1.5,
-        c(0xffffff, 0.5),
-        c(0xffffff, if focused { 0.3 } else { 0.06 }),
-    ));
+    out.rim(rect, 32., 0.5, if focused { 0.3 } else { 0.06 });
     let badge = Rect::new(rect.x + 22., rect.y + (height - icon) / 2., icon, icon);
     out.shape(badge, 13., c(0x25272d, 1.));
     out.image(assets.path("app-icon.png"), badge, 13., false);

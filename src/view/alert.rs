@@ -74,7 +74,7 @@ fn alert(
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
     out.glass(
         assets,
-        &state.preferences.background,
+        state.wallpaper(),
         panel,
         RADIUS,
         out.theme.veil(0.72),
@@ -86,9 +86,7 @@ fn alert(
         c(0xffffff, 0.02),
     ));
     out.draw.push(Draw::Soft(None));
-    let (rim_top, rim_bottom) = out.theme.edge(0.5, 0.08);
-    out.draw
-        .push(Draw::GradientRing(panel, RADIUS, 1.5, rim_top, rim_bottom));
+    out.rim(panel, RADIUS, 0.5, 0.08);
     let mut y = panel.y + PAD;
     out.text(
         title,

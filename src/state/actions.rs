@@ -241,11 +241,12 @@ impl State {
                 return vec![Effect::Save];
             }
             Target::Background(index) => {
-                if !self.preferences.reduced_motion
-                    && self.preferences.background != BACKGROUNDS[index].0
-                {
-                    self.previous_background =
-                        Some((self.preferences.background.clone(), crate::clock::now()));
+                if self.preferences.background != BACKGROUNDS[index].0 {
+                    // The cross-fade starts once the new pictures are on the
+                    // GPU; from what shows now (the old wallpaper still
+                    // waiting, or the one a running fade is heading to).
+                    let shown = self.wallpaper().to_owned();
+                    self.previous_background = Some((shown, None));
                 }
                 self.preferences.background = BACKGROUNDS[index].0.into();
                 return vec![Effect::Save];

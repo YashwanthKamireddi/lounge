@@ -11,7 +11,7 @@ pub(super) fn shelf_art(state: &State, assets: &Assets, id: Option<&str>) -> (St
             assets.path(format!("heroes/{id}-glass.png")),
         ),
         _ => {
-            let background = &state.preferences.background;
+            let background = state.wallpaper();
             (
                 assets.path(format!("wallpapers/{background}.jpg")),
                 assets.path(format!("wallpapers/{background}-home-glass.png")),

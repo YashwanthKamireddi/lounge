@@ -150,22 +150,17 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
             ),
             WHITE,
         );
-        // Size and width in coarse steps: a focus lift reuses a few text
-        // layouts rather than making one per frame.
-        let size = (rect.h * 0.17 * 2.).round() / 2.;
-        let (width, height) = (
-            (rect.w / 16.).round() * 16.,
-            (rect.h * 0.24 / 4.).round() * 4.,
-        );
+        // Laid out once, for a resting card, and drawn at the card's scale:
+        // a focus lift or the switcher's glide grows it smoothly with the
+        // card, where re-laying it out stepped it through half-pixel sizes.
+        let scale = rect.h / super::FACE_HEIGHT;
+        // Whole pixels: the layout is the run's cache key, and the width
+        // unscaled again varies in its last bits from frame to frame.
+        let (width, height) = ((rect.w / scale).round(), super::FACE_HEIGHT);
         out.text(
             &app.title,
-            Rect::new(
-                rect.x + (rect.w - width) / 2.,
-                rect.y + rect.h * 0.56,
-                width,
-                height,
-            ),
-            text(size, 650, 0.),
+            Rect::new(rect.x, rect.y + rect.h * 0.56, width, height * 0.24),
+            text(height * 0.17, 650, 0.).scaled(scale),
             WHITE,
             true,
         );

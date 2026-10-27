@@ -26,10 +26,7 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
     // background's own pass where it can); once it covers the screen the
     // scene draws it as the background itself (see `scene`).
     if !state.switcher_covers() {
-        let backdrop = assets.path(format!(
-            "wallpapers/{}-glass.png",
-            state.preferences.background
-        ));
+        let backdrop = super::blurred(assets, state.wallpaper());
         let veil = super::SWITCHER_VEIL;
         if !out.fade_into(&backdrop, [veil, veil, veil + 0.02, 1.], appear) {
             let shade = [veil, veil, veil + 0.02, appear];
