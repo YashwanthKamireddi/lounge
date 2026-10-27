@@ -144,6 +144,7 @@ pub struct Preferences {
     pub top_shelf_art: bool,
     pub hour_24: bool,
     pub reduced_motion: bool,
+    #[serde(deserialize_with = "lenient_modes")]
     pub input_modes: BTreeMap<String, InputMode>,
     #[serde(deserialize_with = "crate::weather::deserialize_enabled")]
     pub show_weather: bool,
@@ -156,7 +157,30 @@ pub struct Preferences {
     /// The profile picture: a file in the avatars folder, or "rotate" for all
     /// of them in turn. None is the first picture.
     pub avatar: Option<String>,
+    #[serde(deserialize_with = "lenient")]
     pub appearance: Appearance,
+}
+
+/// A value this Lounge does not know (written by a newer or older one) falls
+/// back to its default, instead of failing the whole file and resetting
+/// every preference.
+fn lenient<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + serde::de::DeserializeOwned,
+{
+    Ok(serde_json::from_value(serde_json::Value::deserialize(deserializer)?).unwrap_or_default())
+}
+
+/// Input modes one by one: an unknown mode drops only its own entry.
+fn lenient_modes<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, InputMode>, D::Error> {
+    let raw = BTreeMap::<String, serde_json::Value>::deserialize(deserializer).unwrap_or_default();
+    Ok(raw
+        .into_iter()
+        .filter_map(|(id, mode)| Some((id, serde_json::from_value(mode).ok()?)))
+        .collect())
 }
 
 impl Default for Preferences {
@@ -238,6 +262,18 @@ impl Preferences {
             clean(ids);
         }
         clean(&mut self.hidden);
+        // Settings holds the way back to hidden apps, so it is never hidden
+        // (an earlier menu offered it, and that locked Settings away).
+        self.hidden.retain(|id| id != crate::state::SETTINGS_TILE);
+        // An input hidden from its tile by an earlier version is Off in
+        // Settings › Inputs instead, its one switch.
+        let (inputs, apps): (Vec<String>, Vec<String>) = std::mem::take(&mut self.hidden)
+            .into_iter()
+            .partition(|id| id.starts_with("com.webos.app.hdmi"));
+        self.hidden = apps;
+        for id in inputs {
+            self.input_modes.insert(id, InputMode::Off);
+        }
         clean(&mut self.recent);
         self.recent.truncate(24);
         self.input_modes.retain(|id, _| valid_app_id(id));

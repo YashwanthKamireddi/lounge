@@ -31,10 +31,7 @@ pub(crate) fn script(
             state.options();
             vec![]
         }
-        "hold" => {
-            state.hold();
-            vec![]
-        }
+        "hold" => state.hold(),
         "wait" => vec![],
         action if action.starts_with("type:") => {
             let field = if state.subpage == Some(state::Subpage::WeatherLocation) {

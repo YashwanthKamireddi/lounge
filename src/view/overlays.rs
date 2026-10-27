@@ -230,13 +230,14 @@ pub(super) fn options(
     const ICON: f32 = 24.;
     const SPACE: f32 = 10.;
     let hidden = state.preferences.hidden.iter().any(|item| item == id);
-    let actions = [
-        (i18n::t("move"), "grid-bold"),
-        (
+    let mut actions = vec![(i18n::t("move"), "grid-bold")];
+    // Settings is never hidden: the way back to hidden apps is inside it.
+    if id != crate::state::SETTINGS_TILE {
+        actions.push((
             i18n::t(if hidden { "showApp" } else { "hideApp" }),
             if hidden { "eye-bold" } else { "eye-off-bold" },
-        ),
-    ];
+        ));
+    }
     let style = text(24., 600, 0.);
     let widths: Vec<f32> = actions
         .iter()

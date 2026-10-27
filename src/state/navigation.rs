@@ -270,9 +270,10 @@ impl State {
                 }
                 return vec![];
             }
+            // Every row with a chevron opens its page on Right, as on tvOS.
             if matches!(
                 self.focus,
-                Target::Setting(1)
+                Target::Setting(1 | 7 | 8 | 9)
                     | Target::InputMode(_)
                     | Target::WeatherLocation
                     | Target::WeatherTemperature

@@ -7,6 +7,11 @@ impl State {
             return;
         }
         if let Target::App(id) = &self.focus {
+            // The pills anchor to the tile, so a full-screen Top Shelf lowers.
+            if self.expanded {
+                self.expanded = false;
+                self.scroll = 0.;
+            }
             self.options_closed = None;
             self.overlay = Some(Overlay::Options {
                 id: id.clone(),
@@ -20,26 +25,45 @@ impl State {
         }
     }
 
-    /// Holding OK on an app starts Move at once, as on tvOS; elsewhere it
-    /// opens the options menu.
-    pub fn hold(&mut self) {
-        if self.page == Page::Apps
-            && self.overlay.is_none()
-            && self.moving.is_none()
-            && let Target::App(id) = self.focus.clone()
-        {
-            self.start_move(&id);
-        } else {
-            self.options();
+    /// Holding OK on an app starts Move at once, as on tvOS (or, in a
+    /// menu or Move, opens nothing new); on anything else it is OK.
+    pub fn hold(&mut self) -> Vec<Effect> {
+        if let Target::App(id) = self.focus.clone() {
+            if self.page == Page::Apps && self.overlay.is_none() && self.moving.is_none() {
+                self.start_move(&id);
+            } else {
+                self.options();
+            }
+            return vec![];
         }
+        // Anywhere else a slow press is still a press: a Settings row, a
+        // key, a menu pill or a switcher card does what OK does.
+        self.activate()
     }
 
     /// Enter Move for `id`. The home order becomes explicit (exactly as now
     /// shown, so nothing jumps); the dock is simply its first row.
     pub fn start_move(&mut self, id: &str) {
-        let order: Vec<String> = self.apps().iter().map(|app| app.id.clone()).collect();
+        // Move works on the grid, so a full-screen Top Shelf lowers first.
+        if self.expanded {
+            self.expanded = false;
+            self.scroll = 0.;
+        }
+        let mut order: Vec<String> = self.apps().iter().map(|app| app.id.clone()).collect();
         if !order.iter().any(|item| item == id) {
             return;
+        }
+        // Hidden apps keep their places in the order, so one shown again
+        // comes back where it was (Move's arrows skip over them).
+        for (index, item) in self
+            .preferences
+            .favorites(&self.inventory.apps)
+            .iter()
+            .enumerate()
+        {
+            if self.preferences.hidden.contains(item) && !order.contains(item) {
+                order.insert(index.min(order.len()), item.clone());
+            }
         }
         self.preferences.favorites = Some(order);
         self.moving = Some(id.into());
@@ -80,7 +104,15 @@ impl State {
             Target::DismissNotice => self.notice = None,
             Target::App(id) if id == SETTINGS_TILE => {
                 self.open(2);
+                // Settings opens on General, and Right enters General: the
+                // section is reset with the highlight, not left from last time.
+                self.section = 0;
                 self.focus = Target::Sidebar(0);
+                // The start-up read can time out on a busy cold boot; asking
+                // again here keeps the Home Button row from staying hidden.
+                if self.home_button.is_none() && !self.home_button_busy {
+                    return vec![Effect::HomeButton(None)];
+                }
                 return vec![];
             }
             Target::App(id) if id == SEARCH_TILE => {
@@ -305,9 +337,22 @@ impl State {
                 if index == 0 {
                     // tvOS "Move": any app, anywhere on the home screen.
                     self.start_move(&id);
-                    return vec![Effect::Save];
+                    if self.moving.is_some() {
+                        return vec![Effect::Save];
+                    }
+                    // The app went while its menu was open (uninstalled,
+                    // unplugged): focus goes back to a tile, as for Hide.
                 }
-                if index == 1 {
+                if index == 1 && self.inventory.inputs.iter().any(|input| input.id == id) {
+                    // An input is shown or hidden in one place, Settings ›
+                    // Inputs, so hiding its tile turns it Off there (the way
+                    // to bring it back is where one would look for it).
+                    self.preferences
+                        .input_modes
+                        .insert(id.clone(), crate::model::InputMode::Off);
+                    self.refresh_tiles();
+                    self.notify(i18n::format("appHidden", &[("app", &title)]));
+                } else if index == 1 && id != SETTINGS_TILE {
                     if self.preferences.hidden.contains(&id) {
                         self.preferences.hidden.retain(|item| item != &id);
                         self.notify(i18n::format("appRestored", &[("app", &title)]));

@@ -47,7 +47,8 @@ fn remote_routes_through_the_tvos_home_and_settings() {
     state.direction(Direction::Down, &controls(&state));
     assert!(!state.expanded && state.scroll == 0.);
     state.focus = Target::App(crate::state::SETTINGS_TILE.into());
-    assert!(state.activate().is_empty());
+    // Opening Settings asks the TV where the Home key goes until it has said.
+    assert_eq!(state.activate(), vec![Effect::HomeButton(None)]);
     assert_eq!(state.page, Page::Settings);
     assert_eq!(state.focus, Target::Sidebar(0));
     state.activate();
@@ -1217,4 +1218,234 @@ fn power_steps_recorded_on_the_tv_wake_lounge_only_from_standby() {
         let steps = replay(&[idle, ("Active", "")]);
         assert_eq!(steps, [(false, false), (false, false)], "{idle:?}");
     }
+}
+
+// Regressions found by walking every remote path (2026-10-27).
+
+fn order(state: &State) -> Vec<String> {
+    state.apps().iter().map(|app| app.id.clone()).collect()
+}
+
+#[test]
+fn settings_can_be_moved_but_never_hidden() {
+    use crate::state::SETTINGS_TILE;
+    let mut state = ready();
+    state.focus = Target::App(SETTINGS_TILE.into());
+    state.options();
+    state.focus = Target::Option(1);
+    state.activate();
+    assert!(
+        !state
+            .preferences
+            .hidden
+            .iter()
+            .any(|id| id == SETTINGS_TILE)
+    );
+    assert!(order(&state).iter().any(|id| id == SETTINGS_TILE));
+    // Anyone an earlier version locked out gets Settings back on load.
+    let mut preferences: Preferences =
+        serde_json::from_value(json!({"hidden": [SETTINGS_TILE, "plex"]})).unwrap();
+    preferences.sanitize();
+    assert_eq!(preferences.hidden, ["plex"]);
+}
+
+#[test]
+fn settings_opens_on_general_and_right_enters_general() {
+    use crate::state::SETTINGS_TILE;
+    let mut state = ready();
+    state.focus = Target::App(SETTINGS_TILE.into());
+    state.activate();
+    state.focus = Target::Sidebar(2);
+    state.activate();
+    state.back();
+    state.back();
+    state.focus = Target::App(SETTINGS_TILE.into());
+    state.activate();
+    assert_eq!(state.focus, Target::Sidebar(0));
+    let controls = controls(&state);
+    state.direction(Direction::Right, &controls);
+    assert_ne!(
+        state.focus,
+        Target::WeatherToggle,
+        "Right enters General, not last time's Weather"
+    );
+}
+
+#[test]
+fn number_keys_follow_the_grid_and_never_open_lounge_tiles() {
+    use crate::state::{SEARCH_TILE, SETTINGS_TILE};
+    let mut state = ready();
+    let first = order(&state)[0].clone();
+    state.focus = Target::App(first);
+    state.hold();
+    state.activate();
+    let launchable: Vec<String> = order(&state)
+        .into_iter()
+        .filter(|id| id != SETTINGS_TILE && id != SEARCH_TILE)
+        .collect();
+    for (slot, id) in launchable.iter().take(9).enumerate() {
+        assert_eq!(state.quick_launch(slot), vec![Effect::Launch(id.clone())]);
+    }
+}
+
+#[test]
+fn a_hidden_app_keeps_its_place_through_a_move() {
+    let mut state = ready();
+    let before = order(&state);
+    state.preferences.favorites = Some(before.clone());
+    let hidden = before[2].clone();
+    state.preferences.hidden.push(hidden.clone());
+    state.focus = Target::App(before[0].clone());
+    state.hold();
+    state.direction(Direction::Right, &[]);
+    state.activate();
+    state.preferences.hidden.clear();
+    assert_eq!(order(&state).iter().position(|id| id == &hidden), Some(2));
+}
+
+#[test]
+fn right_opens_every_settings_row_with_a_chevron() {
+    let mut state = ready();
+    state.page = Page::Settings;
+    state.focus = Target::Setting(9);
+    state.direction(Direction::Right, &[]);
+    assert_eq!(state.subpage, Some(crate::state::Subpage::Appearance));
+}
+
+#[test]
+fn move_on_an_app_that_has_gone_leaves_focus_on_a_tile() {
+    let mut state = ready();
+    state.focus = Target::App("plex".into());
+    state.options();
+    let mut inventory = demo_inventory();
+    inventory.apps.retain(|app| app.id != "plex");
+    state.set_inventory(inventory, None);
+    state.focus = Target::Option(0);
+    state.activate();
+    assert!(state.overlay.is_none() && state.moving.is_none());
+    assert!(matches!(&state.focus, Target::App(id) if id != "plex"));
+}
+
+#[test]
+fn hiding_an_input_turns_it_off_in_settings_inputs() {
+    let mut state = ready();
+    let hdmi = "com.webos.app.hdmi1".to_string();
+    state.focus = Target::App(hdmi.clone());
+    state.options();
+    state.focus = Target::Option(1);
+    state.activate();
+    assert_eq!(
+        state.preferences.input_modes.get(&hdmi),
+        Some(&InputMode::Off)
+    );
+    assert!(!state.preferences.hidden.contains(&hdmi));
+    assert!(!order(&state).contains(&hdmi));
+    // On in Settings › Inputs brings it back: one switch, no hidden copy.
+    state
+        .preferences
+        .input_modes
+        .insert(hdmi.clone(), InputMode::On);
+    state.refresh_tiles();
+    assert!(order(&state).contains(&hdmi));
+    // An input an earlier version hid from its tile is Off instead.
+    let mut preferences: Preferences =
+        serde_json::from_value(json!({"hidden": ["com.webos.app.hdmi2", "plex"]})).unwrap();
+    preferences.sanitize();
+    assert_eq!(preferences.hidden, ["plex"]);
+    assert_eq!(
+        preferences.input_modes.get("com.webos.app.hdmi2"),
+        Some(&InputMode::Off)
+    );
+}
+
+#[test]
+fn holding_ok_on_full_screen_top_shelf_lowers_it_first() {
+    let mut state = ready();
+    state.heroes = vec!["netflix".into()];
+    state.preferences.top_shelf_art = true;
+    state.direction(Direction::Up, &controls(&state));
+    assert!(state.expanded);
+    state.hold();
+    assert!(state.moving.is_some());
+    assert!(!state.expanded, "Move is on the visible grid");
+}
+
+#[test]
+fn a_device_plugged_in_during_move_waits_at_the_end() {
+    let mut state = ready();
+    let first = order(&state)[0].clone();
+    state.focus = Target::App(first.clone());
+    state.hold();
+    state.inventory.inputs[2].connected = Some(true);
+    state.refresh_tiles();
+    assert_eq!(
+        order(&state).last().map(String::as_str),
+        Some("com.webos.app.hdmi3")
+    );
+    state.direction(Direction::Down, &[]);
+    assert_eq!(
+        order(&state).iter().position(|id| id == &first),
+        Some(crate::state::APPS_COLUMNS)
+    );
+}
+
+#[test]
+fn reduced_motion_switcher_jumps_to_the_card_and_settles() {
+    let mut state = ready();
+    state.preferences.reduced_motion = true;
+    state.tick();
+    state.open_switcher(vec![
+        "netflix".into(),
+        "plex".into(),
+        "amazon".into(),
+        "spotify-beehive".into(),
+    ]);
+    state.direction(Direction::Right, &[]);
+    state.direction(Direction::Right, &[]);
+    for _ in 0..40 {
+        state.tick();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let shown = state.switcher.as_ref().unwrap().shown;
+    assert_eq!(Target::Switch(shown as usize), state.focus);
+    assert!(!state.animating(), "nothing left to draw: no frames burned");
+}
+
+#[test]
+fn a_slow_press_off_app_tiles_is_still_ok() {
+    let mut state = ready();
+    state.page = Page::Settings;
+    state.focus = Target::Setting(9);
+    state.hold();
+    assert_eq!(state.subpage, Some(crate::state::Subpage::Appearance));
+}
+
+#[test]
+fn an_unknown_preference_value_keeps_every_other_preference() {
+    let preferences: Preferences = serde_json::from_value(json!({
+        "background": "forest",
+        "appearance": "Sepia",
+        "input_modes": {"com.webos.app.hdmi1": "Bogus", "com.webos.app.hdmi2": "Off"},
+    }))
+    .unwrap();
+    assert_eq!(preferences.background, "forest");
+    assert_eq!(preferences.appearance, crate::model::Appearance::default());
+    assert_eq!(preferences.input_modes.len(), 1);
+    assert_eq!(
+        preferences.input_modes.get("com.webos.app.hdmi2"),
+        Some(&InputMode::Off)
+    );
+}
+
+#[test]
+fn focus_goes_to_the_tile_that_takes_a_vanished_tiles_place() {
+    let mut state = ready();
+    state.page = Page::Apps;
+    let tiles = order(&state);
+    state.focus = Target::App(tiles[7].clone());
+    state.track_focus();
+    let mut inventory = demo_inventory();
+    inventory.apps.retain(|app| app.id != tiles[7]);
+    state.set_inventory(inventory, None);
+    assert_eq!(state.focus, Target::App(order(&state)[7].clone()));
 }

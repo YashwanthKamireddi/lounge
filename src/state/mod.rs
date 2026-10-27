@@ -202,6 +202,9 @@ pub struct State {
     pub home_button: Option<bool>,
     /// A Home key change is on its way to the TV.
     pub home_button_busy: bool,
+    /// Where the focused tile sits in the grid, so focus can go to the tile
+    /// that takes its place if it disappears.
+    pub focus_slot: usize,
     avatar_index: usize,
     /// When the shown picture last changed, and the one it replaced (it
     /// crossfades out).
@@ -335,6 +338,7 @@ impl State {
             avatars: Vec::new(),
             home_button: None,
             home_button_busy: false,
+            focus_slot: 0,
             avatar_index: 0,
             avatar_since: crate::clock::now(),
             avatar_from: None,
@@ -631,7 +635,13 @@ impl State {
             .map_or(usize::MAX - 2, |app| rank(app));
         let place = |app: &App| {
             if app.brand == "lounge-input" && !ids.contains(&app.id) {
-                (search, 1)
+                // During Move a new device waits at the end: Move works on
+                // the saved order, where it has no place yet.
+                if self.moving.is_some() {
+                    (usize::MAX, 1)
+                } else {
+                    (search, 1)
+                }
             } else {
                 (rank(app), 0)
             }
@@ -756,7 +766,13 @@ impl State {
         if let Target::App(id) = &self.focus
             && !self.apps().iter().any(|app| &app.id == id)
         {
-            self.focus = self.first_content();
+            // The tile that now has its place, as when an app is hidden;
+            // the top only if the grid is empty.
+            let apps = self.apps();
+            self.focus = apps
+                .get(self.focus_slot.min(apps.len().saturating_sub(1)))
+                .map(|app| Target::App(app.id.clone()))
+                .unwrap_or_else(|| self.first_content());
         }
         if let Target::Input(id) = &self.focus
             && !self

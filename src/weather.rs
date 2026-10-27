@@ -417,6 +417,9 @@ impl Weather {
         self.typed_at.is_some()
     }
     pub fn cancel_search(&mut self) {
+        // A search typed but not yet sent is dropped too, so leaving the
+        // page never fires it afterwards.
+        self.typed_at = None;
         self.search_id += 1;
         self.results.clear();
         self.searching = false;

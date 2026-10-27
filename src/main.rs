@@ -922,7 +922,14 @@ impl Shell {
         {
             held.held = true;
             self.state.pressed = None;
-            self.state.hold();
+            let pending = self.state.hold();
+            self.running &= effects(
+                pending,
+                &mut self.state,
+                &self.platform,
+                &self.writer,
+                &self.weather_service,
+            );
         }
         if !self.state.loading
             && self.frame.is_multiple_of(3)

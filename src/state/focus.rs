@@ -19,6 +19,11 @@ impl State {
         if self.focus != self.last_focus {
             let level = self.focus_since.as_ref().map_or(1., eased);
             let previous = std::mem::replace(&mut self.last_focus, self.focus.clone());
+            if let Target::App(id) = &self.focus
+                && let Some(slot) = self.apps().iter().position(|app| &app.id == id)
+            {
+                self.focus_slot = slot;
+            }
             // Only dock apps own Top Shelf; the grid below keeps the last one.
             // The art changes once focus rests on an app: a sweep along the
             // dock crosses no full-screen dissolves (each costs this TV's GPU
@@ -100,6 +105,11 @@ impl State {
             self.shown_page = self.page;
             self.shown_scroll = self.scroll;
             self.shown_home_scroll = self.home_scroll;
+            // The switcher's cards jump to the focused one as well; left
+            // behind, they never scroll and the frame never settles.
+            if let (Some(switcher), Target::Switch(index)) = (&mut self.switcher, &self.focus) {
+                switcher.shown = *index as f32;
+            }
             return;
         }
         // Critically damped approach: frame-rate independent, never overshoots.

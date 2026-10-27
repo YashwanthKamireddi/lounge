@@ -156,6 +156,7 @@ impl Remote {
             key if !repeat
                 && state.overlay.is_none()
                 && state.switcher.is_none()
+                && state.moving.is_none()
                 && !state.text_input_active()
                 && quick_slot(key).is_some() =>
             {
