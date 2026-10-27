@@ -1,5 +1,5 @@
 ---
-"lounge": patch
+'lounge': patch
 ---
 
 Every app on the TV has its real tvOS card: the official Apple TV App Store art where the app has
