@@ -82,7 +82,7 @@ fn inventory_metadata_resolves_absolute_relative_and_manifest_fallback_paths() {
 fn supported_icons_decode_to_bounded_pixels_and_runtime_card_colours() {
     for format in [ImageFormat::Png, ImageFormat::Jpeg, ImageFormat::WebP] {
         let artwork = decode(&encoded(format, 400, 200, [48, 80, 112, 255])).unwrap();
-        assert_eq!(artwork.pixels.dimensions(), (256, 128));
+        assert_eq!(artwork.pixels().dimensions(), (256, 128));
         for stop in artwork.backdrop {
             for (actual, expected) in stop.into_iter().zip([48u8, 80, 112]) {
                 assert!(actual.abs_diff(expected) <= 2);
@@ -181,7 +181,7 @@ fn transparent_edges_keep_the_logo_colour_when_scaled() {
             Rgba([0, 0, 0, 0])
         }
     });
-    let pixels = decode(&png(image)).unwrap().pixels;
+    let pixels = decode(&png(image)).unwrap().pixels();
     for pixel in pixels.pixels().filter(|pixel| pixel[3] > 0) {
         assert!(pixel[0].min(pixel[1]).min(pixel[2]) >= 245, "{pixel:?}");
     }
@@ -248,7 +248,7 @@ fn local_reads_fall_back_from_a_corrupt_large_icon_to_manifest_artwork() {
             .cloned()
     })
     .unwrap();
-    assert_eq!(image.pixels.get_pixel(0, 0).0, [8, 16, 24, 255]);
+    assert_eq!(image.pixels().get_pixel(0, 0).0, [8, 16, 24, 255]);
     assert_eq!(reads[0], directory.join("appinfo.json"));
     assert!(reads.contains(&directory.join("corrupt.png")));
 }
@@ -272,7 +272,7 @@ fn refresh_discards_old_worker_results_and_reloads_changed_artwork() {
     assert!(service.get(&source).is_none());
     poll_until(&service, || service.get(&source).is_some());
     let image = service.get(&source).unwrap();
-    assert_eq!(image.pixels.get_pixel(0, 0)[0], 2);
+    assert_eq!(image.pixels().get_pixel(0, 0)[0], 2);
     assert!(Arc::ptr_eq(&image, &service.get(&source).unwrap()));
     assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
@@ -305,11 +305,7 @@ fn unavailable_icons_are_not_retried_on_every_redraw() {
 #[test]
 fn hundreds_of_apps_stay_within_the_cache_bounds_across_refreshes() {
     let service = Service::with_loader(true, |_| {
-        Some(Artwork {
-            key: String::new(),
-            pixels: RgbaImage::new(256, 256),
-            backdrop: [[20; 3]; 2],
-        })
+        Some(Artwork::new(RgbaImage::new(256, 256), [[20; 3]; 2]))
     });
     for number in 0..300 {
         if number % 100 == 0 {
@@ -326,7 +322,7 @@ fn hundreds_of_apps_stay_within_the_cache_bounds_across_refreshes() {
         .entries
         .values()
         .filter_map(|entry| entry.image.as_ref()?.as_ref())
-        .map(|image| image.pixels.as_raw().len())
+        .map(|image| image.held_bytes())
         .sum();
     assert!(bytes <= CACHE_BYTES);
     assert!(cache.entries.len() <= CACHE_ENTRIES);
@@ -335,11 +331,7 @@ fn hundreds_of_apps_stay_within_the_cache_bounds_across_refreshes() {
 #[test]
 fn decoded_cache_evicts_old_icons_when_scrolling_through_many_apps() {
     let service = Service::with_loader(true, |_| {
-        Some(Artwork {
-            key: String::new(),
-            pixels: RgbaImage::new(256, 256),
-            backdrop: [[20; 3]; 2],
-        })
+        Some(Artwork::new(RgbaImage::new(256, 256), [[20; 3]; 2]))
     });
     for number in 0..80 {
         let source = Source::new(&format!("app-{number}"), &json!({}));
@@ -353,7 +345,7 @@ fn decoded_cache_evicts_old_icons_when_scrolling_through_many_apps() {
         .entries
         .values()
         .filter_map(|entry| entry.image.as_ref()?.as_ref())
-        .map(|image| image.pixels.as_raw().len())
+        .map(|image| image.held_bytes())
         .sum();
     assert!(bytes <= CACHE_BYTES);
     assert!(
@@ -439,11 +431,11 @@ fn refresh_keeps_shown_icons_and_disk_cache_serves_them_without_a_read() {
     let artwork = decode(&encoded(ImageFormat::Png, 2, 2, [7, 0, 0, 255])).unwrap();
     std::fs::create_dir_all(&directory).unwrap();
     artwork
-        .pixels
+        .pixels()
         .save_with_format(&path, ImageFormat::Png)
         .unwrap();
     let cached = load_cached(Some(&directory), &source).unwrap();
-    assert_eq!(cached.pixels.get_pixel(0, 0)[0], 7);
+    assert_eq!(cached.pixels().get_pixel(0, 0)[0], 7);
     let _ = std::fs::remove_dir_all(&directory);
 }
 
@@ -494,4 +486,49 @@ fn an_app_update_gets_a_fresh_icon_cache_key() {
     let new = Source::new("sample", &json!({"version": "1.1.0"}));
     assert_ne!(old, new);
     assert_ne!(disk_path(directory, &old), disk_path(directory, &new));
+}
+
+#[test]
+fn uploaded_icons_let_their_pixels_go_and_read_them_back_from_the_icons_cache() {
+    let directory =
+        std::env::temp_dir().join(format!("lounge-icons-upload-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    let source = Source::new("sample", &json!({}));
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(
+        disk_path(&directory, &source),
+        encoded(ImageFormat::Png, 4, 4, [7, 8, 9, 255]),
+    )
+    .unwrap();
+    let artwork = load_cached(Some(&directory), &source).unwrap();
+    let first = artwork.upload(RgbaImage::clone).unwrap();
+    assert_eq!(artwork.held_bytes(), 0);
+    // The texture was evicted: the same pixels come back from disk.
+    assert_eq!(artwork.upload(RgbaImage::clone).unwrap(), first);
+    assert_eq!(artwork.held_bytes(), 0);
+    let _ = std::fs::remove_dir_all(&directory);
+
+    // Nowhere to read them back from: the pixels stay.
+    let kept = decode(&encoded(ImageFormat::Png, 4, 4, [7, 8, 9, 255])).unwrap();
+    kept.upload(|_| ()).unwrap();
+    kept.uploaded();
+    assert_eq!(kept.held_bytes(), kept.pixels().as_raw().len());
+    assert!(kept.held_bytes() > 0);
+}
+
+#[test]
+fn an_updated_icon_takes_its_apps_texture_key_with_a_new_source() {
+    let service = Service::with_loader(true, |_| {
+        decode(&encoded(ImageFormat::Png, 2, 2, [3, 0, 0, 255]))
+    });
+    let old = Source::new("sample", &json!({"version": "1.0.0"}));
+    let new = Source::new("sample", &json!({"version": "1.1.0"}));
+    service.get(&old);
+    poll_until(&service, || service.get(&old).is_some());
+    service.get(&new);
+    poll_until(&service, || service.get(&new).is_some());
+    let (old, new) = (service.get(&old).unwrap(), service.get(&new).unwrap());
+    assert_eq!(old.key, "installed-icon:sample");
+    assert_eq!(old.key, new.key);
+    assert_ne!(old.source, new.source);
 }

@@ -10,7 +10,15 @@ const ASTC_4X4: u32 = 0x93B0;
 pub struct Compressed {
     width: u32,
     height: u32,
-    data: Vec<u8>,
+    /// The whole file, header included: the blocks are uploaded from offset
+    /// 16 in place, rather than copied out first (a 1920x1080 wallpaper's
+    /// copy is 2 MB more heap per read, held until upload).
+    file: Vec<u8>,
+}
+impl Compressed {
+    fn blocks(&self) -> &[u8] {
+        &self.file[16..]
+    }
 }
 
 /// Reads `<path>.astc`, accepting only a 4x4 2D file whose data matches its
@@ -32,7 +40,7 @@ pub fn read_astc(path: &str) -> Option<Compressed> {
     Some(Compressed {
         width,
         height,
-        data: bytes[16..].to_vec(),
+        file: bytes,
     })
 }
 
@@ -53,14 +61,15 @@ pub(super) fn compressed_texture(image: &Compressed) -> Texture {
             image.width as i32,
             image.height as i32,
             0,
-            image.data.len() as i32,
-            image.data.as_ptr().cast(),
+            image.blocks().len() as i32,
+            image.blocks().as_ptr().cast(),
         );
     }
     Texture {
         id,
         width: image.width,
         height: image.height,
+        bytes: image.blocks().len(),
         frame: 0,
     }
 }
@@ -113,6 +122,7 @@ pub(super) fn texture(width: u32, height: u32, pixels: &[u8]) -> Texture {
         id,
         width,
         height,
+        bytes: width as usize * height as usize * 4,
         frame: 0,
     }
 }

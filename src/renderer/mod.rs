@@ -111,6 +111,10 @@ struct Texture {
     id: GLuint,
     width: u32,
     height: u32,
+    /// What the GPU holds for it: 4 per pixel decoded, 1 per pixel as ASTC
+    /// 4x4 (16-byte blocks), so the budget counts compressed wallpapers at
+    /// their real size rather than four times it.
+    bytes: usize,
     frame: u64,
 }
 impl Drop for Texture {
@@ -119,6 +123,13 @@ impl Drop for Texture {
             gl::DeleteTextures(1, &self.id);
         }
     }
+}
+
+/// A vector mesh (None: its file failed to load) and the frame it was last
+/// drawn in.
+struct VectorEntry {
+    mesh: Option<vector::Mesh>,
+    frame: u64,
 }
 
 struct Glyph {
@@ -227,7 +238,10 @@ pub struct Renderer {
     glyphs: HashMap<(char, u16), Glyph>,
     text_runs: HashMap<TextKey, TextRun>,
     textures: HashMap<String, Option<Texture>>,
-    vectors: HashMap<String, Option<vector::Mesh>>,
+    /// Which artwork each installed-icon texture was uploaded from (see
+    /// Artwork::source), so a changed icon replaces its texture in place.
+    installed_icons: HashMap<String, u64>,
+    vectors: HashMap<String, VectorEntry>,
     artwork_variants: HashMap<String, String>,
     vertices: Vec<f32>,
     batches: Vec<Batch>,
@@ -397,6 +411,7 @@ impl Renderer {
             glyphs: HashMap::new(),
             text_runs: HashMap::new(),
             textures: HashMap::new(),
+            installed_icons: HashMap::new(),
             vectors: HashMap::new(),
             artwork_variants: HashMap::new(),
             astc: gles
@@ -664,16 +679,21 @@ impl Renderer {
         if rect.w <= 0. || rect.h <= 0. {
             return;
         }
-        let mesh = self.vectors.entry(path.into()).or_insert_with(|| {
-            match vector::Mesh::load(Path::new(path)) {
-                Ok(mesh) => Some(mesh),
-                Err(error) => {
-                    eprintln!("{error}");
-                    None
-                }
-            }
-        });
-        let Some(mesh) = mesh else {
+        let entry = self
+            .vectors
+            .entry(path.into())
+            .or_insert_with(|| VectorEntry {
+                mesh: match vector::Mesh::load(Path::new(path)) {
+                    Ok(mesh) => Some(mesh),
+                    Err(error) => {
+                        eprintln!("{error}");
+                        None
+                    }
+                },
+                frame: 0,
+            });
+        entry.frame = self.frame;
+        let Some(mesh) = &entry.mesh else {
             self.stats.missing_images += 1;
             return;
         };
@@ -717,14 +737,24 @@ impl Renderer {
     }
 
     fn app_image(&mut self, image: &crate::app_artwork::Artwork, rect: Rect, tint: Color) {
-        let entry = self.textures.entry(image.key.clone()).or_insert_with(|| {
-            Some(texture(
-                image.pixels.width(),
-                image.pixels.height(),
-                image.pixels.as_raw(),
-            ))
-        });
-        let Some(texture) = entry else {
+        // One texture per app: an updated icon (a new source) replaces the
+        // old one rather than leaving it on the GPU under a key nothing uses.
+        let current = self.installed_icons.get(&image.key) == Some(&image.source)
+            && self.textures.get(&image.key).is_some_and(Option::is_some);
+        if current {
+            image.uploaded();
+        } else {
+            let Some(uploaded) =
+                image.upload(|pixels| texture(pixels.width(), pixels.height(), pixels.as_raw()))
+            else {
+                // Its pixels could not be read back: the card keeps its
+                // backdrop colour, as for an app with no artwork.
+                return;
+            };
+            self.textures.insert(image.key.clone(), Some(uploaded));
+            self.installed_icons.insert(image.key.clone(), image.source);
+        }
+        let Some(Some(texture)) = self.textures.get_mut(&image.key) else {
             return;
         };
         texture.frame = self.frame;
@@ -1105,7 +1135,8 @@ impl Renderer {
                         paint_bound = false;
                     }
                     BatchKind::Vector { path, rect, tint } => {
-                        let Some(mesh) = self.vectors.get(path).and_then(Option::as_ref) else {
+                        let Some(mesh) = self.vectors.get(path).and_then(|v| v.mesh.as_ref())
+                        else {
                             continue;
                         };
                         self.draw_mesh(
@@ -1139,12 +1170,7 @@ impl Renderer {
             gl::Disable(gl::SCISSOR_TEST);
         }
         // Keep the current scene, evict old full-resolution wallpapers before memory grows.
-        let mut bytes: usize = self
-            .textures
-            .values()
-            .flatten()
-            .map(|t| t.width as usize * t.height as usize * 4)
-            .sum();
+        let mut bytes: usize = self.textures.values().flatten().map(|t| t.bytes).sum();
         if bytes > TEXTURE_BUDGET {
             let mut old: Vec<_> = self
                 .textures
@@ -1161,13 +1187,14 @@ impl Renderer {
                     break;
                 }
                 if let Some(Some(t)) = self.textures.remove(&path) {
-                    bytes -= t.width as usize * t.height as usize * 4;
+                    bytes -= t.bytes;
                 }
             }
         }
         self.trim_text_geometry();
-        self.stats.vector_meshes = self.vectors.values().flatten().count();
-        self.stats.vector_bytes = self.vectors.values().flatten().map(|mesh| mesh.bytes).sum();
+        let meshes = || self.vectors.values().filter_map(|v| v.mesh.as_ref());
+        self.stats.vector_meshes = meshes().count();
+        self.stats.vector_bytes = meshes().map(|mesh| mesh.bytes).sum();
         self.stats.artwork_bytes = bytes + self.stats.vector_bytes;
         self.stats.draw_calls = self.batches.len();
         self.stats.texture_uploads = TEXTURE_UPLOADS.load(std::sync::atomic::Ordering::Relaxed);
@@ -1241,6 +1268,12 @@ impl Renderer {
     /// While another app is in front: keep only what the home showed last
     /// (it comes back instantly) and installed apps' icons (costly to fetch
     /// again). Off-screen tiles go; they are queued again on return.
+    /// Text runs and vector meshes follow the textures' rule: those drawn in
+    /// the last frame stay, the rest rebuild on demand (text runs measured
+    /// 0.30 MB on Home but 5.99 MB after a Settings subpage; vector meshes
+    /// 4.7 MB growing to 9.4 MB, never evicted before). The glyph outlines
+    /// all go (5.7 MB of heap for 586 glyphs): the kept runs are already
+    /// built from them, and a new run tessellates the few it needs.
     pub fn trim(&mut self) {
         let frame = self.frame;
         self.textures.retain(|path, texture| {
@@ -1249,6 +1282,16 @@ impl Renderer {
                 .is_some_and(|texture| texture.frame == frame)
                 || path.starts_with("installed-icon:")
         });
+        self.installed_icons
+            .retain(|key, _| self.textures.contains_key(key));
+        trim_geometry(
+            &mut self.text_runs,
+            &mut self.vectors,
+            &mut self.glyphs,
+            frame,
+        );
+        self.textures.shrink_to_fit();
+        self.installed_icons.shrink_to_fit();
         self.artwork_variants = HashMap::new();
         self.vertices = Vec::new();
         self.batches = Vec::new();
@@ -1258,7 +1301,12 @@ impl Renderer {
     pub fn adopt_vector(&mut self, path: String, bytes: &[u8]) {
         if let std::collections::hash_map::Entry::Vacant(slot) = self.vectors.entry(path) {
             let mesh = vector::Mesh::from_bytes(Path::new(slot.key()), bytes).ok();
-            slot.insert(mesh);
+            // Counts as drawn in the last frame, like adopted textures, so a
+            // trim before its first draw keeps it.
+            slot.insert(VectorEntry {
+                mesh,
+                frame: self.frame,
+            });
         }
     }
 
@@ -1429,6 +1477,21 @@ impl Renderer {
     }
 }
 
+/// Keeps the text runs and vector meshes drawn in `frame`, drops every glyph
+/// outline, and hands the emptied tables' memory back.
+fn trim_geometry(
+    text_runs: &mut HashMap<TextKey, TextRun>,
+    vectors: &mut HashMap<String, VectorEntry>,
+    glyphs: &mut HashMap<(char, u16), Glyph>,
+    frame: u64,
+) {
+    text_runs.retain(|_, run| run.frame == frame);
+    text_runs.shrink_to_fit();
+    vectors.retain(|_, entry| entry.frame == frame);
+    vectors.shrink_to_fit();
+    *glyphs = HashMap::new();
+}
+
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
@@ -1441,5 +1504,63 @@ impl Drop for Renderer {
                 gl::DeleteVertexArrays(1, &self.vao);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(frame: u64) -> TextRun {
+        TextRun {
+            mesh: None,
+            missing_glyphs: 0,
+            failures: 0,
+            frame,
+        }
+    }
+
+    fn key(text: &str) -> TextKey {
+        TextKey {
+            text: text.into(),
+            weight: 400,
+            layout: [0; 5],
+            flags: 0,
+        }
+    }
+
+    #[test]
+    fn trim_keeps_what_the_last_frame_drew_and_drops_the_rest() {
+        let mut runs = HashMap::from([(key("Home"), run(9)), (key("Settings"), run(4))]);
+        let mut vectors = HashMap::from([
+            (
+                "home.lvec".to_owned(),
+                VectorEntry {
+                    mesh: None,
+                    frame: 9,
+                },
+            ),
+            (
+                "wifi.lvec".to_owned(),
+                VectorEntry {
+                    mesh: None,
+                    frame: 3,
+                },
+            ),
+        ]);
+        let mut glyphs = HashMap::from([(
+            ('H', 400),
+            Glyph {
+                geometry: Vec::new(),
+                frame: 9,
+            },
+        )]);
+        trim_geometry(&mut runs, &mut vectors, &mut glyphs, 9);
+        assert!(runs.contains_key(&key("Home")));
+        assert!(!runs.contains_key(&key("Settings")));
+        assert!(vectors.contains_key("home.lvec"));
+        assert!(!vectors.contains_key("wifi.lvec"));
+        // Even a glyph drawn last frame goes: its run is already built.
+        assert!(glyphs.is_empty());
     }
 }
