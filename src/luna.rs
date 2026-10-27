@@ -168,7 +168,7 @@ impl Connection {
         Ok(connection)
     }
 
-    fn request(&mut self, uri: &str, payload: &Value) -> Result<Value, String> {
+    fn request(&mut self, uri: &str, payload: &Value, timeout: Duration) -> Result<Value, String> {
         let uri = CString::new(uri).map_err(|_| "Invalid Luna URI")?;
         let payload = CString::new(payload.to_string()).map_err(|_| "Invalid Luna payload")?;
         let mut error = Error::new();
@@ -197,7 +197,9 @@ impl Connection {
         let flag: *mut bool = &mut expired;
         // SAFETY: the source is attached to this worker's private context and
         // destroyed before `expired` goes out of scope.
-        let timer = unsafe { g_timeout_source_new(6500) };
+        let timer = unsafe {
+            g_timeout_source_new(c_uint::try_from(timeout.as_millis()).unwrap_or(c_uint::MAX))
+        };
         unsafe {
             g_source_set_callback(timer, expire, flag.cast(), ptr::null());
             g_source_attach(timer, self.context);
@@ -259,6 +261,12 @@ impl Drop for Connection {
 /// callback could reach the next call's reply slot, and the next call opens
 /// a new one.
 pub fn call(uri: &str, payload: &Value) -> Result<Value, String> {
+    call_within(uri, payload, Duration::from_millis(6500))
+}
+
+/// `call` with its own deadline, for the rare request that legitimately
+/// runs longer than a menu read (an uninstall waits for webOS to finish).
+pub fn call_within(uri: &str, payload: &Value, timeout: Duration) -> Result<Value, String> {
     thread_local! {
         static CONNECTION: std::cell::RefCell<Option<Connection>> = const { std::cell::RefCell::new(None) };
     }
@@ -267,7 +275,7 @@ pub fn call(uri: &str, payload: &Value) -> Result<Value, String> {
             Some(connection) => connection,
             None => Connection::open()?,
         };
-        let result = connection.request(uri, payload);
+        let result = connection.request(uri, payload, timeout);
         if result.is_ok() {
             *cached = Some(connection);
         }

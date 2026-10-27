@@ -35,6 +35,9 @@ pub struct App {
     pub category: String,
     #[serde(skip)]
     pub icon: Option<crate::app_artwork::Source>,
+    /// webOS lets the owner remove it (see `uninstall::removable`); system
+    /// apps, inputs and Lounge's own tiles never are.
+    pub removable: bool,
 }
 
 impl App {
@@ -60,6 +63,7 @@ impl App {
             brand: brand.into(),
             category: category.into(),
             icon: None,
+            removable: false,
         }
     }
 }
@@ -142,7 +146,6 @@ pub struct Preferences {
     pub show_names: bool,
     /// Bundled Top Shelf art behind the dock; off shows the wallpaper.
     pub top_shelf_art: bool,
-    pub hour_24: bool,
     pub reduced_motion: bool,
     #[serde(deserialize_with = "lenient_modes")]
     pub input_modes: BTreeMap<String, InputMode>,
@@ -191,7 +194,6 @@ impl Default for Preferences {
             background: "dunes".into(),
             show_names: false,
             top_shelf_art: false,
-            hour_24: false,
             reduced_motion: false,
             input_modes: BTreeMap::new(),
             show_weather: true,
@@ -344,6 +346,10 @@ pub fn demo_inventory() -> Inventory {
         if !inventory.apps.iter().any(|app| app.brand == brand.key) {
             inventory.apps.push(App::new(brand.ids[0], brand.title));
         }
+    }
+    // Store apps as a TV would list them, so the preview can show Uninstall.
+    for app in &mut inventory.apps {
+        app.removable = crate::uninstall::allowed(&app.id);
     }
     inventory
 }

@@ -24,8 +24,11 @@ mod script;
 #[path = "scroll-preview.rs"]
 mod scroll_preview;
 mod sdl_events;
+mod snapshots;
 mod state;
 mod storage;
+mod time_format;
+mod uninstall;
 mod vector;
 mod view;
 mod weather;
@@ -275,6 +278,9 @@ fn run() -> Result<(), String> {
         weather_cache,
     );
     let platform = Platform::new(webos, options.inventory.clone());
+    // The switcher's snapshots and the TV's clock format, off this thread.
+    let snapshots = snapshots::Service::new(webos, assets.root.clone());
+    time_format::watch();
     let writer = storage::Writer::new(preferences_path.clone());
     effects(
         if webos {
@@ -431,6 +437,7 @@ fn run() -> Result<(), String> {
         state,
         weather_service,
         platform,
+        snapshots,
         writer,
         sdl,
         requested,
@@ -484,6 +491,7 @@ struct Shell {
     state: State,
     weather_service: weather_service::Service,
     platform: Platform,
+    snapshots: snapshots::Service,
     writer: storage::Writer,
     requested: Size,
     renderer: renderer::Renderer,
@@ -616,6 +624,7 @@ impl Shell {
                 self.options.test_extra_apps,
             );
         }
+        self.extras();
         if self.webos
             && !self.watching.load(std::sync::atomic::Ordering::Relaxed)
             && !self.presence.visible
@@ -640,6 +649,31 @@ impl Shell {
             self.scene = compose(&mut self.state, &self.assets, now, Some(&self.scene));
         }
         now
+    }
+
+    /// Snapshots for the switcher, the TV's clock format, and the effects TV
+    /// replies queued (an uninstall's save and app list re-read).
+    fn extras(&mut self) {
+        self.snapshots.pump(&mut self.state);
+        if let Some(hour_24) = time_format::hour_24()
+            && hour_24 != self.state.hour_24
+        {
+            self.state.hour_24 = hour_24;
+            self.state.dirty = true;
+        }
+        if time_format::refused() {
+            self.state.notify(i18n::t("clockFormatError"));
+        }
+        let queued = std::mem::take(&mut self.state.queued);
+        if !queued.is_empty() {
+            self.running &= effects(
+                queued,
+                &mut self.state,
+                &self.platform,
+                &self.writer,
+                &self.weather_service,
+            );
+        }
     }
 
     /// Every event waiting, in arrival order.

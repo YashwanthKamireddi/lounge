@@ -779,7 +779,7 @@ impl Renderer {
         self.quad(
             Rect::new(rect.x + (rect.w - w) / 2., rect.y + (rect.h - h) / 2., w, h),
             [0., 0., 1., 1.],
-            0.,
+            image.corner * h,
             0.,
             tint,
             id,

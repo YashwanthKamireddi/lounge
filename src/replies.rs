@@ -108,6 +108,12 @@ impl Replies {
                 }
                 state.dirty = true;
             }
+            // What the removal asks for next (save, re-read the apps) runs
+            // with the loop's own effects.
+            Response::Uninstalled(id, result) => {
+                let pending = state.uninstalled(&id, result);
+                state.queued.extend(pending);
+            }
             Response::Closed(id, result) => {
                 if let Err(error) = result {
                     eprintln!("Lounge close {id}: {error}");

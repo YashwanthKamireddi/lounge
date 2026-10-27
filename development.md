@@ -263,6 +263,46 @@ Lounge becomes Home through webOS itself, with no scripts: settings `general.def
 for Back out of an app, the compositor key-filter chain for the Home button, and LG's memory
 manager override for residency. See [the readme](readme.md#making-lounge-the-home-app).
 
+## Switcher, quitting, uninstalling and the clock
+
+Lounge's own LS2 role on webOS 7.6 is only the `public` group
+(`/var/luna-service2-dev/client-permissions.d/<appid>.app.json`), whatever `requiredACG` says.
+Calls outside it go through Homebrew Channel's elevated `exec`, as the inventory does.
+
+**Snapshots.** Opening the switcher asks `com.webos.service.recent/listRecents` (groups `private`,
+`launcher.status`, so elevated) for each open app's `cardSnapShotFilePath`. Only a plain JPEG/PNG
+inside `/tmp/snapshots/<appId>/` is read: directly when the sandbox allows, else one bounded
+(900 KiB) elevated hex dump; the folder is `drw-rw---- root` on webOS 7.6. `src/snapshots.rs`
+decodes, crops to the card's shape and scales to 720×412 on its own worker; the card dissolves
+to it over 0.3 s and the app's icon joins its name. A file whose modified time and size are
+unchanged is not read again. On the 65UQ801C0SB (webOS 7.6) the service exists but every path is
+empty: configd has `tv.hw.supportNMRM: false` and `com.webos.surfacemanager.disableCapture: true`,
+so the compositor never captures. Cards there stay as they are; the desktop preview shows sample
+pictures for Netflix, YouTube and Prime Video.
+
+**Quitting.** Up in the switcher runs `com.palm.webappmanager/killApp {appId}` first (a web app's
+page otherwise keeps running: `closeByAppId` only backgrounds it), and `closeByAppId` when that
+does not succeed (native apps, which WebAppMgr does not know). Both are elevated (`killApp` is in
+`private`/`applications.internal`). On the 7.6 TV, 94 of the listed apps are `type: web`.
+
+**Uninstall.** The context menu's last item, in system red, shown only where `listApps` says
+`removable: true` (or, without that flag, for apps under `/media/cryptofs/apps/` or
+`/media/developer/apps/`) and never for `systemApp`, `com.webos.`/`com.palm.`/`com.lge.` apps,
+Lounge (and Luma's IDs), LG Home, Homebrew Channel, inputs, Lounge's own tiles or preview cards.
+The 7.6 TV marks Lounge and Homebrew Channel removable, so the protected list matters. A glass
+alert asks first, focus on Cancel; Back is Cancel. Confirming hides the tile at once and runs
+`tv/uninstall-app.cjs` (from upstream PR #110) through `exec` with a 20 s budget: one
+`com.webos.appInstallService/remove` subscription, success only at status 31. A lost reply is
+checked against up to three complete `listApps` reads, never by removing again. Refused, the tile
+comes back with a banner; removed, the app leaves favourites, hidden and recent lists and the
+inventory is read again.
+
+**Clock format.** The pill follows the system service's `timeFormat` (`HH12`/`HH24`, default
+`HH12` in `/etc/palm/defaultPreferences.txt`), subscribed through `getPreferences` (public
+group). webOS 7.6's own Settings has no control for it, so General › Clock format sets the TV's
+value with `setPreferences` (public) rather than keeping a Lounge preference; a refused write
+puts the clock back and says so. The old `hour_24` preference is ignored on load.
+
 ## Manual extra-app preview
 
 ```sh
