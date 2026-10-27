@@ -1322,7 +1322,7 @@ impl Renderer {
 
     /// Upload an image's ASTC copy read off the render thread, unless loaded.
     pub fn adopt_compressed(&mut self, path: String, image: &Compressed) {
-        let frame = self.frame;
+        let frame = self.adopted_frame();
         self.textures.entry(path).or_insert_with(|| {
             let mut texture = compressed_texture(image);
             texture.frame = frame;
@@ -1330,9 +1330,16 @@ impl Renderer {
         });
     }
 
+    /// An upload counts as drawn the frame before the last, so `trim` frees
+    /// a preloaded image no frame has shown yet (it is queued again on
+    /// return) while the budget still evicts it after older ones.
+    fn adopted_frame(&self) -> u64 {
+        self.frame.saturating_sub(1)
+    }
+
     /// Upload an image decoded off the render thread, unless already loaded.
     pub fn adopt(&mut self, path: String, image: image::RgbaImage) {
-        let frame = self.frame;
+        let frame = self.adopted_frame();
         self.textures.entry(path).or_insert_with(|| {
             let mut texture = texture(image.width(), image.height(), image.as_raw());
             texture.frame = frame;

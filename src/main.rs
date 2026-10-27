@@ -765,6 +765,8 @@ impl Shell {
                     let returned = self.presence.show();
                     if returned {
                         self.rewarm = true;
+                        // The trim behind the app dropped the glyph outlines.
+                        self.glyphs_warming = true;
                         // Every buffer is stale after being hidden.
                         self.partial.invalidate();
                     }
