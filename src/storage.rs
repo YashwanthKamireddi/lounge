@@ -25,8 +25,9 @@ fn tv_path() -> Result<PathBuf, String> {
         os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     };
 
-    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
-    let legacy = executable.with_file_name("preferences.json");
+    // As Home the executable runs at LG's path: the package it came from decides.
+    let installation = crate::platform::install_dir()?;
+    let legacy = installation.join("preferences.json");
     let id = crate::platform::APP_ID;
     // These volumes persist across boots. The app-specific directory also
     // survives replacement of the installed payload on an ordinary update.
@@ -40,7 +41,7 @@ fn tv_path() -> Result<PathBuf, String> {
     let internal = PathBuf::from("/media/internal")
         .join(format!(".{id}"))
         .join("preferences.json");
-    let mut candidates = if executable.starts_with("/media/cryptofs") {
+    let mut candidates = if installation.starts_with("/media/cryptofs") {
         [internal, developer, shared_developer]
     } else {
         [developer, shared_developer, internal]
@@ -67,8 +68,10 @@ fn tv_path() -> Result<PathBuf, String> {
             }
         };
         // Do not silently reuse a symlink or root-created debug directory as
-        // another process's private app storage.
-        if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() } {
+        // another process's private app storage. As Home, Lounge runs as root
+        // and uses the app's own directory (see `give_to_folder_owner`).
+        let user = unsafe { libc::geteuid() };
+        if !metadata.is_dir() || (user != 0 && metadata.uid() != user) {
             failures.push(format!(
                 "{} is not owned by the app user",
                 directory.display()
@@ -197,7 +200,8 @@ pub fn save(path: &Path, preferences: &Preferences) -> Result<(), String> {
     let written = fs::File::create(&temporary).and_then(|mut file| {
         use std::io::Write;
         file.write_all(&bytes)?;
-        file.sync_all()
+        file.sync_all()?;
+        give_to_folder_owner(&temporary)
     });
     written.map_err(|e| {
         format!(
@@ -211,6 +215,28 @@ pub fn save(path: &Path, preferences: &Preferences) -> Result<(), String> {
         // The rename itself reaches the flash with the folder.
         let _ = fs::File::open(parent).and_then(|folder| folder.sync_all());
     }
+    Ok(())
+}
+
+/// As Home Lounge runs as root but writes in the app's own folders: what it writes belongs to
+/// the folder's owner, so the normal app still reads and replaces it after Home goes back to
+/// LG. Elsewhere it changes nothing.
+pub fn give_to_folder_owner(path: &Path) -> std::io::Result<()> {
+    #[cfg(all(feature = "webos", unix))]
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        use std::os::unix::fs::MetadataExt;
+        let folder = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let owner = fs::symlink_metadata(folder)?;
+        if owner.uid() != 0 {
+            std::os::unix::fs::lchown(path, Some(owner.uid()), Some(owner.gid()))?;
+        }
+    }
+    #[cfg(not(all(feature = "webos", unix)))]
+    let _ = path;
     Ok(())
 }
 

@@ -753,14 +753,14 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 ),
                 (
                     10,
-                    "homeButton",
+                    "tvHome",
                     "tv",
-                    if state.home_button_busy {
+                    if state.tv_home_busy {
                         "…"
-                    } else if state.home_button == Some(true) {
-                        "Lounge"
+                    } else if state.tv_home == Some(true) {
+                        i18n::t("stateOn")
                     } else {
-                        i18n::t("lgHome")
+                        i18n::t("stateOff")
                     },
                     false,
                 ),
@@ -780,8 +780,8 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
             // Top Shelf art is pictures the owner adds; with none installed
             // the switch would change nothing, so it is not offered.
             .filter(|(index, ..)| *index != 6 || !state.heroes.is_empty())
-            // The Home key is set on the TV, once it has said where it goes.
-            .filter(|(index, ..)| *index != 10 || state.home_button.is_some())
+            // Home is set on the TV, once it has said which it is.
+            .filter(|(index, ..)| *index != 10 || state.tv_home.is_some())
             .enumerate()
             {
                 shown += 1;

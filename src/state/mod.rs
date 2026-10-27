@@ -190,9 +190,9 @@ pub enum Effect {
     Close(String),
     Quit,
     Weather(weather::Command),
-    /// Give the remote's Home key to Lounge (true) or back to LG, or (None)
+    /// Make Lounge the TV's Home (true) or give Home back to LG, or (None)
     /// read which it is.
-    HomeButton(Option<bool>),
+    TvHome(Option<bool>),
     /// Remove an installed app from the TV.
     Uninstall(String),
     /// Set the TV's clock to 24-hour (true) or 12-hour.
@@ -216,11 +216,11 @@ pub struct State {
     pub avatar: Option<String>,
     /// The owner's pictures (crate::avatars), and which one shows.
     pub avatars: Vec<crate::avatars::Picture>,
-    /// Whether the remote's Home key opens Lounge; None until the TV has
-    /// said (and always on the desktop, which has no Home key to set).
-    pub home_button: Option<bool>,
-    /// A Home key change is on its way to the TV.
-    pub home_button_busy: bool,
+    /// Whether Lounge is the TV's Home; None until the TV has said (and
+    /// always on the desktop, which has no Home to set).
+    pub tv_home: Option<bool>,
+    /// A change of Home is on its way to the TV.
+    pub tv_home_busy: bool,
     /// Where the focused tile sits in the grid, so focus can go to the tile
     /// that takes its place if it disappears.
     pub focus_slot: usize,
@@ -385,8 +385,8 @@ impl State {
             profile: None,
             avatar: None,
             avatars: Vec::new(),
-            home_button: None,
-            home_button_busy: false,
+            tv_home: None,
+            tv_home_busy: false,
             focus_slot: 0,
             avatar_index: 0,
             avatar_since: crate::clock::now(),

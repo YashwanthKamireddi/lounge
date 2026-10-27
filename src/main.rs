@@ -175,6 +175,50 @@ fn weather_tick(state: &mut State, service: &weather_service::Service, visible: 
     }
 }
 
+/// Lounge's start as the TV's Home, or a normal start that opens that Home instead. Some(result)
+/// ends this run before any window exists.
+fn home_start(options: &Options) -> Option<Result<(), String>> {
+    if !platform::is_home() {
+        return platform::redirect_to_home().then_some(Ok(()));
+    }
+    platform::status(&format!(
+        "as the TV's Home (uid {}), launch: {}",
+        platform::user_id(),
+        options.launch.as_deref().unwrap_or("none")
+    ));
+    // A package update replaced the executable the mount holds: mount the new one and start
+    // again from it, once (the same process, so webOS sees nothing change).
+    if platform::home_mount_stale() && std::env::var_os("LOUNGE_HOME_RESTARTED").is_none() {
+        match platform::refresh_home_mount() {
+            Ok(()) => {
+                use std::os::unix::process::CommandExt;
+                platform::status("home: a package update replaced Lounge; starting the new one");
+                let error = std::process::Command::new(platform::LG_HOME_EXE)
+                    .args(std::env::args_os().skip(1))
+                    .env("LOUNGE_HOME_RESTARTED", "1")
+                    .exec();
+                platform::status(&format!("home: could not start the new Lounge: {error}"));
+            }
+            Err(error) => platform::status(&format!("home: renewing the mount failed: {error}")),
+        }
+    }
+    if crash_guard::begin(std::path::Path::new(crash_guard::HOME_MARKER)) {
+        platform::status("home: started 3 times in a minute without coming up; LG Home is back");
+        if let Err(error) = platform::restore_lg_home() {
+            platform::status(&format!("home: restoring LG Home failed: {error}"));
+        }
+        return Some(Ok(()));
+    }
+    // sam's own background start of Home (at boot, say) never takes the screen from an
+    // input or app: Home starts when it is asked for.
+    if options.background && !platform::home_in_front() {
+        platform::status("home: started in the background with something else in front; exiting");
+        crash_guard::end(std::path::Path::new(crash_guard::HOME_MARKER));
+        return Some(Ok(()));
+    }
+    None
+}
+
 fn run() -> Result<(), String> {
     let startup = Instant::now();
     let options = Options::parse()?;
@@ -196,7 +240,10 @@ fn run() -> Result<(), String> {
         return Err("This desktop build cannot run on a TV. Build with --features webos.".into());
     }
     if webos {
-        let surface_id = platform::APP_ID;
+        if let Some(home) = home_start(&options) {
+            return home;
+        }
+        let surface_id = platform::own_id();
         // SDL-webOS reads APPID for its shell surface and getenv (not a hint)
         // for WMCLASS. Set these before video init and before starting workers.
         // SAFETY: startup is still single-threaded here.
@@ -212,27 +259,22 @@ fn run() -> Result<(), String> {
         // was in front. A launcher has no video to keep on screen (upstream
         // Lounge b1dcbcf).
         sdl2::hint::set("SDL_VIDEO_ALLOW_SCREENSAVER", "1");
-        if options.preload {
-            if !platform::preload_may_show() {
-                platform::status("preload at boot: an app was in front; stood aside");
-                return Ok(());
-            }
-            platform::status("preload at boot: LG Home in front; showing");
+        // As Home, Home pressed on Lounge comes to Lounge as a key, as it came to LG's Home.
+        if platform::is_home() {
+            sdl2::hint::set("SDL_WEBOS_ACCESS_POLICY_KEYS_HOME", "true");
+            // Lounge registers with sam itself (`platform::register_home`).
+            sdl2::hint::set("SDL_WEBOS_REGISTER_APP", "0");
         }
     }
     // Resolve the local offset before artwork, HTTP or platform workers start.
     let local_offset = OffsetDateTime::now_local()
         .map(|now| now.offset())
         .unwrap_or(time::UtcOffset::UTC);
-    let root = options.assets.clone().unwrap_or_else(|| {
-        if webos {
-            std::env::current_exe()
-                .unwrap_or_default()
-                .with_file_name("assets")
-        } else {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".build/assets")
-        }
-    });
+    let root = match options.assets.clone() {
+        Some(root) => root,
+        None if webos => platform::install_dir()?.join("assets"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".build/assets"),
+    };
     let assets = view::Assets::load(root, webos)?;
     // The image decoder starts now, so the home's images decode while SDL,
     // EGL and the shaders start (uploads still wait for the renderer).
@@ -302,7 +344,7 @@ fn run() -> Result<(), String> {
     let writer = storage::Writer::new(preferences_path.clone());
     effects(
         if webos {
-            vec![Effect::Refresh, Effect::HomeButton(None)]
+            vec![Effect::Refresh, Effect::TvHome(None)]
         } else {
             vec![Effect::Refresh]
         },
@@ -341,27 +383,10 @@ fn run() -> Result<(), String> {
     let last_minute = None;
     let frame = 0u64;
     let presence = presence::Presence::new();
-    // LG's own Home coming to the front (an app was closed) is answered by
-    // bringing Lounge back, so the stock launcher never lingers. Push events when the hub allows them; otherwise poll while hidden.
-    let watching = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    // When the watcher raises Lounge it posts this event: a hidden Lounge sleeps
-    // long, and webOS shows its window only once Lounge answers, so the event
-    // wakes the loop at once and keeps it brisk while the window comes back.
-    // SAFETY: registering an SDL user event type has no preconditions.
-    let wake_type = unsafe { sdl.event()?.register_event()? };
-    let wake_sender = sdl.event()?.event_sender();
-    let wake: platform::Wake = std::sync::Arc::new(move || {
-        let _ = wake_sender.push_event(Event::User {
-            timestamp: 0,
-            window_id: 0,
-            type_: wake_type,
-            code: 0,
-            data1: std::ptr::null_mut(),
-            data2: std::ptr::null_mut(),
-        });
-    });
+    // sam's lifecycle events for Lounge as Home (see `platform::register_home`).
+    let mut lifecycle = None;
     // The Home key, seen as Lounge's own launch (see `watch_launches`).
-    // SAFETY: as above.
+    // SAFETY: registering an SDL user event type has no preconditions.
     let home_type = unsafe { sdl.event()?.register_event()? };
     let home_sender = sdl.event()?.event_sender();
     let home: platform::Wake = std::sync::Arc::new(move || {
@@ -374,46 +399,45 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
-    // Crash guard: if Lounge crashed twice within two minutes, this run does
-    // not pull itself back over LG Home, so a broken build can never trap the
-    // TV in a relaunch loop. A clean exit clears the record.
-    let crash_guard = default_preferences.with_file_name("running.marker");
-    let safe_mode = webos && crash_guard::begin(&crash_guard);
-    let crash_guard_clear =
-        webos.then(|| Instant::now() + Duration::from_secs(crash_guard::HEALTHY_SECONDS));
-    if safe_mode {
-        eprintln!("Lounge safe mode: two recent crashes; not taking over Home this run");
-    }
-    if webos && !safe_mode {
-        match platform::watch_foreground(watching.clone(), wake.clone()) {
+    if webos && platform::is_home() {
+        // SAFETY: as above.
+        let lifecycle_type = unsafe { sdl.event()?.register_event()? };
+        let sender = sdl.event()?.event_sender();
+        let registered = platform::register_home(move |event| {
+            let _ = sender.push_event(Event::User {
+                timestamp: 0,
+                window_id: 0,
+                type_: lifecycle_type,
+                code: match event {
+                    platform::Lifecycle::Relaunch => 1,
+                    platform::Lifecycle::Close => 2,
+                },
+                data1: std::ptr::null_mut(),
+                data2: std::ptr::null_mut(),
+            });
+        });
+        match registered {
             Ok(()) => {
-                watching.store(true, std::sync::atomic::Ordering::Relaxed);
-                platform::status("foreground events: on");
+                lifecycle = Some(lifecycle_type);
+                platform::status("home lifecycle (registerApp): on");
             }
-            Err(error) => platform::status(&format!("foreground events: {error}; polling instead")),
+            Err(error) => platform::status(&format!("home lifecycle: {error}")),
         }
     }
     if webos {
-        match platform::watch_launches(home, !safe_mode) {
+        match platform::watch_opened() {
+            Ok(()) => platform::status("foreground events (opened apps): on"),
+            Err(error) => platform::status(&format!("foreground events: {error}")),
+        }
+        match platform::watch_launches(home) {
             Ok(()) => platform::status("launch events (Home key): on"),
-            Err(error) => {
-                platform::status(&format!("launch events: {error}; Home only raises Lounge"))
-            }
+            Err(error) => platform::status(&format!("launch events: {error}")),
         }
         match platform::watch_running(platform.running.clone()) {
             Ok(()) => platform::status("running events: on"),
             Err(error) => {
                 platform::status(&format!("running events: {error}; asking on Back instead"))
             }
-        }
-        if !safe_mode {
-            match platform::watch_power() {
-                Ok(()) => platform::status("power events (wake to Lounge): on"),
-                Err(error) => platform::status(&format!("power events: {error}")),
-            }
-        }
-        if safe_mode {
-            platform::status("safe mode: two recent crashes");
         }
     }
     // Developer flag: log every input event (stderr goes to /dev/null otherwise).
@@ -425,7 +449,6 @@ fn run() -> Result<(), String> {
     let rewarm = false;
     let glyphs_warming = true;
     let last_refresh = Instant::now();
-    let foreground_poll = Instant::now();
     let running = true;
     let queued_event = None;
     let text_active = false;
@@ -473,18 +496,15 @@ fn run() -> Result<(), String> {
         last_minute,
         frame,
         presence,
-        watching,
-        wake_type,
         home_type,
-        crash_guard,
-        crash_guard_clear,
+        lifecycle,
+        healthy_at: None,
         log_events,
         frame_log,
         partial,
         rewarm,
         glyphs_warming,
         last_refresh,
-        foreground_poll,
         running,
         queued_event,
         text_active,
@@ -524,18 +544,17 @@ struct Shell {
     last_minute: Option<i64>,
     frame: u64,
     presence: presence::Presence,
-    watching: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    wake_type: u32,
     home_type: u32,
-    crash_guard: std::path::PathBuf,
-    crash_guard_clear: Option<Instant>,
+    /// The SDL event type sam's lifecycle events arrive as, as Home.
+    lifecycle: Option<u32>,
+    /// As Home: when this run counts as healthy (see `crash_guard`), once its first frame is up.
+    healthy_at: Option<Instant>,
     log_events: bool,
     frame_log: diagnostics::FrameLog,
     partial: damage::Partial,
     rewarm: bool,
     glyphs_warming: bool,
     last_refresh: Instant,
-    foreground_poll: Instant,
     running: bool,
     queued_event: Option<Event>,
     text_active: bool,
@@ -649,16 +668,6 @@ impl Shell {
             );
         }
         self.extras();
-        if self.webos
-            && !self.watching.load(std::sync::atomic::Ordering::Relaxed)
-            && !self.presence.visible
-            && !self.replies.foreground_pending
-            && self.foreground_poll.elapsed() >= Duration::from_millis(250)
-        {
-            self.replies.foreground_pending = true;
-            self.foreground_poll = Instant::now();
-            self.platform.send(Request::Foreground);
-        }
         weather_tick(
             &mut self.state,
             &self.weather_service,
@@ -759,25 +768,39 @@ impl Shell {
             );
         }
         match event {
-            // The TV turning off asks every app to quit: Lounge stays,
-            // hidden, so it is there to take the screen at power-on.
-            Event::Quit { .. }
-                if self.webos && platform::STANDBY.load(std::sync::atomic::Ordering::Relaxed) =>
-            {
-                platform::status("quit asked while turning off: staying resident for power-on");
-                // Healthy until the TV turned off: webOS replaces this
-                // process at power-on, which must not count as a crash.
-                crash_guard::end(&self.crash_guard);
-                self.crash_guard_clear = None;
-            }
             Event::Quit { .. } => {
                 if self.webos {
                     platform::status("quit asked: exiting");
                 }
                 self.running = false;
             }
-            Event::User { type_, .. } if type_ == self.wake_type => {
-                self.presence.raise();
+            // As Home, the compositor hands Lounge the Home key while it is in front (it
+            // launches nothing then): tvOS's Home, back to the top.
+            Event::KeyDown {
+                keycode: Some(key),
+                repeat,
+                ..
+            } if i32::from(key) == sdl_events::WEBOS_HOME_KEYCODE => {
+                if !repeat {
+                    self.remote.press = None;
+                    platform::status("home key: back to the top");
+                    self.state.home_key(true);
+                }
+            }
+            Event::KeyUp {
+                keycode: Some(key), ..
+            } if i32::from(key) == sdl_events::WEBOS_HOME_KEYCODE => {}
+            Event::User { type_, code, .. } if Some(type_) == self.lifecycle => {
+                if code == 2 {
+                    platform::status("home: closed by webOS");
+                    self.running = false;
+                } else {
+                    // Home opened while this run is resident: to the front at once.
+                    // SAFETY: the window outlives the event loop.
+                    unsafe { sdl2::sys::SDL_RaiseWindow(self.window.raw()) };
+                    self.presence.raise();
+                    self.state.dirty = true;
+                }
             }
             Event::User { type_, .. } if type_ == self.home_type => {
                 // The launch that brings Lounge back from an app lands just
@@ -1053,12 +1076,9 @@ impl Shell {
                 );
             }
         }
-        if self
-            .crash_guard_clear
-            .is_some_and(|at| Instant::now() >= at)
-        {
-            self.crash_guard_clear = None;
-            crash_guard::end(&self.crash_guard);
+        if self.healthy_at.is_some_and(|at| Instant::now() >= at) {
+            self.healthy_at = None;
+            crash_guard::end(std::path::Path::new(crash_guard::HOME_MARKER));
         }
         // state.loading stays set meanwhile, so focus and relaunch refreshes
         // add no requests of their own.
@@ -1177,6 +1197,12 @@ impl Shell {
                 self.partial.drawn(&self.scene.draw);
                 if self.presented == 0 {
                     self.stage("first frame");
+                    if platform::is_home() {
+                        self.healthy_at = Some(
+                            Instant::now()
+                                + Duration::from_secs(crash_guard::HEALTHY_AFTER_FRAME_SECONDS),
+                        );
+                    }
                     if self.webos {
                         let stats = self.renderer.stats();
                         eprintln!(
@@ -1221,13 +1247,7 @@ impl Shell {
         } else if !self.presence.visible {
             // Hidden behind an app: push events need no polling, so sleep long,
             // except while being raised (see `wake`): then answer webOS fast.
-            if self.presence.raising() {
-                16
-            } else if self.watching.load(std::sync::atomic::Ordering::Relaxed) {
-                2000
-            } else {
-                250
-            }
+            if self.presence.raising() { 16 } else { 2000 }
         } else if self.state.animating() || self.options.profile_frames.is_some() {
             0
         } else if self.remote.press.is_some() || self.options.frames.is_some() {
@@ -1243,7 +1263,9 @@ impl Shell {
         save_order(&mut self.state, &self.writer);
         // Every save queued so far reaches the disk before Lounge exits.
         self.writer.finish();
-        crash_guard::end(&self.crash_guard);
+        if platform::is_home() {
+            crash_guard::end(std::path::Path::new(crash_guard::HOME_MARKER));
+        }
         if self.text_active {
             self.video.text_input().stop();
         }

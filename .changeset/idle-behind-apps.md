@@ -1,5 +1,5 @@
 ---
-"lounge": patch
+'lounge': patch
 ---
 
 - Behind an app Lounge does no work at all: nothing is composed, decoded or uploaded, the

@@ -74,7 +74,7 @@ fn remote_routes_through_the_tvos_home_and_settings() {
     assert!(!state.expanded && state.scroll == 0.);
     state.focus = Target::App(crate::state::SETTINGS_TILE.into());
     // Opening Settings asks the TV where the Home key goes until it has said.
-    assert_eq!(state.activate(), vec![Effect::HomeButton(None)]);
+    assert_eq!(state.activate(), vec![Effect::TvHome(None)]);
     assert_eq!(state.page, Page::Settings);
     assert_eq!(state.focus, Target::Sidebar(0));
     state.activate();
@@ -245,19 +245,19 @@ fn luma_preferences_keep_settings_and_search_in_place() {
 }
 
 #[test]
-fn the_home_button_switch_flips_once_per_answer_from_the_tv() {
+fn the_lounge_as_home_switch_flips_once_per_answer_from_the_tv() {
     let mut state = State::new(Preferences::default());
     state.focus = Target::Setting(10);
     // Unknown until the TV has said: nothing to flip.
     assert!(state.activate().is_empty());
-    state.home_button = Some(false);
-    assert_eq!(state.activate(), vec![Effect::HomeButton(Some(true))]);
-    assert!(state.home_button_busy);
+    state.tv_home = Some(false);
+    assert_eq!(state.activate(), vec![Effect::TvHome(Some(true))]);
+    assert!(state.tv_home_busy);
     // A second press while the TV is still changing it does nothing.
     assert!(state.activate().is_empty());
-    state.home_button_busy = false;
-    state.home_button = Some(true);
-    assert_eq!(state.activate(), vec![Effect::HomeButton(Some(false))]);
+    state.tv_home_busy = false;
+    state.tv_home = Some(true);
+    assert_eq!(state.activate(), vec![Effect::TvHome(Some(false))]);
 }
 
 #[test]
@@ -1368,63 +1368,6 @@ fn a_slow_tv_service_at_boot_is_retried_before_any_error_shows() {
     assert!(state.error.is_some());
 }
 
-#[test]
-fn power_steps_recorded_on_the_tv_wake_lounge_only_from_standby() {
-    use crate::platform::power_step;
-    // Replay a sequence the TV sent (2026-10-25), returning each step's
-    // (off or turning off, woke).
-    let replay = |steps: &[(&str, &str)]| {
-        let mut previous = String::from("Active");
-        steps
-            .iter()
-            .map(|(state, processing)| {
-                let step = power_step(&previous, state, processing);
-                previous = (*state).to_owned();
-                step
-            })
-            .collect::<Vec<_>>()
-    };
-    // Power off into Active Standby and straight back on.
-    let quick = replay(&[
-        ("Active", "Request Power Off"),
-        ("Active", "Request Active Standby"),
-        ("Active", "Prepare Active Standby"),
-        ("Active Standby", ""),
-        ("Active Standby", "LastInput Ready"),
-        ("Active Standby", "Screen On"),
-        ("Active", ""),
-    ]);
-    assert!(
-        quick[..6].iter().all(|(going, woke)| *going && !woke),
-        "off the whole way: quits are ignored"
-    );
-    assert_eq!(
-        quick[6],
-        (false, true),
-        "back on: Lounge wakes to the front"
-    );
-    // Full standby (Suspend) and resume.
-    let full = replay(&[
-        ("Screen Off", "Prepare Suspend"),
-        ("Suspend", ""),
-        ("Suspend", "Prepare Resume"),
-        ("Suspend", "LastInput Ready"),
-        ("Suspend", "Screen On"),
-        ("Active", ""),
-    ]);
-    assert_eq!(full.last(), Some(&(false, true)));
-    // The screen saver (asked for, then on), and Quick Settings' Screen Off:
-    // the TV stays on, so a quit then is a real quit, and back is no wake.
-    for idle in [
-        ("Active", "Request Screen Saver"),
-        ("Screen Saver", ""),
-        ("Screen Off", ""),
-    ] {
-        let steps = replay(&[idle, ("Active", "")]);
-        assert_eq!(steps, [(false, false), (false, false)], "{idle:?}");
-    }
-}
-
 // Regressions found by walking every remote path (2026-10-27).
 
 fn order(state: &State) -> Vec<String> {
@@ -1653,6 +1596,88 @@ fn focus_goes_to_the_tile_that_takes_a_vanished_tiles_place() {
     inventory.apps.retain(|app| app.id != tiles[7]);
     state.set_inventory(inventory, None);
     assert_eq!(state.focus, Target::App(order(&state)[7].clone()));
+}
+
+// Lounge as the TV's Home (tv/home.cjs mounts its executable over LG Home's).
+
+#[test]
+fn only_lg_home_executable_path_makes_lounge_the_home() {
+    use crate::platform::{LG_HOME_EXE, is_home_path};
+    assert!(is_home_path(std::path::Path::new(LG_HOME_EXE)));
+    for path in [
+        "/media/developer/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge/lounge",
+        "/usr/bin/com.webos.app.home.real",
+        "/usr/bin/lounge",
+    ] {
+        assert!(!is_home_path(std::path::Path::new(path)));
+    }
+    // A test run is never the TV's Home.
+    assert_eq!(crate::platform::own_id(), crate::platform::APP_ID);
+}
+
+#[test]
+fn sam_background_starts_never_count_as_someone_opening_home() {
+    use crate::options::background_launch;
+    use serde_json::json;
+    // What sam passed LG's Home at boot on the TV (its CRIU image's argv).
+    assert!(background_launch(&json!({
+        "event": "launch", "reason": "boot", "appId": "com.webos.app.home",
+        "parameters": {"boot": true}, "interfaceVersion": 2,
+        "interfaceMethod": "registerApp", "@system_native_app": true
+    })));
+    assert!(background_launch(
+        &json!({"preload": "partial", "parameters": {}})
+    ));
+    assert!(background_launch(&json!({"reason": "preload"})));
+    for opened in [
+        json!({"event": "launch", "reason": "undefined", "appId": "com.webos.app.home", "parameters": {}}),
+        json!({"event": "launch", "appId": "com.webos.app.home", "parameters": {"boot": false}}),
+        json!({"nid": "io.github.yashwanthkamireddi.lounge"}),
+    ] {
+        assert!(!background_launch(&opened), "{opened}");
+    }
+}
+
+#[test]
+fn the_switcher_never_lists_lounge_or_home_whichever_id_lounge_runs_under() {
+    let mut state = ready();
+    for id in [crate::platform::APP_ID, crate::platform::HOME_ID] {
+        state
+            .inventory
+            .apps
+            .push(crate::model::App::new(id, "Lounge"));
+    }
+    state.open_switcher(vec![
+        crate::platform::HOME_ID.into(),
+        "netflix".into(),
+        crate::platform::APP_ID.into(),
+    ]);
+    let switcher = state.switcher.as_ref().expect("netflix is open");
+    assert_eq!(switcher.apps, ["netflix"]);
+}
+
+#[test]
+fn sam_relaunches_and_closes_lounge_as_home_and_a_lost_registration_closes_it() {
+    use crate::platform::Lifecycle;
+    use serde_json::json;
+    assert_eq!(
+        Lifecycle::from_reply(&json!({"returnValue": true, "event": "registered"})),
+        None
+    );
+    assert_eq!(
+        Lifecycle::from_reply(
+            &json!({"returnValue": true, "event": "relaunch", "reason": "hotKey"})
+        ),
+        Some(Lifecycle::Relaunch)
+    );
+    assert_eq!(
+        Lifecycle::from_reply(&json!({"event": "close"})),
+        Some(Lifecycle::Close)
+    );
+    assert_eq!(
+        Lifecycle::from_reply(&json!({"returnValue": false, "errorText": "sam restarted"})),
+        Some(Lifecycle::Close)
+    );
 }
 
 #[test]

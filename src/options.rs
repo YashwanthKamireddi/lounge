@@ -25,8 +25,10 @@ pub(crate) struct Options {
     pub(crate) weather_test_server: Option<String>,
     pub(crate) test_extra_apps: usize,
     pub(crate) inventory: Option<std::path::PathBuf>,
-    /// Started by LG's preloader rather than by someone.
-    pub(crate) preload: bool,
+    /// Started by webOS in the background (at boot, or a preload) rather than by someone.
+    pub(crate) background: bool,
+    /// What webOS said about this launch (its event and reason), for the status log.
+    pub(crate) launch: Option<String>,
 }
 
 impl Options {
@@ -45,7 +47,19 @@ impl Options {
             if let Some(argument) = args.next() {
                 let launch = serde_json::from_str::<serde_json::Value>(&argument)
                     .map_err(|error| error.to_string())?;
-                result.preload = launch.get("preload").is_some();
+                result.background = background_launch(&launch);
+                result.launch = Some(
+                    ["event", "reason", "appId"]
+                        .iter()
+                        .filter_map(|key| Some(format!("{key} {}", launch.get(*key)?)))
+                        .chain(
+                            launch
+                                .get("parameters")
+                                .map(|value| format!("parameters {value}")),
+                        )
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
             }
             eprintln!("Lounge webOS launch parameters accepted");
         }
@@ -144,4 +158,13 @@ impl Options {
         }
         Ok(result)
     }
+}
+
+/// sam's own background starts: the boot start of Home (`parameters.boot`) and preloads.
+pub(crate) fn background_launch(launch: &serde_json::Value) -> bool {
+    let parameters = launch.get("parameters");
+    launch.get("preload").is_some()
+        || parameters.and_then(|value| value.get("preload")).is_some()
+        || parameters.and_then(|value| value.get("boot")) == Some(&serde_json::json!(true))
+        || launch.get("reason").and_then(serde_json::Value::as_str) == Some("preload")
 }

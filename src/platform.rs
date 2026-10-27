@@ -8,202 +8,200 @@ use crate::{
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::PathBuf, sync::mpsc, thread};
 
+#[path = "platform-install.rs"]
+mod installation;
+
 pub const APP_ID: &str = "io.github.yashwanthkamireddi.lounge";
 pub const HOME_ID: &str = "com.webos.app.home";
+/// LG's Home executable. With Lounge as the TV's Home, Lounge's executable is mounted over it
+/// (`tv/home.cjs`), so webOS starts Lounge with LG Home's manifest, window type and LS2 role.
+pub const LG_HOME_EXE: &str = "/usr/bin/com.webos.app.home";
+/// The root-owned copies of `tv/home.sh` and `tv/home.cjs`, also run by the boot hook.
+const HOME_SCRIPT: &str = "/var/lib/lounge/home.sh";
+/// Written while Lounge is the TV's Home (`tv/home.cjs`); /var/run is shared with the app's jail.
+const HOME_MARKER: &str = "/var/run/lounge-home";
 
-/// While Lounge is hidden, LG's stock Home surfacing (an app was closed, or the
-/// TV woke) is answered at once by bringing Lounge forward. Push-based: no polling.
-#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-pub fn watch_foreground(
-    alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    wake: Wake,
-) -> Result<(), String> {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    // webOS's own foreground event decides, not Lounge's window flag: SDL
-    // reports visibility late and out of order, and trusting it left LG Home
-    // on screen after quitting some system apps.
-    let returning = std::sync::Arc::new(AtomicBool::new(false));
-    let mut previous = String::new();
-    crate::luna::subscribe(
+/// This process's executable path, without the mark the kernel adds once the file was
+/// replaced (a package update under a running Home).
+fn executable() -> Option<PathBuf> {
+    let path = std::env::current_exe().ok()?;
+    let text = path.to_str()?;
+    Some(PathBuf::from(
+        text.strip_suffix(" (deleted)").unwrap_or(text),
+    ))
+}
+
+/// Whether this process runs as the TV's Home, in place of LG's.
+pub fn is_home() -> bool {
+    static HOME: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HOME.get_or_init(|| executable().is_some_and(|path| is_home_path(&path)))
+}
+
+pub fn is_home_path(path: &std::path::Path) -> bool {
+    path == std::path::Path::new(LG_HOME_EXE)
+}
+
+/// The user this process runs as (the jailed app's own user, or root as Home).
+pub fn user_id() -> u32 {
+    #[cfg(all(feature = "webos", unix))]
+    // SAFETY: getuid has no preconditions.
+    return unsafe { libc::getuid() };
+    #[cfg(not(all(feature = "webos", unix)))]
+    0
+}
+
+/// The app id webOS knows this process by: LG's Home id when Lounge is the Home.
+pub fn own_id() -> &'static str {
+    if is_home() { HOME_ID } else { APP_ID }
+}
+
+/// The installed package holding assets/, lib/ and the executable: next to the executable,
+/// or, as Home, the package whose executable is mounted in LG's place.
+pub fn install_dir() -> Result<PathBuf, String> {
+    installation().map(|found| found.directory)
+}
+
+/// As Home: the mount still holds an executable a package update has since replaced.
+pub fn home_mount_stale() -> bool {
+    is_home() && installation().is_ok_and(|found| !found.current)
+}
+
+fn installation() -> Result<installation::Found, String> {
+    static FOUND: std::sync::OnceLock<Result<installation::Found, String>> =
+        std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            let executable = executable().ok_or("The executable's path is unknown")?;
+            installation::find(&executable, is_home(), installation::directories())
+        })
+        .clone()
+}
+
+/// A normal launch of Lounge while Lounge is the TV's Home opens that Home instead, so two
+/// Lounges never write the same preferences. True when it did.
+pub fn redirect_to_home() -> bool {
+    if is_home()
+        || std::fs::read_to_string(HOME_MARKER).map_or(true, |marker| marker.trim() != APP_ID)
+    {
+        return false;
+    }
+    let launched = call(
+        "luna://com.webos.applicationManager/launch",
+        json!({"id": HOME_ID}),
+    );
+    status(&match &launched {
+        Ok(_) => "Lounge is the TV's Home: opened Home instead".to_owned(),
+        Err(error) => format!("Lounge is the TV's Home, but Home did not open: {error}"),
+    });
+    launched.is_ok()
+}
+
+/// As Home, whether Home is what the TV shows (or nothing is), so a launch made in the
+/// background (sam's boot start) may take the screen.
+pub fn home_in_front() -> bool {
+    call(
         "luna://com.webos.applicationManager/getForegroundAppInfo",
-        &json!({"subscribe": true}),
-        move |reply| {
-            // A denied or dropped subscription replies returnValue:false: hand
-            // back to polling rather than silently stop watching.
-            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
-                status(&format!(
-                    "foreground events ended: {reply}; polling meanwhile"
-                ));
-                alive.store(false, Ordering::Relaxed);
-                let (alive, wake) = (alive.clone(), wake.clone());
-                resubscribe("foreground events", move || {
-                    watch_foreground(alive.clone(), wake.clone())?;
-                    alive.store(true, Ordering::Relaxed);
-                    Ok(())
-                });
-                return;
-            }
-            let front = reply
-                .get("appId")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-            eprintln!("Lounge foreground: {front:?} at {} ms", clock_ms());
-            note_opened(&front);
-            let closed = std::mem::replace(&mut previous, front.clone());
-            // An app closing leaves nothing in front for a moment before
-            // webOS raises LG Home: act then, so LG Home never shows. LG Home
-            // itself in front is the fallback. Lounge launching an app (it was
-            // in front) is not a close.
-            let app_closed =
-                front.is_empty() && !closed.is_empty() && closed != APP_ID && closed != HOME_ID;
-            if (front != HOME_ID && !app_closed) || returning.swap(true, Ordering::AcqRel) {
-                return;
-            }
-            let returning = returning.clone();
-            let wake = wake.clone();
-            thread::spawn(move || {
-                let front_now = || {
-                    call(
-                        "luna://com.webos.applicationManager/getForegroundAppInfo",
-                        json!({}),
-                    )
-                    .ok()
-                    .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
-                    .unwrap_or_default()
-                };
-                // A gap between two apps (one launching another) also leaves
-                // nothing in front: wait a beat and stand aside if an app came.
-                if app_closed {
-                    thread::sleep(std::time::Duration::from_millis(120));
-                    let now = front_now();
-                    if !now.is_empty() && now != HOME_ID {
-                        returning.store(false, Ordering::Release);
-                        return;
-                    }
-                }
-                // Raising an already-running Lounge is cheap, so re-assert
-                // often: LG Home loses the race within a frame or two.
-                for _ in 0..12 {
-                    raise_self();
-                    wake();
-                    thread::sleep(std::time::Duration::from_millis(250));
-                    let now = front_now();
-                    eprintln!("Lounge return: front is now {now:?} at {} ms", clock_ms());
-                    if now != HOME_ID && !now.is_empty() {
-                        break;
-                    }
-                }
-                returning.store(false, Ordering::Release);
-            });
-        },
+        json!({}),
     )
+    .ok()
+    .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
+    .is_some_and(|front| front.is_empty() || front == HOME_ID)
 }
 
-/// Wall-clock milliseconds, for timing foreground events in the debug log.
-#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-fn clock_ms() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |time| time.as_millis())
+/// As Home after a package update: mounts the new executable in LG Home's place. The caller
+/// then starts again from it.
+pub fn refresh_home_mount() -> Result<(), String> {
+    run_home_script("refresh").map(|_| ())
 }
 
-/// Waking from standby (LG's Quick Start+) is a power-on as far as anyone
-/// watching knows: Lounge comes to the front, as it does after a cold start.
-/// Only a wake counts; the screen coming back from Screen Off or the
-/// screensaver leaves whatever was playing in front.
-#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-pub fn watch_power() -> Result<(), String> {
-    use std::sync::atomic::Ordering;
-    // Kept across resubscribes, so a stream that restarts around a wake still
-    // knows the TV was off.
-    static PREVIOUS: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
-    crate::luna::subscribe(
-        "luna://com.webos.service.tvpower/power/getPowerState",
-        &json!({"subscribe": true}),
-        move |reply| {
-            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
-                status(&format!("power events ended: {reply}"));
-                resubscribe("power events", watch_power);
-                return;
-            }
-            let Some(state) = reply.get("state").and_then(Value::as_str) else {
-                return;
-            };
-            // Turning off: the state stays "Active" while LG works through
-            // "Request Power Off" / "Prepare Active Standby", then becomes
-            // "Active Standby" (or "Suspend"). webOS asks every app to quit
-            // on the way; Lounge stays resident instead (see `STANDBY`).
-            let processing = reply
-                .get("processing")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let Ok(mut previous) = PREVIOUS.lock() else {
-                return;
-            };
-            let (going, woke) = power_step(&previous, state, processing);
-            if going != STANDBY.swap(going, Ordering::Relaxed) {
-                status(&format!(
-                    "power: {state}{}",
-                    if processing.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ({processing})")
-                    }
-                ));
-            }
-            *previous = state.to_owned();
-            drop(previous);
-            if woke {
-                status("woke from standby: Lounge to the front");
-                // LG's quick-boot daemon closed every app at power-off; webOS
-                // replaces a run that stayed (it kills it, ~1.9 s, then starts
-                // a fresh one). So this run asks for Lounge and steps aside at
-                // once: the fresh Lounge starts without that wait.
-                thread::spawn(|| {
-                    thread::spawn(raise_self);
-                    thread::sleep(std::time::Duration::from_millis(150));
-                    status("woke: launch asked; this run steps aside for a fresh start");
-                    std::process::exit(0);
-                });
-            }
-        },
-    )
+/// As Home, gives Home back to LG (the crash guard). It stops this process.
+pub fn restore_lg_home() -> Result<(), String> {
+    run_home_script("disable").map(|_| ())
 }
 
-/// What one reply of LG's power stream means, given the state before it:
-/// (the TV is off or on its way there, it has just woken). Turning off, LG
-/// reports "Active" with a power-off `processing` step ("Request Power
-/// Off", "Prepare Active Standby"), then "Active Standby" or "Suspend". The
-/// screen saver ("Request Screen Saver", "Screen Saver") and Screen Off
-/// leave the TV on: a quit then is a real quit. A wake is "Active" straight
-/// after Standby or Suspend.
+fn run_home_script(command: &str) -> Result<Value, String> {
+    let envelope = root_command(&format!("/bin/sh {HOME_SCRIPT} {command}; exit 0"))?;
+    command_reply(&envelope)
+}
+
+/// What sam asks of Lounge as Home.
 #[cfg_attr(
     not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
     allow(dead_code)
 )]
-pub fn power_step(previous: &str, state: &str, processing: &str) -> (bool, bool) {
-    let off = |text: &str| {
-        ["Standby", "Suspend", "Power Off"]
-            .iter()
-            .any(|word| text.contains(word))
-    };
-    let going = off(state) || off(processing);
-    let woke = state == "Active"
-        && processing.is_empty()
-        && (previous.contains("Standby") || previous.contains("Suspend"));
-    (going, woke)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lifecycle {
+    /// Come to the front: Home was opened while this run is resident.
+    Relaunch,
+    /// Exit (also when the registration is lost, so sam starts Home afresh).
+    Close,
 }
 
-/// The TV is turning off, or is off (Active Standby, Suspend): a quit webOS
-/// sends then is the power-off sweep, not a request to close Lounge. Lounge
-/// stays resident, hidden, so the wake brings it straight back to the front
-/// (LG's own power-on otherwise restores the last input).
-pub static STANDBY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
+impl Lifecycle {
+    /// One reply of sam's registerApp stream; others (`registered`, `pause`) need nothing.
+    pub fn from_reply(reply: &Value) -> Option<Self> {
+        if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+            return Some(Self::Close);
+        }
+        match reply.get("event").and_then(Value::as_str)? {
+            "relaunch" => Some(Self::Relaunch),
+            "close" => Some(Self::Close),
+            _ => None,
+        }
+    }
+}
+
+/// As Home, Lounge registers its lifecycle with sam itself, under LG Home's service name (the
+/// only name LG Home's LS2 role gives calls to sam). SDL's own registration does not reach sam
+/// under that role: sam then closed and restarted Lounge on every Home press instead of
+/// bringing the running Lounge back.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn register_home(lifecycle: impl Fn(Lifecycle) + Send + 'static) -> Result<(), String> {
+    crate::luna::subscribe_as(
+        Some(HOME_ID),
+        "luna://com.webos.applicationManager/registerApp",
+        &json!({}),
+        move |reply| {
+            if let Some(event) = Lifecycle::from_reply(&reply) {
+                status(&format!("home lifecycle: {reply}"));
+                lifecycle(event);
+            }
+        },
+    )
+}
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
-pub fn watch_power() -> Result<(), String> {
-    Err("Power events need an ARM webOS build".into())
+pub fn register_home(_lifecycle: impl Fn(Lifecycle) + Send + 'static) -> Result<(), String> {
+    Err("Lifecycle registration needs an ARM webOS build".into())
+}
+
+/// Every app someone brings to the front, for the switcher (see `opened_only`). Push-based:
+/// no polling.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_opened() -> Result<(), String> {
+    crate::luna::subscribe(
+        "luna://com.webos.applicationManager/getForegroundAppInfo",
+        &json!({"subscribe": true}),
+        move |reply| {
+            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                status(&format!("foreground events ended: {reply}"));
+                resubscribe("foreground events", watch_opened);
+                return;
+            }
+            if let Some(front) = reply.get("appId").and_then(Value::as_str) {
+                note_opened(front);
+            }
+        },
+    )
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_opened() -> Result<(), String> {
+    Err("Foreground events need an ARM webOS build".into())
 }
 
 /// Subscribes again after a stream ended (LG's service restarted, say), so
@@ -277,15 +275,10 @@ pub fn watch_running(
     )
 }
 
-/// The remote's Home key launches Lounge (Glasshouse's key filter). When Lounge
-/// is already in front, LG's SDL swallows that launch, so no window event
-/// arrives; webOS still reports it as a lifecycle "launch", which calls `home`.
-///
-/// LG Home being launched (LG ThinQ's Home button and others go straight to
-/// it, past the remote's key filter) is answered the same moment, before it
-/// draws, by raising Lounge: `take_home` is false in safe mode.
+/// The remote's Home key with Lounge already in front: webOS sends no window event then, but
+/// reports a lifecycle "launch" of Lounge's own id, which calls `home`.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-pub fn watch_launches(home: Wake, take_home: bool) -> Result<(), String> {
+pub fn watch_launches(home: Wake) -> Result<(), String> {
     crate::luna::subscribe(
         "luna://com.webos.applicationManager/getAppLifeEvents",
         &json!({"subscribe": true}),
@@ -293,32 +286,20 @@ pub fn watch_launches(home: Wake, take_home: bool) -> Result<(), String> {
             if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
                 status(&format!("launch events ended: {reply}"));
                 let home = home.clone();
-                resubscribe("launch events", move || {
-                    watch_launches(home.clone(), take_home)
-                });
+                resubscribe("launch events", move || watch_launches(home.clone()));
                 return;
             }
-            if reply.get("event").and_then(Value::as_str) != Some("launch") {
-                return;
-            }
-            match reply.get("appId").and_then(Value::as_str) {
-                // Lounge raising itself (wake, LG Home taken over) is not the
-                // Home key: that would close Settings and jump to the top.
-                Some(APP_ID) if raised_self_recently() => {}
-                Some(APP_ID) => home(),
-                Some(HOME_ID) if take_home => {
-                    // Off the bus thread: a call from inside its callback
-                    // would wait on itself.
-                    thread::spawn(raise_self);
-                }
-                _ => {}
+            if reply.get("event").and_then(Value::as_str) == Some("launch")
+                && reply.get("appId").and_then(Value::as_str) == Some(own_id())
+            {
+                home();
             }
         },
     )
 }
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
-pub fn watch_launches(_home: Wake, _take_home: bool) -> Result<(), String> {
+pub fn watch_launches(_home: Wake) -> Result<(), String> {
     Err("Launch events need an ARM webOS build".into())
 }
 
@@ -329,63 +310,17 @@ pub fn watch_running(
     Err("Running-app events need an ARM webOS build".into())
 }
 
-#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
-pub fn watch_foreground(
-    _alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    _wake: Wake,
-) -> Result<(), String> {
-    Err("Foreground events need an ARM webOS build".into())
-}
-
-/// Marks Lounge's own launches of itself (bringing itself back over LG Home),
-/// so the relaunch webOS reports for them is not taken for the Home key.
-fn self_launch() -> Value {
-    json!({"lounge": "self"})
-}
-
-/// When Lounge last launched itself (see `raise_self`).
-static RAISED: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
-
-/// Notes that Lounge is launching itself: the launch event that follows is
-/// Lounge's own, not the Home key.
-fn note_raised() {
-    if let Ok(mut raised) = RAISED.lock() {
-        *raised = Some(std::time::Instant::now());
-    }
-}
-
-/// Brings Lounge to the front by launching itself (see `note_raised`).
-#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-fn raise_self() {
-    note_raised();
-    let _ = call(
-        "luna://com.webos.applicationManager/launch",
-        json!({"id": APP_ID, "params": self_launch()}),
-    );
-}
-
-#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-fn raised_self_recently() -> bool {
-    RAISED
-        .lock()
-        .ok()
-        .and_then(|raised| *raised)
-        .is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(1500))
-}
-
 /// Wakes Lounge's event loop from another thread (see main's `wake`).
 pub type Wake = std::sync::Arc<dyn Fn() + Send + Sync>;
 
 pub enum Request {
     Refresh,
     Launch(String),
-    /// Which app webOS currently shows (read while Lounge is hidden).
-    Foreground,
     Running,
     Close(String),
-    /// The remote's Home key: Some(true/false) to give it to Lounge or back
-    /// to LG, None to read which it is.
-    Home(Option<bool>),
+    /// Lounge as the TV's Home: Some(true/false) to make it so or give Home
+    /// back to LG, None to read which it is.
+    TvHome(Option<bool>),
     /// Remove an installed app (confirmed in Lounge's alert first).
     Uninstall(String),
 }
@@ -393,11 +328,10 @@ pub enum Response {
     Inventory(Result<(Inventory, Option<String>), String>),
     Profile(Option<crate::model::Profile>),
     Launched(Result<(), String>),
-    Foreground(Option<String>),
     Running(Vec<String>),
     Closed(String, Result<(), String>),
-    /// Whether the Home key opens Lounge, after the request.
-    Home(Result<bool, String>),
+    /// Whether Lounge is the TV's Home, after the request.
+    TvHome(Result<bool, String>),
     Uninstalled(String, Result<(), String>),
 }
 
@@ -498,26 +432,10 @@ impl Platform {
                         });
                         continue;
                     }
-                    Request::Home(set) => Response::Home(if webos {
-                        let result = home_button(set);
-                        status(&match &result {
-                            Ok(true) => "home button: opens Lounge".to_owned(),
-                            Ok(false) => "home button: opens LG Home".to_owned(),
-                            Err(error) => format!("home button: {error}"),
-                        });
-                        result
+                    Request::TvHome(set) => Response::TvHome(if webos {
+                        tv_home(set)
                     } else {
-                        Err("The Home button is set on the TV".into())
-                    }),
-                    Request::Foreground => Response::Foreground(if webos {
-                        call(
-                            "luna://com.webos.applicationManager/getForegroundAppInfo",
-                            json!({}),
-                        )
-                        .ok()
-                        .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
-                    } else {
-                        None
+                        Err("Home is set on the TV".into())
                     }),
                     // A launch never queues behind a slower request (closing
                     // an app through elevated exec, reading settings): it
@@ -532,20 +450,13 @@ impl Platform {
                             } else if !valid_app_id(&id) {
                                 Err("Invalid application identifier".into())
                             } else {
-                                let payload = if id == APP_ID {
-                                    note_raised();
-                                    json!({"id": id, "params": self_launch()})
-                                } else {
-                                    json!({"id": id})
-                                };
-                                call("luna://com.webos.applicationManager/launch", payload)
-                                    .map(|_| ())
+                                call(
+                                    "luna://com.webos.applicationManager/launch",
+                                    json!({"id": id}),
+                                )
+                                .map(|_| ())
                             };
-                            // Lounge raising itself is no app launch: no reply,
-                            // so it never clears an app's opening or shows its error.
-                            if id != APP_ID {
-                                let _ = responses.send(Response::Launched(result));
-                            }
+                            let _ = responses.send(Response::Launched(result));
                         });
                         continue;
                     }
@@ -568,6 +479,25 @@ impl Platform {
     }
 }
 
+/// Opens a file in /tmp the normal app and Lounge as Home (root) both write. /tmp is sticky,
+/// and the kernel's protected_regular refuses even root an O_CREAT open of a file another user
+/// owns there: an existing file is opened without creating it.
+fn shared_file(path: &str, append: bool) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true);
+    if append {
+        options.append(true);
+    } else {
+        options.truncate(true);
+    }
+    match options.open(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            options.create(true).open(path)
+        }
+        opened => opened,
+    }
+}
+
 /// What Lounge's TV connections are doing, one line each, in /tmp (memory,
 /// gone at reboot): readable on the TV without a debug restart.
 const STATUS: &str = "/tmp/lounge-status";
@@ -580,7 +510,10 @@ pub fn status_reset() {
     let previous = std::fs::read_to_string(STATUS).unwrap_or_default();
     let lines: Vec<&str> = previous.lines().collect();
     let kept = lines[lines.len().saturating_sub(KEEP)..].join("\n");
-    let _ = std::fs::write(STATUS, if kept.is_empty() { kept } else { kept + "\n" });
+    let _ = shared_file(STATUS, false).and_then(|mut file| {
+        use std::io::Write;
+        file.write_all(if kept.is_empty() { kept } else { kept + "\n" }.as_bytes())
+    });
     status(&format!("{STARTED}{})", std::process::id()));
 }
 
@@ -605,17 +538,13 @@ pub fn status(line: &str) {
     let mut appended = APPENDED
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(STATUS)
-        .and_then(|mut file| {
-            // Milliseconds: a power-on is a matter of a few seconds.
-            let at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default();
-            writeln!(file, "{}.{:03} {line}", at.as_secs(), at.subsec_millis())
-        });
+    let _ = shared_file(STATUS, true).and_then(|mut file| {
+        // Milliseconds: a power-on is a matter of a few seconds.
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        writeln!(file, "{}.{:03} {line}", at.as_secs(), at.subsec_millis())
+    });
     *appended += 1;
     if *appended >= RUN_APPENDS {
         *appended = 0;
@@ -623,7 +552,8 @@ pub fn status(line: &str) {
             .ok()
             .and_then(|log| shorten(&log))
         {
-            let _ = std::fs::write(STATUS, shorter);
+            let _ =
+                shared_file(STATUS, false).and_then(|mut file| file.write_all(shorter.as_bytes()));
         }
     }
 }
@@ -652,19 +582,6 @@ fn shorten(log: &str) -> Option<String> {
             .map(|line| (*line).to_owned()),
     );
     Some(out.join("\n") + "\n")
-}
-
-/// LG's preloader starts Lounge once at boot (a one-shot entry in its
-/// supportAppList). Lounge comes forward only over the boot screen, LG Home; with
-/// an app in front, or no answer, it stands aside before any window exists.
-pub fn preload_may_show() -> bool {
-    call(
-        "luna://com.webos.applicationManager/getForegroundAppInfo",
-        json!({}),
-    )
-    .ok()
-    .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
-    .is_some_and(|front| front.is_empty() || front == HOME_ID || front == APP_ID)
 }
 
 fn call(uri: &str, payload: Value) -> Result<Value, String> {
@@ -705,10 +622,7 @@ U=$(/usr/bin/luna-send -n 1 -w 4000 luna://com.webos.service.accountmanager/getL
 [ -n "$U" ] || { echo '{"returnValue":true,"profile":{}}'; exit 0; }
 F=$(/usr/bin/luna-send -n 1 -w 4000 luna://com.webos.service.accountmanager/getAccountData "{\"serviceName\":\"LGE\",\"userNo\":\"$U\",\"keys\":[\"userData\"]}" | grep -oE '"profile(Nick|Bg)":"[^"\\]*"' | tr '\n' ',' | sed 's/,$//')
 echo "{\"returnValue\":true,\"profile\":{$F}}""#;
-    let envelope = call(
-        "luna://org.webosbrew.hbchannel.service/exec",
-        json!({"command": command}),
-    )?;
+    let envelope = root_command(command)?;
     let profile = inventory_payload(&envelope, "profile")?;
     Ok(crate::model::Profile::from_fields(
         profile
@@ -720,16 +634,21 @@ echo "{\"returnValue\":true,\"profile\":{$F}}""#;
 }
 
 fn inventory_read(uri: &str, field: &str) -> Result<Value, String> {
+    // As Home, Lounge holds LG Home's LS2 role and asks sam and EIM itself: at a cold boot
+    // Home is up long before Homebrew's service. A refused call answers at once.
+    if is_home()
+        && let Ok(response) = call(uri, json!({}))
+        && let Some(value) = response.get(field)
+    {
+        return Ok(value.clone());
+    }
     // Only these fixed inventory commands use Homebrew's elevated service.
     // Use the same one-reply invocation as the web launcher, without guessing
     // CLI behavior from a firmware-version string.
     let command = format!(
         "if [ \"$(id -u)\" = 0 ]; then /usr/bin/luna-send -n 1 -w 4000 {uri} '{{}}'; else printf '%s\\n' '{{\"returnValue\":false,\"errorText\":\"Homebrew Channel needs root access\"}}'; fi"
     );
-    let envelope = call(
-        "luna://org.webosbrew.hbchannel.service/exec",
-        json!({"command": command}),
-    )?;
+    let envelope = root_command(&command)?;
     inventory_payload(&envelope, field).map_err(|error| {
         let error = format!("{uri}: {error}");
         eprintln!("Lounge TV inventory: {error}");
@@ -771,10 +690,8 @@ pub fn read_app_icons(source: &app_artwork::Source) -> Result<Vec<Vec<u8>>, Stri
             .join("; ");
         let command =
             format!("printf '{{\"returnValue\":true,\"icons\":[\"'; ( {tries} ); printf '\"]}}'");
-        if let Ok(envelope) = call(
-            "luna://org.webosbrew.hbchannel.service/exec",
-            json!({"command": command}),
-        ) && let Ok(icons) = inventory_payload(&envelope, "icons")
+        if let Ok(envelope) = root_command(&command)
+            && let Ok(icons) = inventory_payload(&envelope, "icons")
             && let Some(hex) = icons.get(0).and_then(Value::as_str)
             && !hex.is_empty()
             && let Ok(bytes) = decode_hex(hex)
@@ -788,10 +705,7 @@ pub fn read_app_icons(source: &app_artwork::Source) -> Result<Vec<Vec<u8>>, Stri
         quote(include_str!("../tv/read-app-icon.cjs")),
         quote(&serde_json::to_string(source).map_err(|e| e.to_string())?)
     );
-    let envelope = call(
-        "luna://org.webosbrew.hbchannel.service/exec",
-        json!({"command": command}),
-    )?;
+    let envelope = root_command(&command)?;
     let icons = inventory_payload(&envelope, "icons")?;
     let mut remaining = app_artwork::MAX_FILE;
     icons
@@ -850,6 +764,14 @@ fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
 }
 
 fn inventory_payload(envelope: &Value, field: &str) -> Result<Value, String> {
+    command_reply(envelope)?
+        .get(field)
+        .cloned()
+        .ok_or_else(|| format!("Missing TV inventory field: {field}"))
+}
+
+/// The one JSON reply a root command printed, refused when its returnValue is false.
+fn command_reply(envelope: &Value) -> Result<Value, String> {
     let stdout = envelope
         .get("stdoutString")
         .and_then(Value::as_str)
@@ -899,11 +821,7 @@ fn inventory_payload(envelope: &Value, field: &str) -> Result<Value, String> {
     if !response.is_object() || !response.get("returnValue").is_some_and(Value::is_boolean) {
         return Err(failure("Homebrew inventory JSON is not a Luna response"));
     }
-    let response = checked_response(response)?;
-    response
-        .get(field)
-        .cloned()
-        .ok_or_else(|| format!("Missing TV inventory field: {field}"))
+    checked_response(response)
 }
 
 /// Apps someone brought to the front since the TV started, one id per line.
@@ -921,11 +839,7 @@ fn note_opened(id: &str) {
         return;
     }
     use std::io::Write;
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(OPENED)
-        .and_then(|mut file| writeln!(file, "{id}"));
+    let _ = shared_file(OPENED, true).and_then(|mut file| writeln!(file, "{id}"));
 }
 
 /// The open apps the switcher shows: on the TV only those someone opened.
@@ -972,41 +886,118 @@ fn running_apps() -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-/// Settings › General › Home Button. LG's compositor opens LG Home for the
-/// Home key whatever the default Home is; a key filter in its chain is the
-/// one native way to change that. Lounge's (`tv/home-key-filter.js`) and the
-/// helper that puts it in or takes it out (`tv/home-button.js`) are written
-/// to /var/lib/lounge and run as root through Homebrew Channel's exec.
-fn home_button(set: Option<bool>) -> Result<bool, String> {
-    const HELPER: &str = include_str!("../tv/home-button.js");
-    const FILTER: &str = include_str!("../tv/home-key-filter.js");
+/// Runs a fixed shell command as root. As Home, Lounge already is root (LG runs its Home
+/// unjailed), so the command runs here; the jailed app asks Homebrew Channel's elevated exec.
+/// Either way the reply has Homebrew's shape: stdoutString, stderrString, exitCode.
+fn root_command(command: &str) -> Result<Value, String> {
+    root_command_within(command, std::time::Duration::from_millis(6500))
+}
+
+fn root_command_within(command: &str, timeout: std::time::Duration) -> Result<Value, String> {
+    // SAFETY: geteuid has no preconditions.
+    #[cfg(all(feature = "webos", unix))]
+    if unsafe { libc::geteuid() } == 0 {
+        return run_as_root(command);
+    }
+    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+    let response = crate::luna::call_within(
+        "luna://org.webosbrew.hbchannel.service/exec",
+        &json!({"command": command}),
+        timeout,
+    );
+    #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+    let response: Result<Value, String> = {
+        let _ = (command, timeout);
+        Err("Elevated commands are only available in an ARM webOS build".into())
+    };
+    response.and_then(checked_response)
+}
+
+/// Output goes to files, never a pipe, and the command leads its own process group: giving
+/// Home back to LG stops this process, and the command must outlive it to finish.
+#[cfg(all(feature = "webos", unix))]
+fn run_as_root(command: &str) -> Result<Value, String> {
+    use std::os::unix::process::CommandExt;
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let stem = format!(
+        "/tmp/lounge-root-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let (out, err) = (format!("{stem}.out"), format!("{stem}.err"));
+    let file = |path: &str| std::fs::File::create(path).map_err(|e| format!("{path}: {e}"));
+    let finished = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(command)
+        .stdin(std::process::Stdio::null())
+        .stdout(file(&out)?)
+        .stderr(file(&err)?)
+        .process_group(0)
+        .status();
+    let read = |path: &str| {
+        let text = std::fs::read(path).unwrap_or_default();
+        let _ = std::fs::remove_file(path);
+        String::from_utf8_lossy(&text[..text.len().min(2 * 1024 * 1024)]).into_owned()
+    };
+    let (stdout, stderr) = (read(&out), read(&err));
+    let status = finished.map_err(|error| format!("/bin/sh: {error}"))?;
+    Ok(json!({
+        "returnValue": true,
+        "stdoutString": stdout,
+        "stderrString": stderr,
+        "exitCode": status.code().unwrap_or(-1),
+    }))
+}
+
+/// Settings › General › Lounge as Home. `tv/home.sh` and `tv/home.cjs` are copied to
+/// /var/lib/lounge (where the boot hook runs them) whenever they changed, then run as root.
+/// The answer is what the TV reports: Lounge's executable mounted in LG Home's place and the
+/// boot hook in place.
+fn tv_home(set: Option<bool>) -> Result<bool, String> {
+    const SCRIPT: &str = include_str!("../tv/home.sh");
+    const LOGIC: &str = include_str!("../tv/home.cjs");
     let mode = match set {
-        Some(true) => "on",
-        Some(false) => "off",
+        Some(true) => "enable",
+        Some(false) => "disable",
         None => "status",
     };
     let command = format!(
         "if [ \"$(id -u)\" != 0 ]; then echo '{{\"returnValue\":false,\"errorText\":\"Homebrew Channel needs root access\"}}'; exit 0; fi\n\
-         mkdir -p /var/lib/lounge\n\
-         cat > /var/lib/lounge/home-button.js <<'LOUNGE_EOF'\n{HELPER}LOUNGE_EOF\n\
-         cat > /var/lib/lounge/home-key-filter.next <<'LOUNGE_EOF'\n{FILTER}LOUNGE_EOF\n\
-         /usr/bin/node /var/lib/lounge/home-button.js {mode}"
+         umask 022; mkdir -p /var/lib/lounge || exit 0\n\
+         cat > /tmp/lounge-home.sh.new <<'LOUNGE_EOF'\n{SCRIPT}LOUNGE_EOF\n\
+         cat > /tmp/lounge-home.cjs.new <<'LOUNGE_EOF'\n{LOGIC}LOUNGE_EOF\n\
+         for f in home.sh home.cjs; do\n\
+           cmp -s /tmp/lounge-$f.new /var/lib/lounge/$f || {{ cp /tmp/lounge-$f.new /var/lib/lounge/$f.new && mv /var/lib/lounge/$f.new /var/lib/lounge/$f; }}\n\
+           rm -f /tmp/lounge-$f.new\n\
+         done\n\
+         chmod 755 /var/lib/lounge/home.sh\n\
+         /bin/sh {HOME_SCRIPT} {mode}; exit 0"
     );
-    let envelope = call(
-        "luna://org.webosbrew.hbchannel.service/exec",
-        json!({"command": command}),
-    )?;
-    inventory_payload(&envelope, "on")?
-        .as_bool()
-        .ok_or_else(|| "The TV did not say where Home goes".into())
+    // Enabling stops LG's Home and waits for Lounge to come up as Home.
+    let envelope = root_command_within(&command, std::time::Duration::from_secs(90))?;
+    let reply = command_reply(&envelope);
+    let result = reply.map(|reply| {
+        let flag = |name: &str| reply.get(name).and_then(Value::as_bool) == Some(true);
+        status(&format!(
+            "tv home: method {}, mounted {}, boot hook {}, enabled {}, stale {}, foreign {}",
+            reply.get("method").and_then(Value::as_str).unwrap_or("?"),
+            flag("mounted"),
+            flag("hook"),
+            flag("enabled"),
+            flag("stale"),
+            flag("foreign"),
+        ));
+        flag("mounted") && flag("hook")
+    });
+    if let Err(error) = &result {
+        status(&format!("tv home ({mode}): {error}"));
+    }
+    result
 }
 
 fn elevated_close(id: &str) -> Result<(), String> {
     let command = close_command(id);
-    let envelope = call(
-        "luna://org.webosbrew.hbchannel.service/exec",
-        json!({"command": command}),
-    )?;
+    let envelope = root_command(&command)?;
     inventory_payload(&envelope, "returnValue").map(|_| ())
 }
 
@@ -1202,20 +1193,7 @@ pub fn close_command(id: &str) -> String {
 /// complete app list (never by asking for the removal a second time).
 fn elevated_uninstall(id: &str) -> Result<(), String> {
     let command = crate::uninstall::command(id)?;
-    let exec = "luna://org.webosbrew.hbchannel.service/exec";
-    #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-    let reply = crate::luna::call_within(
-        exec,
-        &json!({"command": command}),
-        std::time::Duration::from_secs(20),
-    );
-    #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
-    let reply: Result<Value, String> = {
-        let _ = (exec, command);
-        Err("Native Luna services are only available in an ARM webOS build".into())
-    };
-    let Err(error) = reply
-        .and_then(checked_response)
+    let Err(error) = root_command_within(&command, std::time::Duration::from_secs(20))
         .and_then(|envelope| inventory_payload(&envelope, "id"))
     else {
         return Ok(());
@@ -1244,14 +1222,10 @@ pub fn bus(uri: &str, payload: Value) -> Result<Value, String> {
     call(uri, payload)
 }
 
-/// One fixed command run as root through Homebrew Channel's exec, and the
+/// One fixed command run as root (see `root_command`), and the
 /// `field` of the Luna-style JSON reply it prints.
 pub fn elevated(command: &str, field: &str) -> Result<Value, String> {
-    let envelope = call(
-        "luna://org.webosbrew.hbchannel.service/exec",
-        json!({"command": command}),
-    )?;
-    inventory_payload(&envelope, field)
+    inventory_payload(&root_command(command)?, field)
 }
 
 #[cfg(test)]
