@@ -176,8 +176,9 @@ impl Renderer {
         self.stats.max_physical_font_px = self
             .stats
             .max_physical_font_px
-            .max(size_f * viewport.text_scale());
-        let padded = rect.inset(-size_f);
+            .max(size_f * style.scale * viewport.text_scale());
+        let padded = Rect::new(rect.x, rect.y, rect.w * style.scale, rect.h * style.scale)
+            .inset(-size_f * style.scale);
         if padded.x + padded.w < 0.
             || padded.y + padded.h < 0.
             || padded.x > 1920.
@@ -207,7 +208,7 @@ impl Renderer {
                 | (u8::from(self.stats.multisample_samples > 1) << 2),
         };
         if self.text_runs.contains_key(&key) {
-            self.submit_text(key, origin, color);
+            self.submit_text(key, origin, style.scale, color);
             return;
         }
         let rect = Rect::new(0., 0., rect.w, rect.h);
@@ -353,10 +354,10 @@ impl Renderer {
                 frame: self.frame,
             },
         );
-        self.submit_text(key, origin, color);
+        self.submit_text(key, origin, style.scale, color);
     }
 
-    pub(super) fn submit_text(&mut self, key: TextKey, origin: [f32; 2], tint: Color) {
+    pub(super) fn submit_text(&mut self, key: TextKey, origin: [f32; 2], scale: f32, tint: Color) {
         let run = self.text_runs.get_mut(&key).unwrap();
         run.frame = self.frame;
         self.stats.missing_glyphs += run.missing_glyphs;
@@ -364,7 +365,12 @@ impl Renderer {
         if let Some(mesh) = &run.mesh {
             self.stats.text_triangles += mesh.vertices as usize / 3;
             self.batches.push(Batch {
-                kind: BatchKind::Text { key, origin, tint },
+                kind: BatchKind::Text {
+                    key,
+                    origin,
+                    scale,
+                    tint,
+                },
                 clip: self.clip,
                 fade: self.fade,
                 rank: self.rank,

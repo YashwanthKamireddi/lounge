@@ -97,6 +97,9 @@ impl State {
         let dt = if gap > 0.1 { 1. / 60. } else { gap };
         self.last_tick = now;
         if self.page != self.shown_page || self.preferences.reduced_motion {
+            if self.page != self.shown_page {
+                self.left = (self.shown_page, self.shown_scroll);
+            }
             if self.page != self.shown_page && !self.preferences.reduced_motion {
                 let direction = page_order(self.page) - page_order(self.shown_page);
                 self.page_since = Some((now, direction.signum()));
@@ -105,6 +108,7 @@ impl State {
             self.shown_page = self.page;
             self.shown_scroll = self.scroll;
             self.shown_home_scroll = self.home_scroll;
+            self.scroll_velocity = [0.; 2];
             // The switcher's cards jump to the focused one as well; left
             // behind, they never scroll and the frame never settles.
             if let (Some(switcher), Target::Switch(index)) = (&mut self.switcher, &self.focus) {
@@ -112,7 +116,8 @@ impl State {
             }
             return;
         }
-        // Critically damped approach: frame-rate independent, never overshoots.
+        // The switcher's cards: a first-order approach, frame-rate
+        // independent, never overshooting.
         let k = 1. - (-dt / 0.075).exp();
         if let (Some(switcher), Target::Switch(index)) = (&mut self.switcher, &self.focus) {
             let target = *index as f32;
@@ -123,14 +128,30 @@ impl State {
                 self.dirty = true;
             }
         }
-        for (shown, target) in [
-            (&mut self.shown_scroll, self.scroll),
-            (&mut self.shown_home_scroll, self.home_scroll),
+        // The page itself glides on a critically damped spring: it gathers
+        // speed over the first frames and settles without overshoot. A
+        // first-order approach (the cards' above) moved a fifth of the way on
+        // the very first frame (138 px of a 690 px rise), which read as a
+        // jump at the start of every scroll. Solved exactly for each frame's real time,
+        // so a heavy TV frame neither slows nor destabilises it, and a new
+        // target mid-glide carries on from the current speed.
+        let decay = (-SCROLL_SPRING * dt).exp();
+        let [velocity, home_velocity] = &mut self.scroll_velocity;
+        for (shown, velocity, target) in [
+            (&mut self.shown_scroll, velocity, self.scroll),
+            (&mut self.shown_home_scroll, home_velocity, self.home_scroll),
         ] {
-            if (target - *shown).abs() < 0.5 {
+            let offset = *shown - target;
+            let carried = *velocity + SCROLL_SPRING * offset;
+            let offset = (offset + carried * dt) * decay;
+            *velocity = (*velocity - SCROLL_SPRING * carried * dt) * decay;
+            // Settled within a fifth of a pixel and barely moving: the last
+            // step is no larger than the ones before it.
+            if offset.abs() < 0.2 && velocity.abs() < 12. {
                 *shown = target;
+                *velocity = 0.;
             } else {
-                *shown += (target - *shown) * k;
+                *shown = target + offset;
                 self.dirty = true;
             }
         }

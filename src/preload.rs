@@ -56,6 +56,9 @@ pub struct Preload {
     /// Vector meshes asked for: the renderer never frees one, so each is read
     /// once (an inventory refresh asked for every logo again).
     vectors: HashSet<String>,
+    /// The wallpaper whose pictures were last asked for (see `wallpaper`),
+    /// whether it was picked or only focused, and since when.
+    wallpaper: Option<(String, bool, std::time::Instant)>,
 }
 
 impl Preload {
@@ -80,6 +83,7 @@ impl Preload {
             astc,
             missed: Vec::new(),
             vectors: HashSet::new(),
+            wallpaper: None,
         }
     }
 
@@ -289,13 +293,8 @@ fn load(path: &str, astc: bool) -> Option<Preloaded> {
 /// Decodes every home image ahead of need, wallpaper first, so no icon pops
 /// in late and no slide stalls on a decode.
 pub fn request_home(preload: &mut Preload, state: &State, assets: &Assets) {
-    let background = &state.preferences.background;
-    for name in [
-        format!("wallpapers/{background}.jpg"),
-        format!("wallpapers/{background}-home-glass.png"),
-        format!("wallpapers/{background}-glass.png"),
-    ] {
-        preload.request(assets.path(name));
+    for path in wallpaper_pictures(assets, &state.preferences.background) {
+        preload.request(path);
     }
     let order: Vec<String> = state
         .preferences
@@ -327,6 +326,59 @@ pub fn request_home(preload: &mut Preload, state: &State, assets: &Assets) {
             preload.request(entry.path().to_string_lossy().into_owned());
         }
     }
+}
+
+/// A wallpaper about to show: focused in the Background gallery, or picked
+/// and waiting to fade in. Its pictures decode here, off the drawing thread,
+/// and the picked one's cross-fade starts only once they are all on the GPU:
+/// decoded on the drawing thread, the first frame of the fade stalled and
+/// the fade jumped ahead. A picture that cannot load holds it back no more
+/// than a second.
+pub fn wallpaper(
+    preload: &mut Preload,
+    state: &mut State,
+    assets: &Assets,
+    renderer: &renderer::Renderer,
+) {
+    let picked = matches!(state.previous_background, Some((_, None)));
+    let id = if picked {
+        state.preferences.background.clone()
+    } else if let state::Target::Background(index) = state.focus
+        && let Some((id, _)) = model::BACKGROUNDS.get(index)
+    {
+        (*id).to_owned()
+    } else {
+        return;
+    };
+    let paths = wallpaper_pictures(assets, &id);
+    if preload
+        .wallpaper
+        .as_ref()
+        .is_none_or(|(asked, was_picked, _)| *asked != id || *was_picked != picked)
+    {
+        for path in paths.iter().filter(|path| !renderer.has(path)) {
+            preload.request(path.clone());
+        }
+        preload.wallpaper = Some((id, picked, std::time::Instant::now()));
+    }
+    let waited = preload
+        .wallpaper
+        .as_ref()
+        .is_some_and(|(_, _, since)| since.elapsed() >= std::time::Duration::from_secs(1));
+    if picked && (waited || paths.iter().all(|path| renderer.has(path))) {
+        state.wallpaper_ready();
+    }
+}
+
+/// Everything a wallpaper shows as: the photo, Settings' and the grid's
+/// blurred backdrop, and the home glass's.
+pub fn wallpaper_pictures(assets: &Assets, id: &str) -> [String; 3] {
+    [
+        format!("wallpapers/{id}.jpg"),
+        format!("wallpapers/{id}-glass.png"),
+        format!("wallpapers/{id}-home-glass.png"),
+    ]
+    .map(|name| assets.path(name))
 }
 
 /// Back from an app: the tiles freed while it was in front

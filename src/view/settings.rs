@@ -29,14 +29,22 @@ struct Row<'a> {
     chevron: bool,
 }
 
-/// tvOS list item: a quiet light material at rest, a lifted white plate when focused.
-fn list_plate(out: &mut Scene, rect: Rect, focused: bool, selected: bool) {
+/// tvOS list item: a quiet light material at rest, a lifted white plate
+/// `lift` of the way in. Focus moving down a list hands the plate over as
+/// tvOS does, one row's growing in as the last one's settles back, rather
+/// than jumping to the next row in one frame.
+fn list_plate(out: &mut Scene, rect: Rect, lift: f32, selected: bool) {
     // tvOS 27 rows are near-capsules, at rest and focused.
     let radius = (rect.h / 2.).min(36.);
-    if focused {
-        let plate = Rect::new(rect.x - 6., rect.y - 2., rect.w + 12., rect.h + 4.);
-        out.shadow(plate, radius + 2., 31., 21., 0.3);
-        out.shape(plate, radius + 2., c(0xffffff, 0.95));
+    if lift > 0. {
+        let plate = Rect::new(
+            rect.x - 6. * lift,
+            rect.y - 2. * lift,
+            rect.w + 12. * lift,
+            rect.h + 4. * lift,
+        );
+        out.shadow(plate, radius + 2. * lift, 31., 21. * lift, 0.3 * lift);
+        out.shape(plate, radius + 2. * lift, c(0xffffff, 0.95 * lift));
     } else if selected {
         // tvOS lists are plain text at rest; only a current choice is tinted.
         out.shape(rect, radius, out.theme.wash(0.1));
@@ -44,21 +52,22 @@ fn list_plate(out: &mut Scene, rect: Rect, focused: bool, selected: bool) {
 }
 
 fn row(out: &mut Scene, state: &State, assets: &Assets, row: Row<'_>) {
-    let focused = state.focus == row.target;
+    let lift = state.focus_amount(&row.target);
     // tvOS Settings: every row sits on a faint capsule over the tinted
     // backdrop; focus turns it solid white.
     let plain = state.page == Page::Settings;
-    if plain && !focused {
-        out.shape(row.rect, (row.rect.h / 2.).min(36.), out.theme.wash(0.08));
+    if plain && lift < 1. {
+        out.shape(
+            row.rect,
+            (row.rect.h / 2.).min(36.),
+            out.theme.wash(0.08 * (1. - lift)),
+        );
     }
-    list_plate(out, row.rect, focused, false);
+    list_plate(out, row.rect, lift, false);
     let theme = out.theme;
-    let ink = |alpha: f32| {
-        if focused {
-            c(PLATTER, alpha)
-        } else {
-            theme.ink(alpha)
-        }
+    let ink = |alpha: f32| -> crate::renderer::Color {
+        let (rest, lifted) = (theme.ink(alpha), c(PLATTER, alpha));
+        std::array::from_fn(|i| rest[i] + (lifted[i] - rest[i]) * lift)
     };
     let mut x = row.rect.x + 30.;
     // tvOS Settings rows carry no glyphs: title, grey value, then a chevron
@@ -396,9 +405,11 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
     // tvOS push: the page being left slides away and fades as the new one
     // slides in from the side it comes from and fades up, together, so no
     // frame is ever blank or dims what was already on screen.
-    // Opacity is staggered as Apple does: the old page is mostly gone by
-    // 45% and the new one comes up from 20%, so the two titles never sit
-    // over each other at half strength. Movement keeps one smooth ease.
+    // Opacity is staggered as Apple does: the old page is gone by half way
+    // and the new one comes up from 15% to 65%, so the two titles never sit
+    // over each other at half strength, yet together they never fall below
+    // about 60% (a later start left the screen nearly empty for a moment).
+    // Movement keeps one smooth ease.
     let push = state.settings_since.map(|(since, direction)| {
         let t = (crate::clock::since(since).as_secs_f32() * 1000. / SETTINGS_PUSH_MS).min(1.);
         (t, 1. - (1. - t).powi(5), direction)
@@ -418,13 +429,15 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
     out.draw.push(Draw::Clip(None));
     match push {
         // Different panels cross: the old one goes as the new one comes.
+        // The new one comes up over the old, which goes only once it is
+        // mostly there.
         Some((t, _, _)) if state.settings_ghost.is_some() && before != shown => {
             let start = out.draw.len();
             about(out, state, assets, before);
-            out.fade(start, 1. - smooth(0., 0.6, t), 1.);
+            out.fade(start, 1. - smooth(0.35, 0.9, t), 1.);
             let start = out.draw.len();
             about(out, state, assets, shown);
-            out.fade(start, smooth(0.2, 1., t), 1.);
+            out.fade(start, smooth(0.1, 0.7, t), 1.);
         }
         _ => about(out, state, assets, shown),
     }
@@ -432,7 +445,7 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
         let start = out.draw.len();
         out.draw.extend(ghost.iter().cloned());
         out.translate(start, -direction * 48. * eased, 0.);
-        out.fade(start, 1. - smooth(0., 0.45, t), 1.);
+        out.fade(start, 1. - smooth(0., 0.5, t), 1.);
     }
     // The title and the list push together; only they make up the page a
     // later push fades out.
@@ -458,7 +471,7 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
     if let Some((t, eased, direction)) = push {
         out.translate(list, direction * 48. * (1. - eased), 0.);
         let alpha = if state.settings_ghost.is_some() {
-            smooth(0.2, 1., t)
+            smooth(0.15, 0.65, t)
         } else {
             1.
         };
@@ -521,12 +534,23 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
     if glyph.is_empty() {
         let frame = Rect::new(110., 310., 640., 360.);
         out.shadow(frame, 36., 40., 18., 0.35);
-        out.image(
-            assets.path(format!("wallpapers/{}.jpg", state.preferences.background)),
-            frame,
-            36.,
-            false,
-        );
+        let photo = |id: &str| assets.path(format!("wallpapers/{id}.jpg"));
+        // A wallpaper just picked fades in over the last, with the backdrop.
+        match state.wallpaper_change() {
+            Some((previous, t)) => {
+                out.image(photo(previous), frame, 36., false);
+                if t > 0. {
+                    out.draw.push(Draw::TintedImage(
+                        photo(&state.preferences.background),
+                        frame,
+                        36.,
+                        false,
+                        [1., 1., 1., t],
+                    ));
+                }
+            }
+            None => out.image(photo(state.wallpaper()), frame, 36., false),
+        }
     } else {
         let card = Rect::new(190., 250., 480., 480.);
         out.shape(card, 110., out.theme.wash(0.2));

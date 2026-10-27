@@ -104,18 +104,6 @@ impl Theme {
             [FROST[0], FROST[1], FROST[2], 0.7 * self.light],
         )
     }
-
-    /// A full-screen layer standing in for that backdrop over a picture:
-    /// black at `alpha` on dark, frost on light (a wallpaper cross-fading
-    /// under Settings, or Settings' veil lifting off on the way home).
-    pub fn backdrop_veil(self, alpha: f32) -> Color {
-        [
-            FROST[0] * self.light,
-            FROST[1] * self.light,
-            FROST[2] * self.light,
-            self.mix(alpha, 0.7),
-        ]
-    }
 }
 
 #[cfg(test)]
@@ -129,7 +117,6 @@ mod tests {
         assert_eq!(dark.wash(0.08), [1., 1., 1., 0.08]);
         assert_eq!(dark.veil(0.34), super::super::shared::c(PLATTER, 0.34));
         assert_eq!(dark.backdrop(0.32).1[3], 0.);
-        assert_eq!(dark.backdrop_veil(0.68), [0., 0., 0., 0.68]);
         assert_eq!(dark.well(0.72), c(0x171c20, 0.72));
     }
 

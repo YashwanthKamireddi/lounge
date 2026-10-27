@@ -47,6 +47,10 @@ pub const SETTINGS_TILE: &str = "lounge.settings";
 pub const SEARCH_TILE: &str = "lounge.search";
 pub const HOME_DASHBOARD: &str = "com.webos.app.homeconnect";
 pub const PAGE_MS: f32 = 280.;
+/// The scroll glide's spring (rad/s): half way in ~85 ms, settled in ~0.5 s.
+pub const SCROLL_SPRING: f32 = 20.;
+/// A wallpaper change's cross-fade, in seconds.
+pub const WALLPAPER_FADE: f32 = 0.4;
 pub const SWITCHER_CLOSE_MS: u64 = 320;
 /// How long a banner stays up (its last 0.25 s fade it out).
 pub const NOTICE_SECONDS: f32 = 5.;
@@ -250,7 +254,11 @@ pub struct State {
     pub dirty: bool,
     pub pointer: bool,
     pub pressed: Option<Target>,
-    pub previous_background: Option<(String, Instant)>,
+    /// A wallpaper change: the wallpaper being left, and when the cross-fade
+    /// from it began. None while the new one's pictures are still on their
+    /// way to the GPU: until then the old one stays, whole (see
+    /// `preload::wallpaper`), so the fade never waits on a decode mid-way.
+    pub previous_background: Option<(String, Option<Instant>)>,
     pub panel_started: Option<Instant>,
     pub weather: weather::Weather,
     pub keyboard_field: TextField,
@@ -262,7 +270,12 @@ pub struct State {
     /// navigation always use the exact targets.
     pub shown_scroll: f32,
     pub shown_home_scroll: f32,
+    /// How fast each drawn scroll is gliding (px/s).
+    scroll_velocity: [f32; 2],
     shown_page: Page,
+    /// The page last left and its drawn scroll then: a page change dissolves
+    /// out of the background that page showed.
+    pub left: (Page, f32),
     last_tick: Instant,
     /// When the visible page last changed, and the direction travelled (-1/1).
     pub page_since: Option<(Instant, f32)>,
@@ -279,13 +292,18 @@ pub struct State {
     pub unsaved_order: bool,
     /// The Settings page being left, as it was last drawn, fading out.
     pub settings_ghost: Option<Vec<crate::renderer::Draw>>,
+    /// The page being left (Settings or the apps), as it was last drawn,
+    /// fading out as the new one comes in.
+    pub page_ghost: Option<Vec<crate::renderer::Draw>>,
     settings_level: (u8, usize),
     /// The level shown before the current one (for the left panel's fade).
     pub settings_previous: (u8, usize),
     /// The context menu just closed (for which app, when): it fades away.
     pub options_closed: Option<(String, Instant)>,
-    /// Search just closed: its dark page fades off the home.
+    /// Search just closed: its page fades off the home.
     pub search_closed: Option<Instant>,
+    /// That page as it was last drawn, fading out.
+    pub search_ghost: Option<Vec<crate::renderer::Draw>>,
     /// Full-screen Top Shelf: Up from the dock lowers it off screen.
     pub expanded: bool,
     /// When Top Shelf mode last began; its chevron bobs for a moment.
@@ -398,7 +416,9 @@ impl State {
             last_focus: Target::Nav(0),
             shown_scroll: 0.,
             shown_home_scroll: 0.,
+            scroll_velocity: [0.; 2],
             shown_page: Page::Apps,
+            left: (Page::Apps, 0.),
             last_tick: crate::clock::now(),
             page_since: None,
             switcher: None,
@@ -406,10 +426,12 @@ impl State {
             rearranged: None,
             unsaved_order: false,
             settings_ghost: None,
+            page_ghost: None,
             settings_previous: (0, 0),
             settings_level: (0, 0),
             options_closed: None,
             search_closed: None,
+            search_ghost: None,
             expanded: false,
             shelf_since: Some(crate::clock::now()),
             shelf_app: None,
@@ -422,6 +444,33 @@ impl State {
             hour_24: false,
             queued: Vec::new(),
         }
+    }
+
+    /// The wallpaper on screen: the one being left until the new one's
+    /// pictures are ready to fade in, then the chosen one.
+    pub fn wallpaper(&self) -> &str {
+        match &self.previous_background {
+            Some((previous, None)) => previous,
+            _ => &self.preferences.background,
+        }
+    }
+
+    /// The chosen wallpaper's pictures are on the GPU: its cross-fade begins.
+    pub fn wallpaper_ready(&mut self) {
+        if let Some((_, start @ None)) = &mut self.previous_background {
+            *start = Some(crate::clock::now());
+            self.dirty = true;
+        }
+    }
+
+    /// The wallpaper being left and how far the cross-fade from it has come
+    /// (eased, 0-1); None until it begins (see `wallpaper`).
+    pub fn wallpaper_change(&self) -> Option<(&str, f32)> {
+        let (previous, Some(start)) = self.previous_background.as_ref()? else {
+            return None;
+        };
+        let t = (crate::clock::since(start).as_secs_f32() / WALLPAPER_FADE).min(1.);
+        Some((previous, t * t * (3. - 2. * t)))
     }
 
     pub fn notify(&mut self, text: impl Into<String>) {
@@ -463,6 +512,7 @@ impl State {
             self.dirty = true;
             if crate::clock::since(start).as_secs_f32() >= PAGE_MS / 1000. {
                 self.page_since = None;
+                self.page_ghost = None;
             }
         }
         self.track_settings_level();
@@ -489,6 +539,7 @@ impl State {
             .is_some_and(|start| crate::clock::since(start) >= Duration::from_millis(FADE_OUT_MS))
         {
             self.search_closed = None;
+            self.search_ghost = None;
             self.dirty = true;
         }
         if self.options_closed.as_ref().is_some_and(|(_, start)| {
@@ -518,10 +569,10 @@ impl State {
         {
             self.dirty = true;
         }
-        if let Some((_, start)) = &self.previous_background {
+        if let Some((_, Some(start))) = &self.previous_background {
             self.dirty = true;
             if self.preferences.reduced_motion
-                || crate::clock::since(start) >= Duration::from_millis(400)
+                || crate::clock::since(start).as_secs_f32() >= WALLPAPER_FADE
             {
                 self.previous_background = None;
             }
@@ -560,7 +611,9 @@ impl State {
                 || switcher.dismissed.is_some()
                 || matches!(self.focus, Target::Switch(index) if (switcher.shown - index as f32).abs() > 0.001)
         });
-        self.previous_background.is_some()
+        self.previous_background
+            .as_ref()
+            .is_some_and(|(_, start)| start.is_some())
             || self.panel_started.is_some()
             || switcher_moving
             || self.focus_since.is_some()

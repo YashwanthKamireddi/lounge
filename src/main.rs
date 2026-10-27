@@ -94,6 +94,24 @@ fn compose(
 ) -> view::Scene {
     state.track_focus();
     state.glide_scroll();
+    // A new page comes in from this very frame, out of exactly what the last
+    // frame showed.
+    if let Some(previous) = previous
+        && let Some((page, range)) = &previous.page
+        && *page != state.page
+    {
+        state.page_ghost = state
+            .page_since
+            .map(|_| previous.draw[range.clone()].to_vec());
+    }
+    // Search closing fades out exactly what it showed last.
+    if let Some(previous) = previous
+        && let Some(range) = &previous.search
+        && state.search_closed.is_some()
+        && !matches!(state.overlay, Some(Overlay::Keyboard))
+    {
+        state.search_ghost = Some(previous.draw[range.clone()].to_vec());
+    }
     // A new Settings level pushes from this very frame, out of exactly what
     // the last frame showed.
     if state.track_settings_level()
@@ -632,6 +650,12 @@ impl Shell {
         }
         self.preload
             .pump(&mut self.renderer, self.state.animating(), in_front);
+        preload::wallpaper(
+            &mut self.preload,
+            &mut self.state,
+            &self.assets,
+            &self.renderer,
+        );
         self.state.dirty |= self.assets.artwork.poll();
         while let Ok(response) = self.platform.receiver.try_recv() {
             self.replies.apply(

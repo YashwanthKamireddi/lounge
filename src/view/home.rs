@@ -400,24 +400,31 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     // rises it eases out to 260, following the drawn (gliding) scroll.
     let spread = (state.shown_scroll / GRID_SCROLL).clamp(0., 1.);
     let gap = DOCK_GAP + (GRID_GAP - DOCK_GAP) * spread;
-    // Liquid Glass platter: exactly what is behind it, blurred, lifted a
-    // touch, with a top sheen and a bright rim for the edge. The blur
-    // dissolves with Top Shelf.
+    // Liquid Glass platter: exactly what is behind it, blurred and seen
+    // through the glass's lens, as the context menu's and the time pill's
+    // glass is. The blur dissolves with Top Shelf.
     let platter = Rect::new(50., dock_y - 40., 1820., FACE_HEIGHT + 80.);
     let backdrop = home_backdrop(state, assets);
-    // tvOS 26 dock: clear dark glass with a whisper of light at the top. The
-    // light is the glass's own tint rising above 1 toward the top (a white
-    // 9%-to-2% sheen on typical glass), so it costs no layer of its own:
-    // a quarter of the screen less to paint on every scrolling frame.
-    // Clear glass in both appearances, as Liquid Glass is.
-    let glass = |out: &mut Scene, path: String, [r, g, b]: [f32; 3], alpha: f32| {
-        let lit = |k: f32| [r * k, g * k, b * k, alpha];
+    // tvOS 26 dock: clear glass, no veil, lit by the appearance's own light
+    // (the lens tint rising toward the top). The light is the glass's tint,
+    // so it costs no layer of its own: a quarter of the screen less to
+    // paint on every scrolling frame.
+    let (top, bottom) = out.theme.lens();
+    let glass = |out: &mut Scene, path: String, shade: [f32; 3], alpha: f32| {
+        let lit = |light: Color| {
+            [
+                light[0] * shade[0],
+                light[1] * shade[1],
+                light[2] * shade[2],
+                alpha,
+            ]
+        };
         out.draw.push(Draw::Glass(
             path,
             platter,
             DOCK_RADIUS,
-            lit(1.19),
-            lit(1.045),
+            lit(top),
+            lit(bottom),
         ));
     };
     if spread < 1. {
@@ -436,22 +443,13 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     if spread > 0. {
         glass(
             out,
-            assets.path(format!(
-                "wallpapers/{}-glass.png",
-                state.preferences.background
-            )),
+            assets.path(format!("wallpapers/{}-glass.png", state.wallpaper())),
             [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02],
             spread,
         );
     }
     // One thin specular rim (no flat outline).
-    out.draw.push(Draw::GradientRing(
-        platter,
-        DOCK_RADIUS,
-        1.5,
-        c(0xffffff, 0.5),
-        c(0xffffff, 0.06),
-    ));
+    out.rim(platter, DOCK_RADIUS, 0.5, 0.06);
     let slot = |index: usize| {
         let (row, column) = (index / APPS_COLUMNS, index % APPS_COLUMNS);
         let y = if row == 0 {
