@@ -80,10 +80,10 @@ into a single pass, so the TV's GPU never repaints the screen twice.
 It also knows when to step back. The moment an app opens, Lounge stops drawing and hands its
 memory back: on the TV it was built on, it keeps about 16 MB of its own memory behind a playing app, so YouTube, Netflix and the rest have the TV to themselves. Press Home and it is back in under a second, usually about a tenth of one.
 
-Taking over Home is done the way LG does it, not around it. Lounge sets the TV's own default-Home
-setting and adds a small key filter of its own to LG's compositor for the Home button. It runs
-no boot scripts and mounts nothing over LG's files, so turning it off is one switch in Settings,
-and the TV is exactly as it was. Power-on, the Home button and backing out of an app all land on Lounge.
+Taking over Home is done the way LG does it, not around it: Lounge runs as the TV's own Home,
+started by webOS with LG Home's manifest and permissions, so power-on, the Home button and
+backing out of an app all land on Lounge with nothing redirected. Turning it off is one switch
+in Settings, and the TV is exactly as it was.
 
 And it stays small on purpose: no screensaver, no video wallpapers, no background services.
 What it does have, it does carefully, from the focus lift on every tile to a context menu that
@@ -121,31 +121,34 @@ well. Open **Lounge** from the TV's app list.
 
 ## Make Lounge your Home
 
-Open Lounge and go to **Settings › General › Home Button**, and set it to **Lounge**. From then
-on the Home button, backing out of an app and turning the TV on all land on Lounge, with no LG
-Home in between. Set it back to **LG Home** and the TV is exactly as it was. Hold the Home button for a
-second whenever you want LG's own Home.
+Open Lounge and go to **Settings › General › Lounge as Home** and turn it **On**. From then on
+webOS itself starts Lounge as the TV's Home: the Home button, backing out of the last app, LG
+ThinQ, waking the TV and a cold start all land on Lounge, exactly as they would on LG's Home.
+Turn it **Off** and LG's Home is back, unchanged.
 
-The switch uses LG's own mechanisms and nothing else:
+How it works: LG's Home is one native program, `/usr/bin/com.webos.app.home`. The switch mounts
+Lounge's executable over that path (a bind mount, held in memory). LG's own Home manifest,
+window type and permissions stay as they are, so the TV treats Lounge as its Home on every path,
+with no key filter and no redirect. LG keeps a CRIU snapshot of its Home (in `/tmp` and
+`/mnt/lg/cmn_data/checkpoint`) to start it quickly. That snapshot is of LG's program and cannot
+be restored over Lounge; the TV's own attempt fails and then disturbs the restores of LG's input
+apps, so the switch removes it while Lounge is Home, as LG's app manager itself does after such
+a failure. LG's Home writes a fresh one the next time it runs. A boot hook in the Homebrew Channel's
+`/var/lib/webosbrew/init.d` puts the mount back after a full restart, and opens Lounge only if
+Home was on screen, never over an input or app. Nothing else runs at boot.
 
-- **The TV's default Home** is set to Lounge, so leaving an app opens it.
-- **A small key filter** goes into the compositor's own list of filters (configd
-  `com.webos.surfacemanager.keyFilters`). LG's compositor otherwise always opens LG Home for the
-  Home key, and this list is the one supported way to change that. The filter
-  ([`tv/home-key-filter.js`](tv/home-key-filter.js)) catches Home only and passes every other key
-  on untouched; if Lounge ever cannot open, it opens LG Home instead. If
-  [Glasshouse](https://github.com/rorygallagher2024/glasshouse) already maps the Home key, its
-  filter runs first and keeps it.
+If Lounge as Home ever starts three times in a minute without coming up, it gives Home back to
+LG by itself. To give Home back to LG by hand, over SSH as root:
 
-Nothing runs at boot that LG's compositor does not already load, and nothing is mounted over LG's
-files. The switch needs the Homebrew Channel to be elevated (root); turn it back to LG Home before
-uninstalling Lounge.
+```sh
+sh /var/lib/lounge/home.sh disable
+```
 
-**Optional: keep Lounge loaded behind apps** so Home is instant. LG's memory manager (`memchute`)
-reads `/home/root/memorymanager-conf.json` before its built-in `/etc/palm` copy. Adding
-`io.github.yashwanthkamireddi.lounge` to `KeepOnLaunchEx`, and taking `com.webos.app.home` out of
-it, keeps Lounge loaded while LG Home is freed when an app opens. It takes effect after a restart;
-keep a copy of the original file to undo.
+Deleting `/var/lib/webosbrew/init.d/10-lounge-home` and restarting the TV also gives the stock
+Home: the mount does not survive a restart. Turn the switch off before uninstalling Lounge. The
+switch needs the Homebrew Channel to be elevated (root). It also takes out what Lounge's earlier
+Home Button left behind: its compositor key filter, and the TV's default and idle Home settings
+pointed at a launcher (both go back to LG's `com.webos.app.home`, which is now Lounge).
 
 ## Make it yours
 
@@ -255,7 +258,7 @@ There is no browser geolocation, IP-based location lookup, telemetry or runtime 
 ## Use at your own risk
 
 Lounge runs on rooted TVs and changes how they start and what the Home key opens. Every change
-is one setting that can be undone, and none touches LG's firmware or files, but rooting and
+is one setting that can be undone, and none writes to LG's firmware or files, but rooting and
 modifying a TV is your decision and your responsibility. Lounge is provided as is, without
 warranty of any kind (see the [license](license)); its authors are not liable for any damage to
 your TV, loss of data, voided warranty or anything else that comes from installing or using it.

@@ -257,11 +257,39 @@ reply limit. Errors include URI and the bus refusal. Fixed inventory commands ru
 Homebrew Channel `exec`, parsing complete multi-line `luna-send -n 1` JSON replies. Input-read
 failures preserve the last valid inputs. No failed inventory read substitutes demo apps on TV.
 
-### Home integration
+### Lounge as Home
 
-Lounge becomes Home through webOS itself, with no scripts: settings `general.defaultApps.home`
-for Back out of an app, the compositor key-filter chain for the Home button, and LG's memory
-manager override for residency. See [the readme](readme.md#making-lounge-the-home-app).
+Settings › General › Lounge as Home runs `tv/home.sh` (root, flock-guarded) and its ES5 logic
+`tv/home.cjs`, both built into the executable and copied to `/var/lib/lounge` when they change.
+`enable` bind-mounts the installed `lounge` over LG's `/usr/bin/com.webos.app.home`, removes
+LG's CRIU image of its Home (`/tmp/checkpoint` and the copy in `/mnt/lg/cmn_data/checkpoint` sam
+restores from), writes the
+`/var/run/lounge-home` marker, stops LG's Home process and opens Home. It installs the boot hook
+`/var/lib/webosbrew/init.d/10-lounge-home` (a symlink to the root-owned copy) and rolls back to
+stock on any error. `disable` unmounts, removes the marker and hook, stops the Home process and
+reopens Home if it was in front. `status` prints what is true now (mount, hook, stale, foreign).
+Any foreign mount over LG Home's executable or manifest stops every command before it changes
+anything. Why the image goes (65UQ801C0SB, webOS 7.6): only LG's Home dumps itself (in-process,
+through LG's snapshot library), so Lounge is never dumped. sam restores Home from the image,
+copying it from `cmn_data` if `/tmp` has none; CRIU refuses it with Lounge mounted ("File
+usr/bin/com.webos.app.home has bad size") and sam then deletes both copies, but the failed
+restore leaves the process ids low: the Lounge sam starts next took pid 1992, which the input
+apps' image needs, and their next restore failed ("Pid 1993 do not match expected 1992"). LG's
+Home writes the image again whenever it starts fresh (after `disable`, or at a cold boot). `tests/home.test.mjs` runs the logic against a model TV in a vm sandbox.
+
+As Home, Lounge runs as root, unjailed, at LG's path. `platform::is_home` reads that path;
+`platform::install_dir` finds the package by the mounted file's inode, so assets and
+preferences come from the installation, and the linker has the installation's `lib/` as an
+absolute RPATH after `$ORIGIN/lib` (LG ships an older SDL in `/usr/lib`). Its LS2 role is LG
+Home's, which reaches sam, EIM and configd directly; root commands run locally instead of
+through Homebrew Channel. Files it writes in the app's folders are given to the folder's owner,
+so the normal app keeps them after Home goes back to LG. A package update leaves the mount on
+the old file: Lounge renews the mount and restarts itself from the new one (same process). A
+normal launch of the app while the marker exists opens Home instead. sam's background starts of
+Home (boot, preload) exit when something else is in front. Three starts in a minute without a
+presented frame plus five seconds alive restore LG Home (`crash_guard`).
+
+Give Home back to LG by hand: `sh /var/lib/lounge/home.sh disable`.
 
 ## Manual extra-app preview
 

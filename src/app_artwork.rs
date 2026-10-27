@@ -454,6 +454,11 @@ fn load(source: &Source) -> Option<Artwork> {
     if let Some(image) = load_local(source, read_bounded) {
         return Some(image);
     }
+    // As Home Lounge is root and has read every file already: asking again elevated would
+    // only spend seconds per icon to fail the same way.
+    if crate::platform::is_home() {
+        return None;
+    }
     // Some jailed installations cannot read other applications' files. Use the
     // same native-authenticated elevated service as inventory, on this worker.
     match crate::platform::read_app_icons(source) {
@@ -581,6 +586,8 @@ fn load_cached(directory: Option<&Path>, source: &Source) -> Option<Artwork> {
                     .save_with_format(&partial, image::ImageFormat::Png)
                     .is_ok()
             })
+        && crate::storage::give_to_folder_owner(directory).is_ok()
+        && crate::storage::give_to_folder_owner(&partial).is_ok()
         && std::fs::rename(&partial, &path).is_ok();
     if saved {
         artwork.reload = Some(Reload {

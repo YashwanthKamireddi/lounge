@@ -129,6 +129,12 @@ struct Connection {
 
 impl Connection {
     fn open() -> Result<Self, String> {
+        Self::open_as(None)
+    }
+
+    /// `name`: a service name this executable's LS2 role allows (sam knows a registerApp
+    /// caller by it); None registers anonymously.
+    fn open_as(name: Option<&CStr>) -> Result<Self, String> {
         let mut error = Error::new();
         let mut connection = Self {
             handle: ptr::null_mut(),
@@ -142,7 +148,8 @@ impl Connection {
         // Anonymous registration still authenticates the executable and its LS2
         // role, and avoids colliding with SDL's own app-named registration.
         // SAFETY: output/error pointers are valid; no fake application ID is sent.
-        if !unsafe { LSRegister(ptr::null(), &mut connection.handle, &mut error) } {
+        let name = name.map_or(ptr::null(), CStr::as_ptr);
+        if !unsafe { LSRegister(name, &mut connection.handle, &mut error) } {
             return Err(error.describe("registration"));
         }
         // SAFETY: the registered handle and private context stay alive together.
@@ -152,7 +159,7 @@ impl Connection {
         Ok(connection)
     }
 
-    fn request(&mut self, uri: &str, payload: &Value) -> Result<Value, String> {
+    fn request(&mut self, uri: &str, payload: &Value, timeout: Duration) -> Result<Value, String> {
         let uri = CString::new(uri).map_err(|_| "Invalid Luna URI")?;
         let payload = CString::new(payload.to_string()).map_err(|_| "Invalid Luna payload")?;
         let mut error = Error::new();
@@ -174,7 +181,7 @@ impl Connection {
         } {
             return Err(error.describe("call submission"));
         }
-        let deadline = Instant::now() + Duration::from_millis(6500);
+        let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             // SAFETY: only this worker drives this private context. Iteration is
             // nonblocking, so a missing service cannot hold the UI or this loop.
@@ -220,6 +227,11 @@ impl Drop for Connection {
 /// callback could reach the next call's reply slot, and the next call opens
 /// a new one.
 pub fn call(uri: &str, payload: &Value) -> Result<Value, String> {
+    call_within(uri, payload, Duration::from_millis(6500))
+}
+
+/// As `call`, for a request known to take longer.
+pub fn call_within(uri: &str, payload: &Value, timeout: Duration) -> Result<Value, String> {
     thread_local! {
         static CONNECTION: std::cell::RefCell<Option<Connection>> = const { std::cell::RefCell::new(None) };
     }
@@ -228,7 +240,7 @@ pub fn call(uri: &str, payload: &Value) -> Result<Value, String> {
             Some(connection) => connection,
             None => Connection::open()?,
         };
-        let result = connection.request(uri, payload);
+        let result = connection.request(uri, payload, timeout);
         if result.is_ok() {
             *cached = Some(connection);
         }
@@ -275,9 +287,23 @@ extern "C" fn stream(_handle: *mut c_void, message: *mut c_void, userdata: *mut 
 pub fn subscribe(
     uri: &str,
     payload: &Value,
+    listener: impl FnMut(Value) + Send + 'static,
+) -> Result<(), String> {
+    subscribe_as(None, uri, payload, listener)
+}
+
+/// As `subscribe`, on a connection registered under the service name `name`.
+pub fn subscribe_as(
+    name: Option<&str>,
+    uri: &str,
+    payload: &Value,
     mut listener: impl FnMut(Value) + Send + 'static,
 ) -> Result<(), String> {
     use std::sync::atomic::{AtomicBool, Ordering};
+    let name = name
+        .map(CString::new)
+        .transpose()
+        .map_err(|_| "Invalid Luna service name")?;
     let uri = CString::new(uri).map_err(|_| "Invalid Luna URI")?;
     let payload = CString::new(payload.to_string()).map_err(|_| "Invalid Luna payload")?;
     let (ready, accepted) = std::sync::mpsc::channel();
@@ -295,7 +321,7 @@ pub fn subscribe(
         }
     };
     thread::spawn(move || {
-        let connection = match Connection::open() {
+        let connection = match Connection::open_as(name.as_deref()) {
             Ok(connection) => connection,
             Err(error) => {
                 let _ = ready.send(Err(error));

@@ -1,0 +1,2 @@
+/media/developer/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge
+/media/cryptofs/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge

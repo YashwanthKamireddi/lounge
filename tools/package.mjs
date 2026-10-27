@@ -88,9 +88,9 @@ await fs.copyFile(
   path.join(out, 'assets/app-icon-large.png'),
   path.join(stage, 'app-icon-large.png'),
 );
-// No boot hooks or Home-takeover scripts ship: Home and Back reach Lounge
-// through webOS itself (the compositor key filter and settings
-// general.defaultApps), so nothing runs at boot or mounts over LG's files.
+// The Home scripts (tv/home.sh, tv/home.cjs) are built into the executable, which copies them
+// to /var/lib/lounge only when Lounge is switched on as Home: the package itself installs no
+// boot hook and mounts nothing.
 await fs.copyFile(path.join(root, 'license'), path.join(stage, 'LICENSE'));
 await fs.copyFile(path.join(root, 'assets.md'), path.join(stage, 'ASSETS.md'));
 await fs.mkdir(path.join(stage, 'lib'));

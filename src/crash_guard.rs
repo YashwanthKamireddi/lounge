@@ -1,13 +1,20 @@
-//! Detects repeated crashes across launches. A marker holds the start times
-//! of runs that have not exited cleanly; a clean exit removes it.
+//! Lounge as the TV's Home must never leave the TV without one. A marker in /tmp (memory,
+//! cleared at boot) holds the start times of runs that have not yet proved healthy; a healthy
+//! run or a clean exit removes it. Starting again and again without getting there means a
+//! broken build: Lounge then gives Home back to LG before it draws anything.
 use std::{
     fs,
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-/// Two unclean exits within this window put the next run in safe mode.
-const WINDOW_SECONDS: u64 = 120;
+/// Where Lounge as Home keeps its unproven starts.
+pub const HOME_MARKER: &str = "/tmp/lounge-home-starts";
+/// This many unproven starts within the window, this one included, is a crash loop.
+const STARTS: usize = 3;
+const WINDOW_SECONDS: u64 = 60;
+/// Alive this long after the first presented frame is healthy.
+pub const HEALTHY_AFTER_FRAME_SECONDS: u64 = 5;
 
 fn now() -> u64 {
     SystemTime::now()
@@ -15,36 +22,26 @@ fn now() -> u64 {
         .map_or(0, |time| time.as_secs())
 }
 
-/// Record this start. Returns true when the previous runs crashed twice
-/// within the window (each earlier start still in the marker never exited).
+/// Records this start. True when it completes a crash loop.
 pub fn begin(marker: &Path) -> bool {
     begin_at(marker, now())
 }
 
 fn begin_at(marker: &Path, now: u64) -> bool {
-    let crashed: Vec<u64> = fs::read_to_string(marker)
+    let mut starts: Vec<u64> = fs::read_to_string(marker)
         .unwrap_or_default()
         .split_whitespace()
         .filter_map(|value| value.parse().ok())
         .filter(|start| now.saturating_sub(*start) <= WINDOW_SECONDS)
         .collect();
-    let safe = crashed.len() >= 2;
-    let mut starts = crashed;
-    if safe {
-        // Safe mode starts the count afresh, so a fixed build recovers.
-        starts.clear();
-    }
     starts.push(now);
+    let looping = starts.len() >= STARTS;
     let text: Vec<String> = starts.iter().map(u64::to_string).collect();
     let _ = fs::write(marker, text.join(" "));
-    safe
+    looping
 }
 
-/// After a healthy minute, a later end is no crash loop: LG's memory manager
-/// killing a background Lounge must not put the next run in safe mode.
-pub const HEALTHY_SECONDS: u64 = 60;
-
-/// A clean exit, or a run that stayed up HEALTHY_SECONDS: nothing crashed.
+/// A healthy run, or a clean exit: nothing crashed.
 pub fn end(marker: &Path) {
     let _ = fs::remove_file(marker);
 }
@@ -54,19 +51,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn two_quick_crashes_mean_safe_mode_and_a_clean_exit_resets() {
+    fn three_unproven_starts_within_a_minute_are_a_crash_loop() {
         let directory = std::env::temp_dir().join(format!("lounge-guard-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
-        let marker = directory.join("running.marker");
+        let marker = directory.join("starts");
         let _ = fs::remove_file(&marker);
-        assert!(!begin_at(&marker, 1000)); // first start
-        assert!(!begin_at(&marker, 1010)); // after one crash
-        assert!(begin_at(&marker, 1020)); // after two crashes: safe mode
-        assert!(!begin_at(&marker, 1030)); // count restarted
+        assert!(!begin_at(&marker, 1000));
+        assert!(!begin_at(&marker, 1010));
+        assert!(begin_at(&marker, 1020), "third start without a healthy run");
         end(&marker);
-        assert!(!begin_at(&marker, 1040));
-        // Old crashes outside the window do not count.
-        assert!(!begin_at(&marker, 1040 + WINDOW_SECONDS + 1));
+        assert!(
+            !begin_at(&marker, 1030),
+            "a healthy run starts the count again"
+        );
+        // Starts outside the window do not count.
+        assert!(!begin_at(&marker, 1030 + WINDOW_SECONDS + 1));
+        assert!(!begin_at(&marker, 1030 + 2 * WINDOW_SECONDS + 2));
         let _ = fs::remove_dir_all(&directory);
     }
 }

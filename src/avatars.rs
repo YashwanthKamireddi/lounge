@@ -118,8 +118,10 @@ fn prepare(source: &Path, cache: &Path) -> Option<Picture> {
         )
         .to_image();
         std::fs::create_dir_all(cache).ok()?;
+        crate::storage::give_to_folder_owner(cache).ok()?;
         for (size, path) in [(SMALL, &small), (LARGE, &large)] {
             fit_circle(&square, size).save(path).ok()?;
+            crate::storage::give_to_folder_owner(path).ok()?;
         }
     }
     Some(Picture {

@@ -317,6 +317,7 @@ pub(crate) fn save_cache(path: &Path, cache: &Cache) -> Result<(), String> {
         serde_json::to_vec(cache).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    crate::storage::give_to_folder_owner(&temporary).map_err(|e| e.to_string())?;
     fs::rename(temporary, path).map_err(|e| e.to_string())
 }
 

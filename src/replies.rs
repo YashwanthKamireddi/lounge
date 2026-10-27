@@ -1,14 +1,13 @@
 //! Replies from the platform worker (the TV's services) and what each one
-//! changes: the inventory, the profile, closes and launches, and the
-//! foreground poll that brings a hidden Lounge back over LG Home.
+//! changes: the inventory, the profile, closes, launches and Lounge as Home.
 use crate::{
     i18n,
-    platform::{self, Platform, Request, Response},
+    platform::{self, Platform, Response},
     scroll_preview,
     state::{self, State, Target},
     view,
 };
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// The loop flags replies drive.
 pub struct Replies {
@@ -18,10 +17,6 @@ pub struct Replies {
     pub initial_focus: bool,
     /// When to ask for the inventory again after a failed load.
     pub inventory_retry: Option<Instant>,
-    /// A foreground poll is out (polling only when push events are off).
-    pub foreground_pending: bool,
-    /// When Lounge last raised itself over LG Home from a poll.
-    pub last_redirect: Option<Instant>,
 }
 
 impl Replies {
@@ -30,8 +25,6 @@ impl Replies {
             prefetched: false,
             initial_focus,
             inventory_retry: None,
-            foreground_pending: false,
-            last_redirect: None,
         }
     }
 
@@ -86,23 +79,19 @@ impl Replies {
                 state.open_switcher(platform::opened_only(ids, platform.webos))
             }
             Response::Running(_) => {}
-            Response::Home(result) => {
-                let asked = std::mem::take(&mut state.home_button_busy);
+            Response::TvHome(result) => {
+                let asked = std::mem::take(&mut state.tv_home_busy);
                 match result {
                     Ok(on) => {
                         if asked {
-                            state.notify(i18n::t(if on {
-                                "homeButtonLounge"
-                            } else {
-                                "homeButtonLg"
-                            }));
+                            state.notify(i18n::t(if on { "tvHomeLounge" } else { "tvHomeLg" }));
                         }
-                        state.home_button = Some(on);
+                        state.tv_home = Some(on);
                     }
                     Err(error) => {
-                        eprintln!("Lounge Home button: {error}");
+                        eprintln!("Lounge as Home: {error}");
                         if asked {
-                            state.notify(i18n::t("homeButtonError"));
+                            state.notify(i18n::t("tvHomeError"));
                         }
                     }
                 }
@@ -112,18 +101,6 @@ impl Replies {
                 if let Err(error) = result {
                     eprintln!("Lounge close {id}: {error}");
                     state.notify(i18n::t("appCloseError"));
-                }
-            }
-            Response::Foreground(id) => {
-                self.foreground_pending = false;
-                if !visible
-                    && id.as_deref() == Some(platform::HOME_ID)
-                    && self
-                        .last_redirect
-                        .is_none_or(|at| at.elapsed() >= Duration::from_secs(2))
-                {
-                    self.last_redirect = Some(Instant::now());
-                    platform.send(Request::Launch(platform::APP_ID.into()));
                 }
             }
             Response::Launched(result) => {

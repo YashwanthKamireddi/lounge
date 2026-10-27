@@ -23,6 +23,13 @@ export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_LINKER="$CC"
 WEBOS_CPU="${WEBOS_CPU:-cortex-a73}"
 if [ "$WEBOS_CPU" = cortex-a9 ]; then WEBOS_NEON=-neon; else WEBOS_NEON=+neon; fi
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_RUSTFLAGS="${CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_RUSTFLAGS:-} -C target-cpu=$WEBOS_CPU -C target-feature=$WEBOS_NEON,-soft-float -C link-arg=--sysroot=$SYSROOT -C link-arg=-Wl,-rpath,\$ORIGIN/lib"
+# As the TV's Home the executable runs mounted at /usr/bin, where $ORIGIN/lib does not exist
+# and LG's own older SDL would load instead: the installed package's lib comes next.
+while IFS= read -r directory; do
+  [ -n "$directory" ] || continue
+  CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_RUSTFLAGS="$CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_RUSTFLAGS -C link-arg=-Wl,-rpath,$directory/lib"
+done < "$ROOT/tv/install-directories.txt"
+export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_RUSTFLAGS
 export CC_armv7_unknown_linux_gnueabi="$CC"
 export AR_armv7_unknown_linux_gnueabi="$WEBOS_NDK/bin/arm-webos-linux-gnueabi-ar"
 export CFLAGS_armv7_unknown_linux_gnueabi="${CFLAGS_armv7_unknown_linux_gnueabi:-} --sysroot=$SYSROOT"

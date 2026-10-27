@@ -109,9 +109,9 @@ impl State {
                 self.section = 0;
                 self.focus = Target::Sidebar(0);
                 // The start-up read can time out on a busy cold boot; asking
-                // again here keeps the Home Button row from staying hidden.
-                if self.home_button.is_none() && !self.home_button_busy {
-                    return vec![Effect::HomeButton(None)];
+                // again here keeps the Lounge as Home row from staying hidden.
+                if self.tv_home.is_none() && !self.tv_home_busy {
+                    return vec![Effect::TvHome(None)];
                 }
                 return vec![];
             }
@@ -205,12 +205,12 @@ impl State {
                     }
                     5 => return vec![Effect::Quit],
                     10 => {
-                        if let Some(on) = self.home_button
-                            && !self.home_button_busy
+                        if let Some(on) = self.tv_home
+                            && !self.tv_home_busy
                         {
-                            self.home_button_busy = true;
+                            self.tv_home_busy = true;
                             self.dirty = true;
-                            return vec![Effect::HomeButton(Some(!on))];
+                            return vec![Effect::TvHome(Some(!on))];
                         }
                         return vec![];
                     }

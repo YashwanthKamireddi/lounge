@@ -4,6 +4,8 @@ use sdl2::{EventPump, event::Event, keyboard::Keycode, sys};
 use std::mem::MaybeUninit;
 
 pub const WEBOS_EXIT_KEYCODE: i32 = (1 << 30) | 505;
+/// The remote's Home key (SDL_SCANCODE_WEBOS_HOME), sent to Lounge as Home while it is in front.
+pub const WEBOS_HOME_KEYCODE: i32 = (1 << 30) | 384;
 
 pub fn decode(mut raw: sys::SDL_Event, webos: bool) -> Event {
     // SAFETY: SDL always initializes the type tag; only keyboard variants have
@@ -22,6 +24,9 @@ pub fn decode(mut raw: sys::SDL_Event, webos: bool) -> Event {
             } else if webos && scancode == 505 {
                 raw.key.keysym.scancode = sys::SDL_Scancode::SDL_SCANCODE_ESCAPE;
                 raw.key.keysym.sym = WEBOS_EXIT_KEYCODE;
+            } else if webos && scancode == 384 {
+                raw.key.keysym.scancode = sys::SDL_Scancode::SDL_SCANCODE_UNKNOWN;
+                raw.key.keysym.sym = WEBOS_HOME_KEYCODE;
             } else if webos && matches!(scancode, 484 | 485) {
                 // Cursor show/hide are notifications, not another physical key
                 // cancelling an in-progress Back hold.
