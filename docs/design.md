@@ -465,6 +465,9 @@ Sources:
   - Sample the pre-blurred wallpaper texture at the same screen position (so it lines up with the sharp
     wallpaper).
   - Add a luminosity/tint adjustment and a thin specular rim.
+  - Lens the backdrop along the rim: within a band as deep as the shape is round, sample from just
+    beyond the edge, compressed toward it, and brighten it a little (`glass.frag`). Every glass piece
+    (dock, pill, menu capsules, banners) is this one material; only its veil differs.
   - This approximates Apple's regular variant without a live blur pass _(inference: Apple specifies the
     look, not the implementation)_.
 - **Every wallpaper ships with its own pre-blurred glass.** Because the blur is precomputed, glass can't

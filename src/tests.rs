@@ -13,8 +13,8 @@ fn ready() -> State {
     state
 }
 
-fn controls(state: &State) -> Vec<crate::state::Control> {
-    let assets = view::Assets {
+fn assets() -> view::Assets {
+    view::Assets {
         root: PathBuf::new(),
         icons: BTreeMap::new(),
         colors: BTreeMap::new(),
@@ -23,8 +23,23 @@ fn controls(state: &State) -> Vec<crate::state::Control> {
         tiles: Default::default(),
         heroes: Default::default(),
         artwork: crate::app_artwork::Service::new(false),
-    };
-    view::scene(state, &assets, time::OffsetDateTime::UNIX_EPOCH).controls
+    }
+}
+
+fn controls(state: &State) -> Vec<crate::state::Control> {
+    view::scene(state, &assets(), time::OffsetDateTime::UNIX_EPOCH).controls
+}
+
+/// The full-screen picture passes a frame draws, in order.
+fn backgrounds(state: &State) -> Vec<crate::renderer::Backdrop> {
+    view::scene(state, &assets(), time::OffsetDateTime::UNIX_EPOCH)
+        .draw
+        .into_iter()
+        .filter_map(|draw| match draw {
+            crate::renderer::Draw::Dissolve(backdrop) => Some(backdrop),
+            _ => None,
+        })
+        .collect()
 }
 
 #[test]
@@ -606,6 +621,75 @@ fn long_captions_stay_within_two_lines_and_clear_the_next_row() {
 }
 
 #[test]
+fn a_new_wallpaper_waits_for_its_pictures_then_fades_in_under_settings_tint() {
+    crate::clock::record();
+    let mut state = ready();
+    state.open(2);
+    state.section = 1;
+    state.focus = Target::Background(6);
+    state.glide_scroll();
+    state.tick();
+    // Past every opening animation, Top Shelf's chevron hint included.
+    crate::clock::step(std::time::Duration::from_secs(3));
+    state.tick();
+    let old = state.preferences.background.clone();
+    let [rest] = backgrounds(&state).try_into().unwrap();
+    state.activate();
+    // Until the new pictures are on the GPU the old wallpaper stays, whole,
+    // and nothing animates (or asks for the new pictures on the drawing thread).
+    assert_eq!(state.wallpaper(), old);
+    assert!(!state.animating());
+    assert_eq!(backgrounds(&state), std::slice::from_ref(&rest));
+    state.wallpaper_ready();
+    assert!(state.animating());
+    let fade = std::time::Duration::from_secs_f32(crate::state::WALLPAPER_FADE);
+    crate::clock::step(fade / 2);
+    let [middle] = backgrounds(&state).try_into().unwrap();
+    // One pass from the old blurred picture to the new, both in exactly the
+    // resting tint and lift: no colour steps at either end.
+    assert_eq!(middle.from, rest.from);
+    assert!(middle.to.contains(&state.preferences.background));
+    assert!(middle.mix > 0.4 && middle.mix < 0.6);
+    assert_eq!(middle.tint, rest.tint);
+    assert_eq!(middle.lift, rest.lift);
+    crate::clock::step(fade);
+    state.tick();
+    assert!(state.previous_background.is_none());
+    let [end] = backgrounds(&state).try_into().unwrap();
+    assert_eq!(
+        end.single().map(|(_, tint)| tint),
+        rest.single().map(|(_, tint)| tint)
+    );
+    assert!(end.from.contains(&state.preferences.background));
+}
+
+#[test]
+fn leaving_settings_dissolves_its_backdrop_into_the_photo_in_one_pass() {
+    crate::clock::record();
+    let mut state = ready();
+    state.open(2);
+    state.glide_scroll();
+    crate::clock::step(std::time::Duration::from_secs(1));
+    state.tick();
+    let [settings] = backgrounds(&state).try_into().unwrap();
+    state.open(1);
+    state.glide_scroll();
+    // The first frame home is exactly the Settings backdrop on screen: no
+    // cut to the sharp photo, and no second full-screen layer.
+    let [first] = backgrounds(&state).try_into().unwrap();
+    assert_eq!(first.single(), settings.single());
+    crate::clock::step(std::time::Duration::from_millis(100));
+    let [middle] = backgrounds(&state).try_into().unwrap();
+    assert_eq!(middle.from, settings.from);
+    assert!(middle.to.ends_with(".jpg"));
+    assert!(middle.mix > 0. && middle.mix < 1.);
+    crate::clock::step(std::time::Duration::from_secs(1));
+    state.tick();
+    let [home] = backgrounds(&state).try_into().unwrap();
+    assert_eq!(home.single(), Some((middle.to.as_str(), [1.; 4])));
+}
+
+#[test]
 fn reduced_motion_disables_panel_wallpaper_and_notification_animation() {
     let mut state = ready();
     state.preferences.reduced_motion = true;
@@ -1009,13 +1093,9 @@ fn partial_repaint_covers_exactly_what_changed() {
     assert!(area.x > 200., "the unchanged tile is left alone");
     // A full-screen dissolve repaints everything.
     let mut fading = after.clone();
-    fading.push(Draw::Dissolve(
-        "a".into(),
-        "b".into(),
-        0.5,
-        [1.; 4],
-        [0.; 4],
-    ));
+    fading.push(Draw::Dissolve(crate::renderer::Backdrop::between(
+        "a", "b", 0.5,
+    )));
     assert!(damage::diff(&after, &fading).is_none());
     // Buffer age: an unknown or too-old buffer repaints everything; an older
     // one also covers the frames since it was drawn.
@@ -1056,24 +1136,49 @@ fn the_first_scroll_after_a_pause_glides_rather_than_jumps() {
     );
 }
 
-#[test]
-fn a_heavy_frame_advances_the_glide_by_its_real_time() {
+/// Where the grid's glide up to 690 px is after a first 16 ms frame, then
+/// `steps` frames of `each` ms.
+fn glide(steps: u32, each: u64) -> Vec<f32> {
+    crate::clock::record();
     let mut state = ready();
     state.open(1);
     state.glide_scroll();
     state.scroll = 690.;
-    state.glide_scroll();
-    let after_first = state.shown_scroll;
-    // A 50 ms frame (the TV while the grid rises) must not be cut to 40 ms:
-    // the motion keeps its speed however heavy the frames.
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    state.glide_scroll();
-    let k = (state.shown_scroll - after_first) / (690. - after_first);
-    let full = 1. - (-0.05f32 / 0.075).exp();
+    let mut shown = Vec::new();
+    for frame in 0..=steps {
+        let ms = if frame == 0 { 16 } else { each };
+        crate::clock::step(std::time::Duration::from_millis(ms));
+        state.glide_scroll();
+        shown.push(state.shown_scroll);
+    }
+    shown
+}
+
+#[test]
+fn a_heavy_frame_advances_the_glide_by_its_real_time() {
+    // A 50 ms frame (the TV while the grid rises) lands where five 10 ms
+    // frames would: the motion keeps its speed however heavy the frames.
+    let heavy = *glide(1, 50).last().unwrap();
+    let light = *glide(5, 10).last().unwrap();
     assert!(
-        k >= full * 0.97,
-        "a 50 ms frame moved {k:.3} of the way, expected about {full:.3}"
+        (heavy - light).abs() < 0.5,
+        "one 50 ms frame reached {heavy:.1}, five 10 ms frames {light:.1}"
     );
+}
+
+#[test]
+fn a_scroll_gathers_speed_and_settles_without_overshoot() {
+    let shown = glide(60, 16);
+    let steps: Vec<f32> = std::iter::once(shown[0])
+        .chain(shown.windows(2).map(|pair| pair[1] - pair[0]))
+        .collect();
+    assert!(
+        steps[0] < steps[1] && steps[1] < steps[2],
+        "eases in, never jumps on its first frame: {steps:?}"
+    );
+    assert!(steps.iter().all(|step| *step >= 0.), "never turns back");
+    assert!(shown.iter().all(|y| *y <= 690.), "never overshoots");
+    assert_eq!(*shown.last().unwrap(), 690., "settles exactly");
 }
 
 #[test]

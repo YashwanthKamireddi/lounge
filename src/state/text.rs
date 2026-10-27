@@ -92,6 +92,7 @@ impl State {
     pub fn open_keyboard(&mut self, field: TextField) {
         self.keyboard_field = field;
         self.search_closed = None;
+        self.search_ghost = None;
         // App search uses Lounge's own tvOS keyboard everywhere; place names may
         // need the TV's full system keyboard.
         if field == TextField::Location

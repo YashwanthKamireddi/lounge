@@ -47,6 +47,10 @@ pub struct TextStyle {
     pub tracking: f32,
     pub line_height: f32,
     pub align_right: bool,
+    /// Drawn this much larger than laid out, about the layout box's top
+    /// left: text growing with a focused card keeps one layout, so it scales
+    /// smoothly instead of stepping through re-laid-out sizes.
+    pub scale: f32,
 }
 impl TextStyle {
     pub const fn new(size: f32) -> Self {
@@ -56,7 +60,12 @@ impl TextStyle {
             tracking: 0.,
             line_height: 1.2,
             align_right: false,
+            scale: 1.,
         }
+    }
+    pub const fn scaled(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
     }
     pub const fn weight(mut self, weight: u16) -> Self {
         self.weight = weight;
@@ -92,11 +101,8 @@ pub enum Draw {
     /// (a tint above 1 lights the glass in the same pass, no sheen layer).
     Glass(String, Rect, f32, Color, Color),
     AppImage(Arc<crate::app_artwork::Artwork>, Rect, Color),
-    /// Two full-screen images mixed in one opaque pass: the first tinted by
-    /// nothing, the second by its colour, `f32` of the way to the second;
-    /// then lifted the last colour's alpha of the way to its colour (the
-    /// light appearance's frosted material, in the same pass).
-    Dissolve(String, String, f32, Color, Color),
+    /// Two full-screen images mixed in one pass (see Backdrop).
+    Dissolve(Backdrop),
     Clip(Option<Rect>),
     EdgeFade(Option<[f32; 4]>),
     /// Rounded fills and pictures drawn while set get a soft edge this many
@@ -105,6 +111,63 @@ pub enum Draw {
     /// (the pill, menus, avatars) steps visibly with a 1 px edge; text and
     /// tiles keep the crisp one.
     Soft(Option<f32>),
+}
+
+/// A full-screen picture pass: two images, each in its own tint, mixed
+/// `mix` of the way from the first to the second, then lifted `lift[3]` of
+/// the way to `lift`'s colour (the light appearance's frosted material).
+/// One pass of this costs the TV's GPU what one opaque 1080p layer does.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Backdrop {
+    pub from: String,
+    pub to: String,
+    pub mix: f32,
+    pub tint: [Color; 2],
+    pub lift: Color,
+    /// 1 for the background itself. Below it the pass is laid over what is
+    /// drawn: only while two backdrops cross that one pass cannot mix.
+    pub opacity: f32,
+}
+impl Backdrop {
+    /// One picture in `tint`.
+    pub fn picture(path: impl Into<String>, tint: Color) -> Self {
+        let path = path.into();
+        Self {
+            from: path.clone(),
+            to: path,
+            mix: 1.,
+            tint: [tint; 2],
+            lift: [0.; 4],
+            opacity: 1.,
+        }
+    }
+    /// `mix` of the way from one untinted picture to another.
+    pub fn between(from: impl Into<String>, to: impl Into<String>, mix: f32) -> Self {
+        Self {
+            from: from.into(),
+            to: to.into(),
+            mix,
+            tint: [[1.; 4]; 2],
+            lift: [0.; 4],
+            opacity: 1.,
+        }
+    }
+    /// The one picture showing, and in what tint, when only one does.
+    pub fn single(&self) -> Option<(&str, Color)> {
+        if self.from == self.to {
+            let [a, b] = self.tint;
+            Some((
+                &self.from,
+                std::array::from_fn(|i| a[i] + (b[i] - a[i]) * self.mix),
+            ))
+        } else if self.mix <= 0. {
+            Some((&self.from, self.tint[0]))
+        } else if self.mix >= 1. {
+            Some((&self.to, self.tint[1]))
+        } else {
+            None
+        }
+    }
 }
 
 struct Texture {
@@ -158,6 +221,8 @@ enum BatchKind {
         texture: GLuint,
         start: usize,
         count: usize,
+        /// Drawn as Liquid Glass (glass.frag) rather than a plain fill.
+        lens: bool,
     },
     Vector {
         path: String,
@@ -167,6 +232,7 @@ enum BatchKind {
     Text {
         key: TextKey,
         origin: [f32; 2],
+        scale: f32,
         tint: Color,
     },
     Dissolve {
@@ -174,8 +240,9 @@ enum BatchKind {
         to: GLuint,
         start: usize,
         amount: f32,
-        tint: Color,
+        tint: [Color; 2],
         lift: Color,
+        opacity: f32,
     },
 }
 
@@ -227,6 +294,9 @@ pub struct Renderer {
     dissolve_programs: [GLuint; 2],
     dissolve_uniforms: [[GLint; 5]; 2],
     paint_uniforms: Uniforms,
+    /// Liquid Glass: the paint layout, lensing its backdrop (glass.frag).
+    glass_program: GLuint,
+    glass_uniforms: Uniforms,
     vector_uniforms: Uniforms,
     text_uniforms: Uniforms,
     vector_program: GLuint,
@@ -251,6 +321,8 @@ pub struct Renderer {
     fade: Option<[f32; 4]>,
     /// The soft edge set by Draw::Soft, for the draws being built now.
     soft: f32,
+    /// The draws being built now are glass (see BatchKind::Paint).
+    lens: bool,
     /// The rank (see Batch) of the draws being batched now.
     rank: u8,
     /// For each draw of this frame: whether it is an opaque tile.
@@ -325,6 +397,17 @@ impl Renderer {
             &(fragment_prefix.clone() + include_str!("shaders/paint.frag")),
             &[c"a_position", c"a_uv", c"a_color", c"a_shape", c"a_params"],
         )?;
+        let glass_program = match link(
+            &(vertex_prefix.clone() + include_str!("shaders/paint.vert")),
+            &(fragment_prefix.clone() + include_str!("shaders/glass.frag")),
+            &[c"a_position", c"a_uv", c"a_color", c"a_shape", c"a_params"],
+        ) {
+            Ok(glass) => glass,
+            Err(error) => {
+                unsafe { gl::DeleteProgram(program) };
+                return Err(error);
+            }
+        };
         let vector_program = match link(
             &(vertex_prefix.clone() + include_str!("shaders/vector.vert")),
             &(fragment_prefix.clone() + include_str!("shaders/vector.frag")),
@@ -332,7 +415,10 @@ impl Renderer {
         ) {
             Ok(program) => program,
             Err(error) => {
-                unsafe { gl::DeleteProgram(program) };
+                unsafe {
+                    gl::DeleteProgram(program);
+                    gl::DeleteProgram(glass_program);
+                }
                 return Err(error);
             }
         };
@@ -345,6 +431,7 @@ impl Renderer {
             Err(error) => {
                 unsafe {
                     gl::DeleteProgram(program);
+                    gl::DeleteProgram(glass_program);
                     gl::DeleteProgram(vector_program);
                 }
                 return Err(error);
@@ -362,7 +449,7 @@ impl Renderer {
                 Ok(program) => program,
                 Err(error) => {
                     unsafe {
-                        for program in [program, vector_program, text_program]
+                        for program in [program, glass_program, vector_program, text_program]
                             .into_iter()
                             .chain(dissolve_programs.into_iter().filter(|&p| p != 0))
                         {
@@ -409,6 +496,8 @@ impl Renderer {
         let white = texture(1, 1, &[255; 4]);
         Ok(Self {
             paint_uniforms: Uniforms::of(program),
+            glass_program,
+            glass_uniforms: Uniforms::of(glass_program),
             dissolve_programs,
             dissolve_uniforms,
             vector_uniforms: Uniforms::of(vector_program),
@@ -437,6 +526,7 @@ impl Renderer {
             clip: None,
             fade: None,
             soft: 0.,
+            lens: false,
             rank: u8::MAX,
             occluder_at: Vec::new(),
             occluders: Vec::new(),
@@ -539,9 +629,11 @@ impl Renderer {
                 && let BatchKind::Paint {
                     texture: previous,
                     count,
+                    lens,
                     ..
                 } = &mut batch.kind
                 && *previous == texture
+                && *lens == self.lens
             {
                 *count += emitted;
                 return;
@@ -552,6 +644,7 @@ impl Renderer {
                 texture,
                 start,
                 count: emitted,
+                lens: self.lens,
             },
             clip: self.clip,
             fade: self.fade,
@@ -629,9 +722,24 @@ impl Renderer {
         Some(texture.id)
     }
 
-    fn dissolve(&mut self, from: &str, to: &str, amount: f32, tint: Color, lift: Color) {
-        let (Some(from), Some(to)) = (self.loaded(from), self.loaded(to)) else {
-            return;
+    fn dissolve(&mut self, backdrop: &Backdrop) {
+        let single = backdrop.single();
+        let (from, to) = match single {
+            Some((path, _)) => match self.loaded(path) {
+                Some(id) => (id, id),
+                None => return,
+            },
+            None => match (self.loaded(&backdrop.from), self.loaded(&backdrop.to)) {
+                (Some(from), Some(to)) => (from, to),
+                // An unreadable picture: the other alone, never no background.
+                (Some(id), None) | (None, Some(id)) => (id, id),
+                (None, None) => return,
+            },
+        };
+        let (amount, tint) = match single {
+            Some((_, tint)) => (1., [tint; 2]),
+            None if from == to => (1., [backdrop.tint[1]; 2]),
+            None => (backdrop.mix, backdrop.tint),
         };
         let start = self.vertices.len() / 14;
         self.quad(
@@ -639,7 +747,7 @@ impl Renderer {
             [0., 0., 1., 1.],
             0.,
             0.,
-            [1.; 4],
+            tint[0],
             from,
         );
         // quad() may have merged into an earlier batch; give these six
@@ -659,7 +767,8 @@ impl Renderer {
                 start,
                 amount,
                 tint,
-                lift,
+                lift: backdrop.lift,
+                opacity: backdrop.opacity,
             },
             clip: None,
             fade: None,
@@ -686,7 +795,9 @@ impl Renderer {
             (rect.x + rect.w) / 1920.,
             (rect.y + rect.h) / 1080.,
         ];
+        self.lens = true;
         self.gradient_quad(rect, uv, radius, 0., tint, id);
+        self.lens = false;
     }
 
     fn vector_image(&mut self, path: &str, mut rect: Rect, contain: bool, tint: Color) {
@@ -929,9 +1040,7 @@ impl Renderer {
                 Draw::Glass(path, rect, radius, top, bottom) => {
                     self.glass(path, *rect, *radius, [*top, *bottom])
                 }
-                Draw::Dissolve(from, to, amount, tint, lift) => {
-                    self.dissolve(from, to, *amount, *tint, *lift)
-                }
+                Draw::Dissolve(backdrop) => self.dissolve(backdrop),
                 Draw::Clip(clip) => self.clip = *clip,
                 Draw::EdgeFade(fade) => self.fade = *fade,
                 Draw::Soft(soft) => self.soft = soft.unwrap_or(0.),
@@ -1015,17 +1124,23 @@ impl Renderer {
                 self.vertices.as_ptr().cast(),
                 gl::DYNAMIC_DRAW,
             );
-            gl::UseProgram(self.program);
             // Shape edges blend over 1 logical px: the TV scales its 1080p
             // frame up to the 4K panel, which turned 0.85 px into a visible
             // stair-step on rims and tight curves, and 1.25 px into a blur.
-            gl::Uniform1f(self.paint_uniforms.aa, 1.0 / scale.max(0.01));
-            gl::Uniform1i(self.paint_uniforms.texture, 0);
+            for (program, uniforms) in [
+                (self.glass_program, self.glass_uniforms),
+                (self.program, self.paint_uniforms),
+            ] {
+                gl::UseProgram(program);
+                gl::Uniform1f(uniforms.aa, 1.0 / scale.max(0.01));
+                gl::Uniform1i(uniforms.texture, 0);
+            }
             gl::ActiveTexture(gl::TEXTURE0);
-            let mut paint_bound = false;
+            // The paint-layout program bound (paint or glass), 0 for none.
+            let mut bound = 0;
             if !self.occluders.is_empty() {
-                self.bind_paint();
-                paint_bound = true;
+                self.bind_paint(self.program);
+                bound = self.program;
                 gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
                 gl::Enable(gl::STENCIL_TEST);
                 gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
@@ -1056,6 +1171,7 @@ impl Renderer {
                     let fade = batch.fade.unwrap_or([0., 0., 0., 0.]);
                     for (program, uniforms) in [
                         (self.program, self.paint_uniforms),
+                        (self.glass_program, self.glass_uniforms),
                         (self.vector_program, self.vector_uniforms),
                         (self.text_program, self.text_uniforms),
                     ] {
@@ -1063,7 +1179,7 @@ impl Renderer {
                         gl::Uniform4f(uniforms.edge_fade, fade[0], fade[1], fade[2], fade[3]);
                     }
                     current_fade = Some(batch.fade);
-                    paint_bound = false;
+                    bound = 0;
                 }
                 // The batch's own clip, within this frame's repainted area.
                 let area = match (batch.clip, damage) {
@@ -1099,10 +1215,16 @@ impl Renderer {
                         texture,
                         start,
                         count,
+                        lens,
                     } => {
-                        if !paint_bound {
-                            self.bind_paint();
-                            paint_bound = true;
+                        let program = if *lens {
+                            self.glass_program
+                        } else {
+                            self.program
+                        };
+                        if bound != program {
+                            self.bind_paint(program);
+                            bound = program;
                         }
                         gl::BindTexture(gl::TEXTURE_2D, *texture);
                         gl::DrawArrays(gl::TRIANGLES, *start as i32, *count as i32);
@@ -1114,25 +1236,16 @@ impl Renderer {
                         amount,
                         tint,
                         lift,
+                        opacity,
                     } => {
-                        // At a mix of exactly 0 or 1 only one image shows (Home
-                        // and Settings at rest): the one-sample variant draws
-                        // it with that image's tint at half the texture fetches
-                        // of this full-screen pass. Recorded frames matched the
-                        // two-image pass bit for bit, except the light Settings
-                        // push, where GL's mix(a, b, 1) rounds up to 1/255 off
-                        // b on a few hundred edge pixels; this draws b exactly.
-                        let single = *amount == 0. || *amount == 1.;
-                        let (from, tint) = if *amount == 0. {
-                            (from, &[1.; 4])
-                        } else if single {
-                            (to, tint)
-                        } else {
-                            (from, tint)
-                        };
-                        // Same vertex layout as paint; the output is opaque, so
-                        // blending is off for this one full-screen pass.
-                        gl::UseProgram(self.dissolve_programs[usize::from(single)]);
+                        // Where only one image shows (a mix of 0 or 1: Home
+                        // and Settings at rest) the one-sample variant draws
+                        // it in its tint, at half the texture fetches of this
+                        // full-screen pass (see `dissolve`).
+                        let single = *amount >= 1.;
+                        let program = usize::from(single);
+                        // Same vertex layout as paint.
+                        gl::UseProgram(self.dissolve_programs[program]);
                         gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
                         let mut offset = 0;
                         for (index, size) in [2, 2, 4, 4, 2].into_iter().enumerate() {
@@ -1148,11 +1261,12 @@ impl Renderer {
                             offset += size as usize;
                         }
                         let [texture, texture2, mix, tint2, lift_uniform] =
-                            self.dissolve_uniforms[usize::from(single)];
+                            self.dissolve_uniforms[program];
+                        let tint = tint[1];
                         gl::Uniform1i(texture, 0);
                         gl::Uniform1i(texture2, 1);
                         gl::Uniform1f(mix, *amount);
-                        gl::Uniform4f(tint2, tint[0], tint[1], tint[2], tint[3]);
+                        gl::Uniform4f(tint2, tint[0], tint[1], tint[2], *opacity);
                         gl::Uniform4f(lift_uniform, lift[0], lift[1], lift[2], lift[3]);
                         if !single {
                             gl::ActiveTexture(gl::TEXTURE1);
@@ -1160,11 +1274,16 @@ impl Renderer {
                             gl::ActiveTexture(gl::TEXTURE0);
                         }
                         gl::BindTexture(gl::TEXTURE_2D, *from);
-                        gl::Disable(gl::BLEND);
+                        // The background is opaque: blending would only cost.
+                        let opaque = *opacity >= 1.;
+                        if opaque {
+                            gl::Disable(gl::BLEND);
+                        }
                         gl::DrawArrays(gl::TRIANGLES, *start as i32, 6);
-                        gl::Enable(gl::BLEND);
-                        gl::UseProgram(self.program);
-                        paint_bound = false;
+                        if opaque {
+                            gl::Enable(gl::BLEND);
+                        }
+                        bound = 0;
                     }
                     BatchKind::Vector { path, rect, tint } => {
                         let Some(mesh) = self.vectors.get(path).and_then(|v| v.mesh.as_ref())
@@ -1178,9 +1297,14 @@ impl Renderer {
                             *tint,
                             0.,
                         );
-                        paint_bound = false;
+                        bound = 0;
                     }
-                    BatchKind::Text { key, origin, tint } => {
+                    BatchKind::Text {
+                        key,
+                        origin,
+                        scale,
+                        tint,
+                    } => {
                         let Some(mesh) = self.text_runs.get(key).and_then(|run| run.mesh.as_ref())
                         else {
                             continue;
@@ -1188,14 +1312,16 @@ impl Renderer {
                         self.draw_mesh(
                             self.text_program,
                             mesh,
-                            [1., 1., origin[0], origin[1]],
+                            [*scale, *scale, origin[0], origin[1]],
                             *tint,
                             text::embolden(
-                                f32::from_bits(key.layout[0]) * self.stats.viewport.height as f32
+                                f32::from_bits(key.layout[0])
+                                    * scale
+                                    * self.stats.viewport.height as f32
                                     / 1080.,
                             ),
                         );
-                        paint_bound = false;
+                        bound = 0;
                     }
                 }
             }
@@ -1383,13 +1509,13 @@ impl Renderer {
         &self.stats
     }
 
-    /// Selects the paint program with its vertex layout.
+    /// Selects a paint-layout program (paint or glass) with its vertex layout.
     ///
     /// # Safety
     /// Needs this renderer's context current and its vertex buffer filled.
-    unsafe fn bind_paint(&self) {
+    unsafe fn bind_paint(&self, program: GLuint) {
         unsafe {
-            gl::UseProgram(self.program);
+            gl::UseProgram(program);
             gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer);
             let mut offset = 0;
             for (index, size) in [2, 2, 4, 4, 2].into_iter().enumerate() {
@@ -1536,6 +1662,7 @@ impl Drop for Renderer {
         unsafe {
             gl::DeleteBuffers(1, &self.buffer);
             gl::DeleteProgram(self.program);
+            gl::DeleteProgram(self.glass_program);
             for program in self.dissolve_programs {
                 gl::DeleteProgram(program);
             }
@@ -1551,6 +1678,27 @@ impl Drop for Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_backdrop_showing_one_picture_draws_it_alone_in_its_tint() {
+        let grey = [0.5, 0.5, 0.5, 1.];
+        assert_eq!(
+            Backdrop::between("a", "b", 0.).single(),
+            Some(("a", [1.; 4]))
+        );
+        assert_eq!(
+            Backdrop::between("a", "b", 1.).single(),
+            Some(("b", [1.; 4]))
+        );
+        assert_eq!(Backdrop::between("a", "b", 0.5).single(), None);
+        // The same picture between two tints is that picture in a mixed tint.
+        let pass = Backdrop {
+            tint: [[1.; 4], grey],
+            ..Backdrop::between("a", "a", 0.5)
+        };
+        assert_eq!(pass.single(), Some(("a", [0.75, 0.75, 0.75, 1.])));
+        assert_eq!(Backdrop::picture("a", grey).single(), Some(("a", grey)));
+    }
 
     fn run(frame: u64) -> TextRun {
         TextRun {

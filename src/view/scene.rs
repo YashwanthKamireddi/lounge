@@ -12,6 +12,12 @@ pub struct Scene {
     /// The Settings page's own draws, kept so the next level can cross-fade
     /// out of exactly what was on screen.
     pub settings_range: Option<std::ops::Range<usize>>,
+    /// The page shown and its draws (all but the background and overlays),
+    /// kept so the next page can cross-fade out of exactly what was on screen.
+    pub page: Option<(crate::state::Page, std::ops::Range<usize>)>,
+    /// The search page's draws while it shows, kept so closing it fades out
+    /// exactly what was on screen.
+    pub search: Option<std::ops::Range<usize>>,
     /// This frame's appearance (Light, Dark, or between while it changes).
     pub(super) theme: super::theme::Theme,
     /// The draws of the tile a context menu acts on: dimming leaves them
@@ -26,6 +32,8 @@ impl Scene {
             controls: Vec::new(),
             modal: None,
             settings_range: None,
+            page: None,
+            search: None,
             lit: None,
         }
     }
@@ -77,6 +85,20 @@ impl Scene {
             c(0, alpha),
         ));
     }
+    /// Lays what an earlier frame drew (a page or search being left) over
+    /// this one, moved `dx` and faded to `alpha`; what it set for the draws
+    /// after it (clip, edge fade, soft edge) ends with it.
+    pub(super) fn ghost(&mut self, draws: &[Draw], dx: f32, alpha: f32) {
+        if alpha <= 0. {
+            return;
+        }
+        let start = self.draw.len();
+        self.draw.extend(draws.iter().cloned());
+        self.translate(start, dx, 0.);
+        self.fade(start, alpha, 1.);
+        self.draw
+            .extend([Draw::Clip(None), Draw::EdgeFade(None), Draw::Soft(None)]);
+    }
     pub(super) fn translate(&mut self, from: usize, dx: f32, dy: f32) {
         self.shift(from, dx, dy, false);
     }
@@ -114,7 +136,7 @@ impl Scene {
         }
     }
     /// tvOS Liquid Glass: the blurred wallpaper behind `rect` under a light
-    /// veil. Cheap: one texture sample, no runtime blur.
+    /// veil. Cheap: no runtime blur, a lens only along its rim.
     pub(super) fn glass(
         &mut self,
         assets: &Assets,
@@ -130,114 +152,83 @@ impl Scene {
             veil,
         );
     }
-    /// Glass over a specific pre-blurred backdrop (Top Shelf art, say).
+    /// Glass over a specific pre-blurred backdrop (Top Shelf art, say): the
+    /// backdrop through the glass's lens (glass.frag), in the appearance's
+    /// light, under `veil`. Every glass piece is this one material.
     pub(super) fn glass_over(&mut self, backdrop: String, rect: Rect, radius: f32, veil: Color) {
+        let (top, bottom) = self.theme.lens();
         self.draw
-            .push(Draw::Glass(backdrop, rect, radius, [1.; 4], [1.; 4]));
-        self.shape(rect, radius, veil);
-        // No rim here: each glass piece draws its own single specular rim
-        // (two stacked rims read as a soft band once the TV scales to 4K).
+            .push(Draw::Glass(backdrop, rect, radius, top, bottom));
+        if veil[3] > 0. {
+            self.shape(rect, radius, veil);
+        }
+    }
+    /// Glass's one thin specular rim, `top` to `bottom` strong in the
+    /// appearance's light (two stacked rims read as a soft band once the TV
+    /// scales to 4K).
+    pub(super) fn rim(&mut self, rect: Rect, radius: f32, top: f32, bottom: f32) {
+        let (top, bottom) = self.theme.edge(top, bottom);
+        self.draw
+            .push(Draw::GradientRing(rect, radius, 1.5, top, bottom));
     }
     pub(super) fn fade(&mut self, from: usize, alpha: f32, brightness: f32) {
         self.recolour(from..self.draw.len(), alpha, brightness);
     }
     /// Darkens everything drawn so far to `brightness`, as a black veil of
     /// 1 - brightness over it would, but by recolouring those draws: no
-    /// full-screen layer for the TV's GPU to paint. Only a lifted backdrop
-    /// (light Settings) caught mid-dissolve between two pictures cannot be
-    /// recoloured whole; then the veil is drawn after all.
+    /// full-screen layer for the TV's GPU to paint. The background pass
+    /// darkens through its tints and lift, which is exact for any mix.
     pub(super) fn dim(&mut self, brightness: f32) {
         if brightness >= 1. {
             return;
         }
-        let mut whole = true;
         for draw in &mut self.draw {
-            if let Draw::Dissolve(from, to, amount, tint, lift) = draw {
-                if lift[3] <= 0. {
-                    // A lift toward black by 1 - brightness is exactly that
-                    // darkening, of whatever the pass shows (two pictures
-                    // mid-dissolve included).
-                    *lift = [0., 0., 0., 1. - brightness];
-                    continue;
-                }
-                if *amount <= 0. {
-                    // Only the first picture shows: draw it as the second.
-                    *to = from.clone();
-                }
-                if from == to || *amount <= 0. || *amount >= 1. {
-                    // One picture: drawn fully as the tinted second image.
-                    *amount = 1.;
-                    for channel in 0..3 {
-                        tint[channel] *= brightness;
-                        lift[channel] *= brightness;
+            if let Draw::Dissolve(backdrop) = draw {
+                for colour in backdrop.tint.iter_mut().chain([&mut backdrop.lift]) {
+                    for channel in &mut colour[..3] {
+                        *channel *= brightness;
                     }
-                } else {
-                    whole = false;
                 }
             }
         }
         let lit = self.lit.clone().unwrap_or(0..0);
-        if whole {
-            self.recolour(0..lit.start, 1., brightness);
-            self.recolour(lit.end..self.draw.len(), 1., brightness);
-        } else {
-            self.shape(Rect::new(0., 0., 1920., 1080.), 0., c(0, 1. - brightness));
-            // The veil covers everything; the lit tile is laid over it again.
-            let tile = self.draw[lit].to_vec();
-            self.draw.extend(tile);
-        }
-    }
-    /// Lays a full-screen `veil` over the background, as a layer of that
-    /// colour would (straight alpha), but inside the background's own pass:
-    /// the pass's lift toward a colour composes with the veil exactly. Only
-    /// while the background is all that is drawn; otherwise the veil is
-    /// drawn as a layer after all.
-    pub(super) fn veil(&mut self, veil: Color) {
-        if veil[3] <= 0. {
-            return;
-        }
-        if let [Draw::Dissolve(.., lift)] = self.draw.as_mut_slice() {
-            // mix(mix(x, L, l), V, v) = mix(x, L', 1 - (1 - l)(1 - v)).
-            let alpha = 1. - (1. - lift[3]) * (1. - veil[3]);
-            for channel in 0..3 {
-                lift[channel] =
-                    ((1. - veil[3]) * lift[3] * lift[channel] + veil[3] * veil[channel]) / alpha;
-            }
-            lift[3] = alpha;
-        } else {
-            self.shape(Rect::new(0., 0., 1920., 1080.), 0., veil);
-        }
+        self.recolour(0..lit.start, 1., brightness);
+        self.recolour(lit.end..self.draw.len(), 1., brightness);
     }
     /// Cross-fades everything drawn so far `amount` of the way to `backdrop`
     /// tinted `shade`, as that picture laid over it at `amount` would look,
     /// but within the existing background pass (one full-screen layer less
     /// for the TV's GPU): the background mixes into the backdrop and the
     /// content above it fades away. False, drawing nothing, when the
-    /// background is itself mid-dissolve; the caller then lays the backdrop
-    /// over as a layer.
+    /// background is itself mid-dissolve between two pictures; the caller
+    /// then lays the backdrop over as a layer.
     pub(super) fn fade_into(&mut self, backdrop: &str, shade: Color, amount: f32) -> bool {
-        let Some(Draw::Dissolve(_, to, mix, tint, lift)) = self
+        let passes = self
+            .draw
+            .iter()
+            .filter(|draw| matches!(draw, Draw::Dissolve(..)));
+        if passes.count() != 1 {
+            return false;
+        }
+        let Some(Draw::Dissolve(pass)) = self
             .draw
             .iter_mut()
             .find(|draw| matches!(draw, Draw::Dissolve(..)))
         else {
             return false;
         };
-        let blend = |a: Color, b: Color| -> Color {
-            std::array::from_fn(|i| a[i] + (b[i] - a[i]) * amount)
+        let Some((picture, tint)) = pass.single().map(|(path, tint)| (path.to_owned(), tint))
+        else {
+            return false;
         };
-        if *mix >= 1. && to == backdrop {
-            // Already that picture (the grid's backdrop): only its tint moves.
-            *tint = blend(*tint, shade);
-            lift[3] *= 1. - amount;
-        } else if *mix <= 0. && lift[3] <= 0. {
-            // The untinted first picture (the home's photo) mixes into it.
-            *to = backdrop.to_owned();
-            *mix = amount;
-            *tint = shade;
-        } else {
+        if pass.opacity < 1. {
             return false;
         }
+        pass.from = picture;
+        pass.to = backdrop.to_owned();
+        pass.mix = amount;
+        pass.tint = [tint, shade];
+        pass.lift[3] *= 1. - amount;
         self.recolour(0..self.draw.len(), 1. - amount, 1.);
         true
     }
@@ -282,126 +273,92 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::renderer::Backdrop;
 
-    fn scene(background: Draw) -> Scene {
+    fn scene(background: Backdrop) -> Scene {
         let mut out = Scene::new(super::super::theme::Theme::new(0.));
-        out.draw.push(background);
+        out.draw.push(Draw::Dissolve(background));
         out.shape(Rect::new(0., 0., 100., 100.), 0., [1., 1., 1., 1.]);
         out
+    }
+    fn pass(out: &Scene) -> &Backdrop {
+        match &out.draw[0] {
+            Draw::Dissolve(backdrop) => backdrop,
+            _ => unreachable!(),
+        }
+    }
+    /// What the dissolve shader shows for one channel of two texels.
+    fn shown(pass: &Backdrop, a: f32, b: f32, channel: usize) -> f32 {
+        let x = a * pass.tint[0][channel]
+            + (b * pass.tint[1][channel] - a * pass.tint[0][channel]) * pass.mix;
+        x + (pass.lift[channel] - x) * pass.lift[3]
     }
 
     #[test]
     fn the_switcher_backdrop_fades_in_within_the_background_pass() {
         let shade = [0.38, 0.38, 0.4, 1.];
         // The home's photo mixes into the backdrop; content fades with it.
-        let mut out = scene(Draw::Dissolve(
-            "photo".into(),
-            "photo".into(),
-            0.,
-            [1.; 4],
-            [0.; 4],
-        ));
+        let mut out = scene(Backdrop::picture("photo", [1.; 4]));
         assert!(out.fade_into("glass", shade, 0.25));
-        assert!(
-            matches!(&out.draw[0], Draw::Dissolve(from, to, mix, tint, _)
-            if from == "photo" && to == "glass" && *mix == 0.25 && *tint == shade)
-        );
+        let p = pass(&out);
+        assert!(p.from == "photo" && p.to == "glass" && p.mix == 0.25 && p.tint[1] == shade);
         assert!(matches!(out.draw[1], Draw::Shape(_, _, _, color) if color[3] == 0.75));
         // The grid's backdrop is already that picture: only its tint moves.
-        let mut out = scene(Draw::Dissolve(
-            "glass".into(),
-            "glass".into(),
-            1.,
-            [0.62; 4],
-            [0.; 4],
-        ));
+        let mut out = scene(Backdrop::picture("glass", [0.62; 4]));
         assert!(out.fade_into("glass", shade, 1.));
-        assert!(matches!(&out.draw[0], Draw::Dissolve(_, _, _, tint, _) if *tint == shade));
+        assert_eq!(pass(&out).single(), Some(("glass", shade)));
         // Mid-dissolve between two pictures: left alone for a layer instead.
-        let mut out = scene(Draw::Dissolve(
-            "a".into(),
-            "b".into(),
-            0.5,
-            [1.; 4],
-            [0.; 4],
-        ));
+        let mut out = scene(Backdrop::between("a", "b", 0.5));
         assert!(!out.fade_into("glass", shade, 0.5));
         assert!(matches!(out.draw[1], Draw::Shape(_, _, _, color) if color[3] == 1.));
     }
 
     #[test]
-    fn dimming_a_background_mid_dissolve_adds_no_layer() {
-        let mut out = scene(Draw::Dissolve(
-            "a".into(),
-            "b".into(),
-            0.5,
-            [1.; 4],
-            [0.; 4],
-        ));
-        out.dim(0.65);
-        assert_eq!(out.draw.len(), 2, "no veil drawn");
-        assert!(matches!(&out.draw[0], Draw::Dissolve(_, _, _, _, lift)
-            if lift[..3] == [0.; 3] && (lift[3] - 0.35).abs() < 1e-6));
-        assert!(
-            matches!(out.draw[1], Draw::Shape(_, _, _, color) if (color[0] - 0.65).abs() < 1e-6)
-        );
-    }
-    #[test]
-    fn a_backdrop_veil_folds_into_the_background_pass_exactly() {
-        // What the dissolve shader shows, then a straight-alpha layer over it.
-        let pass = |x: f32, lift: Color, channel: usize| x + (lift[channel] - x) * lift[3];
-        let layer =
-            |below: f32, veil: Color, channel: usize| below + (veil[channel] - below) * veil[3];
-        for (lift, veil) in [
-            ([0.; 4], [0., 0., 0., 0.3]),
-            ([0.; 4], [0.96, 0.96, 0.97, 0.45]),
-            ([0.96, 0.96, 0.97, 0.7], [0.96, 0.96, 0.97, 0.2]),
-            ([0., 0., 0., 0.35], [0.9, 0.8, 0.7, 0.5]),
+    fn dimming_any_background_is_exact_and_adds_no_layer() {
+        for background in [
+            Backdrop::between("a", "b", 0.5),
+            Backdrop {
+                tint: [[0.9, 0.8, 0.7, 1.], [0.3, 0.3, 0.32, 1.]],
+                lift: [0.96, 0.96, 0.97, 0.7],
+                ..Backdrop::between("a", "b", 0.3)
+            },
         ] {
-            let mut out = Scene::new(super::super::theme::Theme::new(0.));
-            out.draw
-                .push(Draw::Dissolve("a".into(), "b".into(), 0.5, [1.; 4], lift));
-            out.veil(veil);
-            assert_eq!(out.draw.len(), 1, "no layer drawn");
-            let Draw::Dissolve(.., folded) = out.draw[0] else {
-                unreachable!()
-            };
-            for x in [0., 0.25, 0.6, 1.] {
+            let before = background.clone();
+            let mut out = scene(background);
+            out.dim(0.65);
+            assert_eq!(out.draw.len(), 2, "no veil drawn");
+            for (a, b) in [(0., 1.), (0.4, 0.9), (1., 0.2)] {
                 for channel in 0..3 {
-                    let expected = layer(pass(x, lift, channel), veil, channel);
-                    assert!((pass(x, folded, channel) - expected).abs() < 1e-5);
+                    let expected = 0.65 * shown(&before, a, b, channel);
+                    assert!((shown(pass(&out), a, b, channel) - expected).abs() < 1e-5);
                 }
             }
+            assert!(
+                matches!(out.draw[1], Draw::Shape(_, _, _, color) if (color[0] - 0.65).abs() < 1e-6)
+            );
         }
-        // With content already drawn the veil would cover it too: a layer.
-        let mut out = scene(Draw::Dissolve("a".into(), "a".into(), 1., [1.; 4], [0.; 4]));
-        out.veil([0., 0., 0., 0.4]);
-        assert_eq!(out.draw.len(), 3);
     }
     #[test]
     fn the_tile_a_menu_acts_on_stays_lit_while_the_screen_dims() {
         // Background, then the held tile's face, then another tile.
-        let mut out = scene(Draw::Dissolve("a".into(), "a".into(), 1., [1.; 4], [0.; 4]));
-        out.shape(Rect::new(0., 0., 10., 10.), 0., [1., 1., 1., 1.]);
-        out.lit = Some(1..2);
-        out.dim(0.65);
-        let colour = |draw: &Draw| match draw {
-            Draw::Shape(_, _, _, color) => color[0],
-            _ => unreachable!(),
-        };
-        assert_eq!(colour(&out.draw[1]), 1., "the held tile keeps its light");
-        assert!((colour(&out.draw[2]) - 0.65).abs() < 1e-6, "the rest dims");
-        // Where only a veil can dim (a lifted backdrop mid-dissolve), the
-        // tile is laid over it again.
-        let mut out = scene(Draw::Dissolve(
-            "a".into(),
-            "b".into(),
-            0.5,
-            [1.; 4],
-            [0.9, 0.9, 0.9, 0.5],
-        ));
-        out.lit = Some(1..2);
-        out.dim(0.65);
-        assert!(matches!(out.draw.last(), Some(Draw::Shape(_, _, _, color)) if color[0] == 1.));
+        for background in [
+            Backdrop::picture("a", [1.; 4]),
+            Backdrop {
+                lift: [0.9, 0.9, 0.9, 0.5],
+                ..Backdrop::between("a", "b", 0.5)
+            },
+        ] {
+            let mut out = scene(background);
+            out.shape(Rect::new(0., 0., 10., 10.), 0., [1., 1., 1., 1.]);
+            out.lit = Some(1..2);
+            out.dim(0.65);
+            let colour = |draw: &Draw| match draw {
+                Draw::Shape(_, _, _, color) => color[0],
+                _ => unreachable!(),
+            };
+            assert_eq!(out.draw.len(), 3, "no veil, no second tile");
+            assert_eq!(colour(&out.draw[1]), 1., "the held tile keeps its light");
+            assert!((colour(&out.draw[2]) - 0.65).abs() < 1e-6, "the rest dims");
+        }
     }
 }

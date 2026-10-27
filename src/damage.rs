@@ -78,7 +78,10 @@ fn bounds(draw: &Draw) -> Option<Rect> {
             Some(grow(rect, 3.))
         }
         Draw::Shadow(rect, _, blur, _) => Some(grow(rect, blur + 3.)),
-        Draw::Text(_, rect, ..) => Some(grow(rect, 6.)),
+        Draw::Text(_, rect, style, ..) => Some(grow(
+            &Rect::new(rect.x, rect.y, rect.w * style.scale, rect.h * style.scale),
+            6.,
+        )),
         Draw::Image(_, rect, ..)
         | Draw::TintedImage(_, rect, ..)
         | Draw::AppImage(_, rect, _)
@@ -118,9 +121,7 @@ fn same(a: &Draw, b: &Draw) -> bool {
         (AppImage(i1, r1, c1), AppImage(i2, r2, c2)) => {
             std::sync::Arc::ptr_eq(i1, i2) && r1 == r2 && c1 == c2
         }
-        (Dissolve(p1, q1, m1, c1, l1), Dissolve(p2, q2, m2, c2, l2)) => {
-            p1 == p2 && q1 == q2 && m1 == m2 && c1 == c2 && l1 == l2
-        }
+        (Dissolve(a), Dissolve(b)) => a == b,
         (Clip(a), Clip(b)) => a == b,
         (EdgeFade(a), EdgeFade(b)) => a == b,
         (Soft(a), Soft(b)) => a == b,
