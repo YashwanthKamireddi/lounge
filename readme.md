@@ -123,7 +123,8 @@ well. Open **Lounge** from the TV's app list.
 
 Open Lounge and go to **Settings › General › Home Button**, and set it to **Lounge**. From then
 on the Home button, backing out of an app and turning the TV on all land on Lounge, with no LG
-Home in between. Set it back to **LG Home** and the TV is exactly as it was.
+Home in between. Set it back to **LG Home** and the TV is exactly as it was. Hold the Home button for a
+second whenever you want LG's own Home.
 
 The switch uses LG's own mechanisms and nothing else:
 

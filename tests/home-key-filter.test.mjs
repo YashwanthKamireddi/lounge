@@ -12,7 +12,13 @@ const OTHER = 0x01000012; // Qt.Key_Left
 function compositor(launchReply = { returnValue: true }) {
   const launched = [];
   const warned = [];
+  const timers = [];
   const context = {
+    genericTimer: {
+      set(ms, callback) {
+        timers.push({ ms, callback });
+      },
+    },
     KeyPolicy: { NotAccepted: 0, Accepted: 1, NextPolicy: 2 },
     Qt: { Key_Super_L: HOME },
     JSON,
@@ -31,7 +37,13 @@ function compositor(launchReply = { returnValue: true }) {
   };
   vm.createContext(context);
   vm.runInContext(source, context);
-  return { context, launched, warned, key: (...args) => context.handleLoungeHome(...args) };
+  return {
+    context,
+    launched,
+    warned,
+    timers,
+    key: (...args) => context.handleLoungeHome(...args),
+  };
 }
 
 test('the filter is plain ES5 that LG compositor can load', () => {
@@ -87,4 +99,35 @@ test('an error inside the filter passes the key on', () => {
   context.lunaCall = undefined;
   assert.equal(key(HOME, true, false), 2);
   assert.equal(warned.length, 1);
+});
+
+test("holding Home opens LG's Home over Lounge; a press does not", () => {
+  const held = compositor();
+  held.key(HOME, true, false);
+  assert.equal(held.timers[0].ms, 1200);
+  held.timers[0].callback(); // still held at 1.2 s
+  assert.deepEqual(held.launched.at(-1), { fallback: 'com.webos.app.home' });
+  const pressed = compositor();
+  pressed.key(HOME, true, false);
+  pressed.key(HOME, false, false);
+  pressed.timers[0].callback(); // released before 1.2 s
+  assert.equal(pressed.launched.length, 1, 'only Lounge opened');
+});
+
+test("an earlier press's timer never acts on a later press", () => {
+  const { key, timers, launched } = compositor();
+  key(HOME, true, false);
+  key(HOME, false, false);
+  key(HOME, true, false);
+  timers[0].callback(); // the first press's timer fires during the second
+  assert.equal(launched.filter((l) => l.fallback).length, 0);
+  timers[1].callback();
+  assert.deepEqual(launched.at(-1), { fallback: 'com.webos.app.home' });
+});
+
+test('without the compositor timer, Home still opens Lounge', () => {
+  const { context, key, launched } = compositor();
+  context.genericTimer = undefined;
+  assert.equal(key(HOME, true, false), 1);
+  assert.equal(launched[0].id, 'io.github.yashwanthkamireddi.lounge');
 });
