@@ -32,6 +32,8 @@ pub(crate) fn effects(
             }
             Effect::Close(id) => platform.send(Request::Close(id)),
             Effect::TvHome(set) => platform.send(Request::TvHome(set)),
+            Effect::Uninstall(id) => platform.send(Request::Uninstall(id)),
+            Effect::ClockFormat(hour_24) => crate::time_format::set(hour_24),
             Effect::Launch(id) => {
                 if scroll_preview::is_placeholder(&id) {
                     state.notify(i18n::t("scrollTestOnly"));

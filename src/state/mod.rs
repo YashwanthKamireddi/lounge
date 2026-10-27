@@ -102,6 +102,8 @@ pub enum Target {
     WeatherSearch,
     WeatherClear,
     WeatherResult(usize),
+    /// An alert's buttons, top to bottom (the action, then Cancel).
+    Alert(usize),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -135,9 +137,18 @@ pub struct Control {
 
 #[derive(Clone, Debug)]
 pub enum Overlay {
-    Options { id: String, restore: Target },
+    Options {
+        id: String,
+        restore: Target,
+    },
     Keyboard,
     SystemKeyboard,
+    /// tvOS's alert before removing an app: Uninstall over Cancel, Cancel
+    /// focused. Back is Cancel.
+    Uninstall {
+        id: String,
+        restore: Target,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -178,6 +189,10 @@ pub enum Effect {
     /// Make Lounge the TV's Home (true) or give Home back to LG, or (None)
     /// read which it is.
     TvHome(Option<bool>),
+    /// Remove an installed app from the TV.
+    Uninstall(String),
+    /// Set the TV's clock to 24-hour (true) or 12-hour.
+    ClockFormat(bool),
 }
 
 pub const KEYS: [&str; 40] = [
@@ -284,6 +299,18 @@ pub struct State {
     pub shelf_from: Option<(Option<String>, Instant)>,
     /// Apps with Top Shelf art, from the asset bundle.
     pub heroes: Vec<String>,
+    /// Apps on their way off the TV: gone from the grid at once, back only
+    /// if webOS refuses (see `uninstalled`).
+    pub uninstalling: Vec<String>,
+    /// The switcher's window snapshots by app (see `snapshots`).
+    pub snapshots: crate::snapshots::Shots,
+    /// Open apps whose snapshots the switcher wants read, once it opens.
+    pub snapshots_wanted: Option<Vec<String>>,
+    /// The TV's own clock format, 24-hour when true: one source of truth
+    /// for every clock on the TV, which Settings › General › Clock format sets.
+    pub hour_24: bool,
+    /// Effects a TV reply asked for, run by the loop after replies.
+    pub queued: Vec<Effect>,
 }
 
 /// tvOS-style app switcher over Home: open apps as large cards.
@@ -389,6 +416,11 @@ impl State {
             shelf_pending: None,
             shelf_from: None,
             heroes: Vec::new(),
+            uninstalling: Vec::new(),
+            snapshots: Default::default(),
+            snapshots_wanted: None,
+            hour_24: false,
+            queued: Vec::new(),
         }
     }
 
@@ -543,6 +575,7 @@ impl State {
             || (self.moving.is_some() && self.move_raise() < 1.)
             || self.avatar_from.is_some()
             || self.appearance_from.is_some()
+            || (self.switcher.is_some() && self.snapshots.fading())
             // Keep ticking until a paused-typing search has been sent.
             || self.weather.search_pending()
             || self.options_closed.is_some()
@@ -589,7 +622,9 @@ impl State {
         if self.page == Page::Home {
             return ids
                 .iter()
-                .filter(|id| !self.preferences.hidden.contains(id))
+                .filter(|id| {
+                    !self.preferences.hidden.contains(id) && !self.uninstalling.contains(id)
+                })
                 .filter_map(|id| self.inventory.apps.iter().find(|app| &app.id == id))
                 .collect();
         }
@@ -611,6 +646,7 @@ impl State {
             .filter(|app| app.id != HOME_DASHBOARD)
             .filter(|app| {
                 !self.preferences.hidden.contains(&app.id)
+                    && !self.uninstalling.contains(&app.id)
                     && app.title.to_lowercase().contains(&query)
             })
             .collect();
@@ -740,6 +776,7 @@ impl State {
             brand: brand.into(),
             category: "Utilities".into(),
             icon: None,
+            removable: false,
         };
         let mut tiles = vec![
             tile(SETTINGS_TILE, i18n::t("settings"), "lounge-settings"),

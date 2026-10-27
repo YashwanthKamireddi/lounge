@@ -183,7 +183,7 @@ impl State {
                         if !self.preferences.reduced_motion {
                             self.panel_started = Some(crate::clock::now());
                         }
-                        self.focus = Target::Choice(usize::from(self.preferences.hour_24));
+                        self.focus = Target::Choice(usize::from(self.hour_24));
                         return vec![];
                     }
                     2 => self.preferences.reduced_motion = !self.preferences.reduced_motion,
@@ -269,7 +269,13 @@ impl State {
             }
             Target::Choice(index) => {
                 match self.subpage.clone() {
-                    Some(Subpage::Clock) => self.preferences.hour_24 = index == 1,
+                    // The TV's own setting, not a Lounge preference: every
+                    // clock on the TV changes with it.
+                    Some(Subpage::Clock) => {
+                        self.hour_24 = index == 1;
+                        self.close_subpage();
+                        return vec![Effect::ClockFormat(self.hour_24)];
+                    }
                     Some(Subpage::Appearance) => {
                         self.preferences.appearance = APPEARANCES[index.min(APPEARANCES.len() - 1)];
                     }
@@ -318,6 +324,45 @@ impl State {
                 self.close_subpage();
                 return vec![Effect::Save];
             }
+            // Uninstall asks first, in an alert over the dimmed home (the
+            // menu gives way to it: never two menus at once).
+            Target::Option(2) if matches!(&self.overlay, Some(Overlay::Options { id, .. }) if self.can_uninstall(id)) =>
+            {
+                let Some(Overlay::Options { id, restore }) = self.overlay.take() else {
+                    return vec![];
+                };
+                self.overlay = Some(Overlay::Uninstall { id, restore });
+                // Cancel is where focus lands: OK pressed twice in a hurry
+                // never removes an app.
+                self.focus = Target::Alert(1);
+                self.pointer = false;
+                self.pressed = None;
+                self.panel_started = (!self.preferences.reduced_motion).then(crate::clock::now);
+                return vec![];
+            }
+            Target::Alert(0) => {
+                let Some(Overlay::Uninstall { id, restore }) = self.overlay.take() else {
+                    return vec![];
+                };
+                self.panel_started = None;
+                self.focus = restore;
+                if !self.can_uninstall(&id) {
+                    return vec![];
+                }
+                // The tile goes at once, as on tvOS; focus takes the tile
+                // that moves into its place.
+                let slot = self.apps().iter().position(|app| app.id == id);
+                self.uninstalling.push(id.clone());
+                if let Some(slot) = slot {
+                    let apps = self.apps();
+                    self.focus = apps
+                        .get(slot.min(apps.len().saturating_sub(1)))
+                        .map(|app| Target::App(app.id.clone()))
+                        .unwrap_or_else(|| self.first_content());
+                }
+                return vec![Effect::Uninstall(id)];
+            }
+            Target::Alert(_) => return self.back(),
             Target::Option(index) => {
                 let Some(Overlay::Options { id, restore }) = self.overlay.take() else {
                     return vec![];
@@ -456,7 +501,7 @@ impl State {
                 self.options_closed = Some((id.clone(), crate::clock::now()));
             }
             self.focus = match overlay {
-                Overlay::Options { restore, .. } => restore,
+                Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. } => restore,
                 Overlay::Keyboard | Overlay::SystemKeyboard => {
                     self.search_closed = (!self.preferences.reduced_motion
                         && matches!(overlay, Overlay::Keyboard))
@@ -498,5 +543,51 @@ impl State {
         }
         // Back on Home opens the app switcher, as on tvOS. Quit lives in Settings.
         vec![Effect::Running]
+    }
+}
+
+impl State {
+    /// Whether the context menu offers Uninstall for `id`: an installed app
+    /// webOS lets the owner remove (never an input, Lounge's own tiles, LG's
+    /// apps, Homebrew Channel or Lounge), not already on its way off.
+    pub fn can_uninstall(&self, id: &str) -> bool {
+        crate::uninstall::allowed(id)
+            && !self.uninstalling.iter().any(|item| item == id)
+            && self
+                .inventory
+                .apps
+                .iter()
+                .any(|app| app.id == id && app.removable && !app.brand.starts_with("lounge-"))
+    }
+
+    /// webOS answered a removal. Gone: it leaves every list Lounge keeps,
+    /// and the app list is read again. Refused: its tile comes back where it
+    /// was and a banner says so; nothing else changed.
+    pub fn uninstalled(&mut self, id: &str, result: Result<(), String>) -> Vec<Effect> {
+        let Some(index) = self.uninstalling.iter().position(|item| item == id) else {
+            return vec![];
+        };
+        self.uninstalling.remove(index);
+        self.dirty = true;
+        let title = self
+            .inventory
+            .apps
+            .iter()
+            .find(|app| app.id == id)
+            .map_or_else(|| id.to_owned(), |app| app.title.clone());
+        if let Err(error) = result {
+            eprintln!("Lounge uninstall {id}: {error}");
+            self.notify(i18n::format("uninstallError", &[("app", &title)]));
+            return vec![];
+        }
+        self.inventory.apps.retain(|app| app.id != id);
+        if let Some(favorites) = &mut self.preferences.favorites {
+            favorites.retain(|item| item != id);
+        }
+        self.preferences.hidden.retain(|item| item != id);
+        self.preferences.recent.retain(|item| item != id);
+        self.snapshots.remove(id);
+        self.reconcile_focus();
+        vec![Effect::Save, Effect::Refresh]
     }
 }

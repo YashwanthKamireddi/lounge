@@ -1,5 +1,5 @@
 ---
-"lounge": minor
+'lounge': minor
 ---
 
 Settings › General › Lounge as Home makes Lounge the TV's own Home: webOS starts it as

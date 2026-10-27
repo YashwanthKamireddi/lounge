@@ -66,17 +66,50 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
     // The TV's one GPU core pays for every painted pixel: only the card in
     // front casts a shadow, and the others darken (no extra layer). As on
     // tvOS each card carries its app's name above it, dimmed with the card.
+    // An app webOS has a snapshot of shows it as it was left, dissolving in
+    // over its card once read; its icon then joins the name above (the card
+    // no longer says which app it is).
     let draw = |out: &mut Scene, app: &App, rect: Rect, near: f32, alpha: f32| {
         let first = out.draw.len();
         if near > 0.05 {
             out.shadow(rect, 36., 60., 26., 0.55 * near);
         }
-        tile_face(out, assets, app, rect, 36.);
+        let shot = state.snapshots.get(&app.id);
+        let shown = state
+            .snapshots
+            .shown(&app.id, state.preferences.reduced_motion);
+        if shown < 1. {
+            tile_face(out, assets, app, rect, 36.);
+        }
+        if let Some(shot) = shot {
+            out.draw.push(Draw::AppImage(
+                shot.picture.clone(),
+                rect,
+                [1., 1., 1., shown],
+            ));
+        }
         // Laid out at the card's full width, centred on it, however the
         // card is scaled: one cached text run per app, not one per frame.
+        let (icon_w, gap) = (60., 14.);
+        let label = Rect::new(rect.x + rect.w / 2. - w / 2., rect.y - 58., w, 36.);
+        let shift = (icon_w + gap) / 2. * shown;
+        if shown > 0. {
+            let title = assets.width(&app.title, tab_style()).min(w - icon_w - gap);
+            let icon = Rect::new(
+                rect.x + rect.w / 2.
+                    - (title + icon_w + gap) / 2. * shown
+                    - icon_w / 2. * (1. - shown),
+                label.y,
+                icon_w,
+                36.,
+            );
+            let start = out.draw.len();
+            tile_face(out, assets, app, icon, 8.);
+            out.fade(start, shown, 1.);
+        }
         out.text(
             &app.title,
-            Rect::new(rect.x + rect.w / 2. - w / 2., rect.y - 58., w, 36.),
+            Rect::new(label.x + shift, label.y, label.w, label.h),
             tab_style(),
             WHITE,
             true,

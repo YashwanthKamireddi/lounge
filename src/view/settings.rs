@@ -590,8 +590,8 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 })
                 .collect(),
             Subpage::Clock => vec![
-                (i18n::t("hour12"), None, !state.preferences.hour_24),
-                (i18n::t("hour24"), None, state.preferences.hour_24),
+                (i18n::t("hour12"), None, !state.hour_24),
+                (i18n::t("hour24"), None, state.hour_24),
             ],
             Subpage::Input(id) => {
                 let current = state
@@ -702,7 +702,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     1,
                     "clockFormat",
                     "clock",
-                    if state.preferences.hour_24 {
+                    if state.hour_24 {
                         i18n::t("hour24")
                     } else {
                         i18n::t("hour12")

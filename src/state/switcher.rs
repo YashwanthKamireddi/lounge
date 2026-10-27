@@ -31,6 +31,8 @@ impl State {
             self.notify(i18n::t("noOpenApps"));
             return;
         }
+        // Each card shows its app as it was left, once webOS's snapshot is read.
+        self.snapshots_wanted = Some(apps.clone());
         let restore = std::mem::replace(&mut self.focus, Target::Switch(0));
         self.switcher = Some(Switcher {
             apps,

@@ -67,10 +67,11 @@ try {
   const hidden = await scenario('apps', 'apps,down,menu,right,enter');
   assert.ok(hidden.preferences.hidden.includes('com.webos.app.livetv'));
   assert.deepEqual(hidden.focus, { App: 'lounge.settings' });
-  // Reload from disk and show Live TV again from Settings › General › Hidden apps.
+  // Reload from disk and show Live TV again from Settings › General › Hidden apps,
+  // two rows up from the end: rows above it (Top Shelf art) depend on local art.
   const restored = await scenario(
     'restored',
-    'settings,wait,right,down,down,down,down,down,enter,enter',
+    'settings,wait,right,down,down,down,down,down,down,down,down,up,up,enter,enter',
   );
   assert.deepEqual(restored.preferences.hidden, []);
   const searched = await scenario('search', 'apps,type:YouTube');

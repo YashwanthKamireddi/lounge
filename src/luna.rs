@@ -1,12 +1,12 @@
 //! One bounded LS2 round trip on the platform worker's own GLib context.
 //! The hub sees the installed native executable. LSCallFromApplication (the
 //! luna-send-pub -a path) instead requires an impersonation privilege we lack.
-use libc::{c_char, c_int, c_ulong, c_void};
+use libc::{c_char, c_int, c_uint, c_ulong, c_void};
 use serde_json::Value;
 use std::{
     ffi::{CStr, CString},
     ptr, thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 const MAX_REPLY: usize = 2 * 1024 * 1024;
@@ -57,6 +57,22 @@ unsafe extern "C" {
     fn g_main_context_new() -> *mut c_void;
     fn g_main_context_iteration(context: *mut c_void, may_block: c_int) -> c_int;
     fn g_main_context_unref(context: *mut c_void);
+    fn g_timeout_source_new(interval: c_uint) -> *mut c_void;
+    fn g_source_set_callback(
+        source: *mut c_void,
+        callback: extern "C" fn(*mut c_void) -> c_int,
+        data: *mut c_void,
+        notify: *const c_void,
+    );
+    fn g_source_attach(source: *mut c_void, context: *mut c_void) -> c_uint;
+    fn g_source_destroy(source: *mut c_void);
+    fn g_source_unref(source: *mut c_void);
+}
+
+extern "C" fn expire(flag: *mut c_void) -> c_int {
+    // SAFETY: `request` keeps the flag alive until it destroys this source.
+    unsafe { *flag.cast::<bool>() = true };
+    0 // G_SOURCE_REMOVE
 }
 
 impl Error {
@@ -181,15 +197,40 @@ impl Connection {
         } {
             return Err(error.describe("call submission"));
         }
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            // SAFETY: only this worker drives this private context. Iteration is
-            // nonblocking, so a missing service cannot hold the UI or this loop.
-            unsafe { g_main_context_iteration(self.context, 0) };
+        // Sleep until the reply or the deadline wakes the context, rather than
+        // polling it: a timeout source on the same context bounds the wait, so
+        // a missing service cannot hold this worker.
+        let mut expired = false;
+        let flag: *mut bool = &mut expired;
+        // SAFETY: the source is attached to this worker's private context and
+        // destroyed before `expired` goes out of scope.
+        let timer = unsafe {
+            g_timeout_source_new(c_uint::try_from(timeout.as_millis()).unwrap_or(c_uint::MAX))
+        };
+        unsafe {
+            g_source_set_callback(timer, expire, flag.cast(), ptr::null());
+            g_source_attach(timer, self.context);
+        }
+        let result = loop {
+            // SAFETY: only this worker drives this private context.
+            unsafe { g_main_context_iteration(self.context, 1) };
             if let Some(result) = self.reply.as_mut().and_then(|reply| reply.result.take()) {
-                return result;
+                break Some(result);
             }
-            thread::sleep(Duration::from_millis(2));
+            // SAFETY: written only by `expire`, on this thread, inside the
+            // iteration above.
+            if unsafe { ptr::read_volatile(flag) } {
+                break None;
+            }
+        };
+        // SAFETY: destroying an already-fired source is a no-op; the unref
+        // drops the reference `g_timeout_source_new` returned.
+        unsafe {
+            g_source_destroy(timer);
+            g_source_unref(timer);
+        }
+        if let Some(result) = result {
+            return result;
         }
         let mut cancel_error = Error::new();
         // SAFETY: handle/token belong to this live request. Even a refused cancel
@@ -230,7 +271,8 @@ pub fn call(uri: &str, payload: &Value) -> Result<Value, String> {
     call_within(uri, payload, Duration::from_millis(6500))
 }
 
-/// As `call`, for a request known to take longer.
+/// `call` with its own deadline, for the rare request that legitimately
+/// runs longer than a menu read (an uninstall waits for webOS to finish).
 pub fn call_within(uri: &str, payload: &Value, timeout: Duration) -> Result<Value, String> {
     thread_local! {
         static CONNECTION: std::cell::RefCell<Option<Connection>> = const { std::cell::RefCell::new(None) };

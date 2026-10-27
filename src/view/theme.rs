@@ -86,6 +86,15 @@ impl Theme {
         ([top, top, top * 1.02, 1.], [1.; 4])
     }
 
+    /// Apple's system red for a destructive action: its dark-appearance
+    /// shade on dark glass, the deeper light one on a light surface (light
+    /// glass, or a white focused platter: `lit` of the way there).
+    pub fn destructive(self, lit: f32) -> Color {
+        let on_light = self.light.max(lit.clamp(0., 1.));
+        let (dark, light) = (c(0xff453a, 1.), c(0xff3b30, 1.));
+        std::array::from_fn(|i| dark[i] + (light[i] - dark[i]) * on_light)
+    }
+
     /// Settings' backdrop over the blurred wallpaper: the multiply for a dark
     /// veil of `shade`, and the lift toward frost (its alpha 0 on dark).
     pub fn backdrop(self, shade: f32) -> (Color, Color) {
