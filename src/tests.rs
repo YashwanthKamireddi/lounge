@@ -234,6 +234,51 @@ fn the_home_button_switch_flips_once_per_answer_from_the_tv() {
 }
 
 #[test]
+fn an_hdmi_input_moves_like_an_app_and_a_new_one_lands_after_search() {
+    let mut state = State::new(Preferences::default());
+    state.inventory = crate::model::demo_inventory();
+    state.refresh_tiles();
+    state.page = Page::Apps;
+    let order =
+        |state: &State| -> Vec<String> { state.apps().iter().map(|app| app.id.clone()).collect() };
+    let at = |state: &State, id: &str| order(state).iter().position(|item| item == id).unwrap();
+    let hdmi = "com.webos.app.hdmi1";
+    // Unplaced, it follows Search.
+    assert_eq!(at(&state, hdmi), at(&state, crate::state::SEARCH_TILE) + 1);
+    let before = at(&state, hdmi);
+    state.focus = Target::App(hdmi.into());
+    state.hold();
+    assert_eq!(
+        state.moving.as_deref(),
+        Some(hdmi),
+        "holding OK on an input starts Move"
+    );
+    state.direction(Direction::Right, &[]);
+    assert_eq!(
+        at(&state, hdmi),
+        before + 1,
+        "it moves one place, and stays there"
+    );
+    state.direction(Direction::Right, &[]);
+    assert_eq!(at(&state, hdmi), before + 2);
+    state.activate();
+    assert!(state.moving.is_none());
+    assert_eq!(at(&state, hdmi), before + 2, "dropped where it was put");
+    // A device plugged into HDMI 3 later has no place yet: after Search.
+    state.inventory.inputs[2].connected = Some(true);
+    state.refresh_tiles();
+    assert_eq!(
+        at(&state, "com.webos.app.hdmi3"),
+        at(&state, crate::state::SEARCH_TILE) + 1
+    );
+    assert_eq!(
+        at(&state, hdmi),
+        before + 3,
+        "the placed input keeps its place"
+    );
+}
+
+#[test]
 fn icon_collector_visibility_cases_match_the_launcher_inventory() {
     let cases: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("../tests/fixtures/app-visibility.json")).unwrap();

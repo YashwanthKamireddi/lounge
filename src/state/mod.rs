@@ -621,15 +621,16 @@ impl State {
                     _ => usize::MAX,
                 })
         };
-        // Inputs always follow Search, wherever a saved order put it, so a
-        // newly plugged-in device appears in one known place, never at the
-        // end of the grid.
+        // An input the owner has not placed follows Search, so a newly
+        // plugged-in device appears in one known place, never at the end of
+        // the grid. One that has a place in the saved order (moved there, or
+        // shown there when Move began) keeps it like any other app.
         let search = apps
             .iter()
             .find(|app| app.id == SEARCH_TILE)
             .map_or(usize::MAX - 2, |app| rank(app));
         let place = |app: &App| {
-            if app.brand == "lounge-input" {
+            if app.brand == "lounge-input" && !ids.contains(&app.id) {
                 (search, 1)
             } else {
                 (rank(app), 0)
