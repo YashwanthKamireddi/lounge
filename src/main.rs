@@ -107,10 +107,14 @@ fn compose(
     }
 }
 
-fn release_memory(renderer: &mut renderer::Renderer) {
+fn release_memory(renderer: &mut renderer::Renderer, preload: &mut preload::Preload) {
     // Keep what the home needs to come back instantly (its textures, glyphs
     // and decoded icons); free only what it does not show.
     renderer.trim();
+    // Nothing more decodes or goes up behind the app, and what the trim freed
+    // decodes again when it is asked for on return.
+    preload.behind();
+    preload.forget();
     // Hand the freed heap back to the system rather than keeping it resident.
     #[cfg(all(feature = "webos", unix))]
     unsafe {
@@ -209,6 +213,9 @@ fn run() -> Result<(), String> {
         }
     });
     let assets = view::Assets::load(root, webos)?;
+    // The image decoder starts now, so the home's images decode while SDL,
+    // EGL and the shaders start (uploads still wait for the renderer).
+    let mut preload = preload::Preload::start();
     startup_stage("asset metadata");
     let default_preferences = options
         .preferences
@@ -232,12 +239,25 @@ fn run() -> Result<(), String> {
     };
     let mut state = State::new(initial_preferences);
     state.heroes = assets.heroes.clone();
-    // The owner's profile pictures, prepared once (crate::avatars).
+    preload::request_home(&mut preload, &state, &assets);
+    // The owner's profile pictures, prepared once (crate::avatars). A changed
+    // picture is decoded (up to 4096²), scaled and blurred: on a worker, off
+    // the way to the first frame; the picture shows when ready. Captures and
+    // scripted runs wait for it, so every frame they record is the same.
     let storage = preferences_path
         .parent()
         .map(std::path::Path::to_path_buf)
         .unwrap_or_default();
-    state.set_avatars(avatars::load(&storage));
+    let avatars = if options.frames.is_some()
+        || options.record.is_some()
+        || options.screenshot.is_some()
+        || !options.script.is_empty()
+    {
+        state.set_avatars(avatars::load(&storage));
+        None
+    } else {
+        Some(avatars::load_in_background(storage))
+    };
     if options.test_extra_apps > 0 {
         eprintln!(
             "Lounge scroll preview: explicit {}-app expansion; preferences {}",
@@ -284,15 +304,9 @@ fn run() -> Result<(), String> {
         webos,
         options.medium_precision,
     )?;
-    // Decode every home image off the render thread at startup, wallpaper
-    // first, so no icon pops in late and no slide stalls on a PNG decode.
-    // Images decode on a background worker and upload a few per frame, so
-    // the drawing thread never stalls on a PNG/JPEG decode. Requests come at
-    // startup (wallpaper, tiles, Settings thumbnails) and once the app list
-    // is known (each app's brand card).
-    let (preload, preloaded) = preload::start(renderer.takes_astc());
-    let uploads = preload::Uploads::new(preloaded);
-    preload::request_home(&preload, &state, &assets);
+    // The home's images have been decoding since the assets loaded; those
+    // with an ASTC copy waited for this answer.
+    preload.set_astc(renderer.takes_astc());
     renderer.skip = options.skip.clone();
     startup_stage("renderer");
     let profile = diagnostics::Profile::default();
@@ -425,7 +439,7 @@ fn run() -> Result<(), String> {
         _context,
         renderer,
         preload,
-        uploads,
+        avatars,
         profile,
         presented,
         captured,
@@ -473,8 +487,9 @@ struct Shell {
     writer: storage::Writer,
     requested: Size,
     renderer: renderer::Renderer,
-    preload: std::sync::mpsc::Sender<String>,
-    uploads: preload::Uploads,
+    preload: preload::Preload,
+    /// The profile pictures while their worker prepares them.
+    avatars: Option<std::sync::mpsc::Receiver<Vec<avatars::Picture>>>,
     profile: diagnostics::Profile,
     presented: usize,
     captured: Option<renderer::RenderStats>,
@@ -560,9 +575,26 @@ impl Shell {
             self.state.hour = now.hour();
             self.state.dirty = true;
         }
+        if let Some(pictures) = &self.avatars {
+            match pictures.try_recv() {
+                Ok(pictures) => {
+                    self.state.set_avatars(pictures);
+                    self.avatars = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.avatars = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        // Behind an app nothing is seen: the profile picture's rotation waits
+        // (each turn started a fade that kept the hidden loop composing).
+        let in_front = self.presence.in_front();
+        if !in_front {
+            self.state.hold_avatar();
+        }
         self.state.tick();
         // Upload decoded images a few per tick (idle or not), so each is on
-        // the GPU before it is first drawn and no frame pays for a batch.
+        // the GPU before it is first drawn and no frame pays for a batch;
+        // behind an app, none (see `Preload::pump`).
         // Idle and on screen: warm a few text glyphs ahead of need.
         if self.glyphs_warming
             && self.presence.visible
@@ -571,10 +603,8 @@ impl Shell {
         {
             self.glyphs_warming = self.renderer.warm_glyphs(3);
         }
-        self.uploads.pump(
-            &mut self.renderer,
-            self.presence.visible && self.state.animating(),
-        );
+        self.preload
+            .pump(&mut self.renderer, self.state.animating(), in_front);
         self.state.dirty |= self.assets.artwork.poll();
         while let Ok(response) = self.platform.receiver.try_recv() {
             self.replies.apply(
@@ -602,7 +632,11 @@ impl Shell {
             self.presence.visible,
         );
         // Rebuild hit regions before input whenever inventory/layout changed.
-        if self.state.dirty {
+        // Behind an app nothing is drawn, so nothing is composed either: a
+        // minute passing (or a reply) left `dirty` set, as only a drawn frame
+        // clears it, and every 2 s wake rebuilt the whole scene. The return
+        // marks the screen dirty and composes it for that moment's clock.
+        if self.state.dirty && in_front {
             self.scene = compose(&mut self.state, &self.assets, now, Some(&self.scene));
         }
         now
@@ -711,7 +745,7 @@ impl Shell {
                 WindowEvent::Hidden | WindowEvent::Minimized => {
                     self.presence.hide();
                     save_order(&mut self.state, &self.writer);
-                    release_memory(&mut self.renderer);
+                    release_memory(&mut self.renderer, &mut self.preload);
                     self.remote.press = None;
                     if matches!(self.state.overlay, Some(Overlay::SystemKeyboard)) {
                         self.state.finish_text_input();
@@ -722,7 +756,7 @@ impl Shell {
                     self.remote.press = None;
                     self.presence.leave(self.state.launching);
                     if self.state.launching {
-                        release_memory(&mut self.renderer);
+                        release_memory(&mut self.renderer, &mut self.preload);
                     }
                 }
                 WindowEvent::Shown | WindowEvent::Restored | WindowEvent::FocusGained => {
@@ -908,7 +942,7 @@ impl Shell {
             self.state.dirty = true;
         }
         // SDL may deliver several navigation events in a single poll.
-        if self.state.dirty {
+        if self.state.dirty && self.presence.in_front() {
             self.scene = compose(&mut self.state, &self.assets, now, Some(&self.scene));
         }
     }
@@ -1063,13 +1097,17 @@ impl Shell {
             }
             if width > 0 && height > 0 {
                 self.renderer.damage = None;
+                if self.presented > 0 && self.presence.in_front() {
+                    // What was let go behind an app goes again.
+                    self.preload.resume(|path| self.renderer.has(path));
+                }
                 if self.rewarm && self.presented > 0 {
                     self.rewarm = false;
-                    preload::refill(&self.preload, &self.state, &self.assets, &self.renderer);
+                    preload::refill(&mut self.preload, &self.state, &self.assets, &self.renderer);
                 }
                 if !self.replies.prefetched && self.presented > 0 {
                     self.replies.prefetched = true;
-                    preload::prefetch(&self.preload, &self.state, &self.assets);
+                    preload::prefetch(&mut self.preload, &self.state, &self.assets, &self.renderer);
                 }
                 // Repaint only what changed since the buffer was last drawn
                 // (EGL partial update); anything uncertain repaints it all.

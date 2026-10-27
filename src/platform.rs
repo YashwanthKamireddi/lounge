@@ -551,13 +551,30 @@ pub fn status_reset() {
     let lines: Vec<&str> = previous.lines().collect();
     let kept = lines[lines.len().saturating_sub(KEEP)..].join("\n");
     let _ = std::fs::write(STATUS, if kept.is_empty() { kept } else { kept + "\n" });
-    status(&format!("--- started (pid {})", std::process::id()));
+    status(&format!("{STARTED}{})", std::process::id()));
 }
 
-/// Records `line` (also on stderr). Only a handful are written per run.
+/// Opens a run's section of the status log.
+const STARTED: &str = "--- started (pid ";
+/// A run's opening lines kept when its section is shortened: start-up's
+/// stages and which TV events are on.
+const RUN_HEAD: usize = 40;
+/// Its latest lines kept.
+const RUN_TAIL: usize = 110;
+/// Lines a run appends before its section is shortened again. Every Home
+/// press adds one, so a run of weeks grew the file (in memory) without end.
+const RUN_APPENDS: usize = 200;
+/// Lines appended since the section was last shortened; also serialises
+/// writers (the TV watchers log from their own threads).
+static APPENDED: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+/// Records `line` (also on stderr).
 pub fn status(line: &str) {
     eprintln!("Lounge {line}");
     use std::io::Write;
+    let mut appended = APPENDED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let _ = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -569,6 +586,42 @@ pub fn status(line: &str) {
                 .unwrap_or_default();
             writeln!(file, "{}.{:03} {line}", at.as_secs(), at.subsec_millis())
         });
+    *appended += 1;
+    if *appended >= RUN_APPENDS {
+        *appended = 0;
+        if let Some(shorter) = std::fs::read_to_string(STATUS)
+            .ok()
+            .and_then(|log| shorten(&log))
+        {
+            let _ = std::fs::write(STATUS, shorter);
+        }
+    }
+}
+
+/// `log` with this run's section cut to its opening and latest lines (and
+/// earlier runs' lines as they are), or None when it is short enough.
+fn shorten(log: &str) -> Option<String> {
+    let lines: Vec<&str> = log.lines().collect();
+    let start = lines
+        .iter()
+        .rposition(|line| line.contains(STARTED))
+        .unwrap_or(0);
+    let run = &lines[start..];
+    if run.len() <= RUN_HEAD + RUN_TAIL + 1 {
+        return None;
+    }
+    let left_out = run.len() - RUN_HEAD - RUN_TAIL;
+    let mut out: Vec<String> = lines[..start + RUN_HEAD]
+        .iter()
+        .map(|line| (*line).to_owned())
+        .collect();
+    out.push(format!("... {left_out} lines left out"));
+    out.extend(
+        run[run.len() - RUN_TAIL..]
+            .iter()
+            .map(|line| (*line).to_owned()),
+    );
+    Some(out.join("\n") + "\n")
 }
 
 /// LG's preloader starts Lounge once at boot (a one-shot entry in its
@@ -1100,4 +1153,30 @@ pub fn normalize_inputs(raw: &Value) -> Result<Vec<Input>, String> {
         });
     }
     Ok(inputs)
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+
+    #[test]
+    fn a_long_run_keeps_its_start_and_latest_lines() {
+        let mut log = String::from("1.000 previous run's last line\n");
+        log += &format!("2.000 {STARTED}7)\n");
+        for press in 0..500 {
+            log += &format!("3.000 home key: back to the top {press}\n");
+        }
+        let short = shorten(&log).expect("long enough to shorten");
+        let lines: Vec<&str> = short.lines().collect();
+        assert_eq!(lines.len(), 1 + RUN_HEAD + 1 + RUN_TAIL);
+        assert_eq!(lines[0], "1.000 previous run's last line");
+        assert!(lines[1].contains(STARTED), "the run's start stays");
+        assert_eq!(lines[RUN_HEAD + 1], "... 351 lines left out");
+        assert_eq!(
+            *lines.last().unwrap(),
+            "3.000 home key: back to the top 499"
+        );
+        // Shortened, it stays put until it grows again.
+        assert_eq!(shorten(&short), None);
+    }
 }

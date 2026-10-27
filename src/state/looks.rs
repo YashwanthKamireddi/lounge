@@ -96,6 +96,17 @@ impl State {
         }
     }
 
+    /// Behind an app: rotating pictures wait (a turn there only started a
+    /// fade nobody saw, and kept the loop composing), and a fade under way
+    /// ends. Back in front, the picture shown when Lounge left stays for a
+    /// full turn.
+    pub fn hold_avatar(&mut self) {
+        self.avatar_since = crate::clock::now();
+        if self.avatar_from.take().is_some() {
+            self.dirty = true;
+        }
+    }
+
     /// Rotating pictures change every AVATAR_SECONDS, crossfading.
     pub(super) fn rotate_avatar(&mut self) {
         if self.preferences.avatar.as_deref() == Some(AVATAR_ROTATE)

@@ -57,6 +57,13 @@ impl Presence {
         returned
     }
 
+    /// On screen and not left for an app: what Lounge draws can be seen.
+    /// Otherwise nothing is composed, decoded or uploaded (an app is in
+    /// front; some firmware sends no Hidden for one Lounge launched).
+    pub fn in_front(&self) -> bool {
+        self.visible && !self.away
+    }
+
     /// Something is bringing Lounge back: answer webOS quickly for a while.
     pub fn raise(&mut self) {
         self.raising_until = crate::clock::now() + RAISING;
@@ -106,8 +113,30 @@ mod tests {
         presence.leave(true);
         assert!(presence.show());
         // Raising answers quickly only for a while.
+        assert!(presence.in_front());
         assert!(!presence.raising());
         presence.raise();
         assert!(presence.raising());
+    }
+
+    #[test]
+    fn only_a_window_in_front_does_any_work() {
+        let mut presence = Presence::new();
+        assert!(presence.in_front(), "a new Lounge is on screen");
+        // Hidden behind an app.
+        presence.hide();
+        assert!(!presence.in_front());
+        presence.show();
+        assert!(presence.in_front(), "back: draws again at once");
+        // An app Lounge launched took focus, with no Hidden (some firmware):
+        // still nominally visible, but behind the app.
+        presence.leave(true);
+        assert!(presence.visible && !presence.in_front());
+        presence.show();
+        assert!(presence.in_front());
+        // A system panel over Lounge leaves it in front: the home still shows
+        // around the panel.
+        presence.leave(false);
+        assert!(presence.in_front());
     }
 }
