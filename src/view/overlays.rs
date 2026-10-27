@@ -61,7 +61,8 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     // Clear glass with white ink in both appearances (over the photo).
     let ink = WHITE;
     out.shadow(pill, pill.h / 2., 48., 4., 0.2);
-    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+    // A crisp edge: the capsule never scales, and a feathered one turned soft
+    // once the TV scales the 1080p plane to 4K.
     out.glass_over(
         home_backdrop(state, assets),
         pill,

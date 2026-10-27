@@ -24,6 +24,10 @@ void main() {
     // The band is as deep as the shape is round: a capsule bends over less
     // than the dock's broad corners.
     float band = clamp(radius * 0.36, 6.0, 26.0);
+    // Small capsules (pills, menu items) are clear panes: a lens band that
+    // shallow read as a second, soft outline once the TV scales the 1080p
+    // plane to 4K. Only broad glass (the dock, menus) bends light.
+    float lens = radius < 48.0 ? 0.0 : 1.0;
     // Inside the band's inner edge the backdrop shows straight through:
     // most of every pane skips the lens maths.
     if (max(q.x, q.y) < radius - band - u_aa) {
@@ -38,7 +42,7 @@ void main() {
         : (q.x > q.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
     normal *= sign(v_shape.xy);
     float bend = 1.0 - clamp(-d / band, 0.0, 1.0);
-    bend *= bend;
+    bend *= bend * lens;
     // Half the band's depth at the rim, nothing at its inner edge: monotonic,
     // so the picture compresses toward the rim without folding over.
     vec2 uv = v_uv + normal * (0.5 * band * bend) * vec2(1.0 / 1920.0, 1.0 / 1080.0);
