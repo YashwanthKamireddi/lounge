@@ -331,6 +331,7 @@ fn run() -> Result<(), String> {
         .parent()
         .map(std::path::Path::to_path_buf)
         .unwrap_or_default();
+    let shader_cache = storage.join("shaders");
     let avatars = if options.frames.is_some()
         || options.record.is_some()
         || options.screenshot.is_some()
@@ -390,6 +391,7 @@ fn run() -> Result<(), String> {
         &assets.root.join("font.ttf"),
         webos,
         options.medium_precision,
+        Some(&shader_cache),
     )?;
     // The home's images have been decoding since the assets loaded; those
     // with an ASTC copy waited for this answer.
@@ -636,6 +638,7 @@ impl Shell {
     /// The event loop: input, replies and timers in, frames out, until Lounge
     /// quits; then everything is saved and a scripted run's report written.
     fn run(mut self) -> Result<(), String> {
+        self.stage("event loop");
         while self.running {
             let now = self.tick();
             self.input(now);
@@ -1248,12 +1251,17 @@ impl Shell {
                 // Repaint only what changed since the buffer was last drawn
                 // (EGL partial update); anything uncertain repaints it all.
                 self.renderer.damage = self.partial.region(&self.scene.draw, width, height);
+                let drawing = Instant::now();
                 self.renderer.render(&self.scene.draw, width, height);
+                let draw_ms = drawing.elapsed().as_millis();
                 self.window.gl_swap_window();
                 self.presence.presented(ticks());
                 self.partial.drawn(&self.scene.draw);
                 if self.presented == 0 {
-                    self.stage("first frame");
+                    self.stage(&format!(
+                        "first frame (compose {compose_ms:.0} ms, draw {draw_ms} ms, swap {} ms)",
+                        drawing.elapsed().as_millis() - draw_ms
+                    ));
                     if platform::is_home() {
                         self.healthy_at = Some(
                             Instant::now()

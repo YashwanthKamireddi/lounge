@@ -16,7 +16,7 @@ use crate::{
 use geometry::{regions, screens};
 use gl::types::*;
 use serde::Serialize;
-use shader::{gl_string, link};
+use shader::{ProgramCache, gl_string};
 pub use stats::{GraphicsInfo, RenderStats};
 use std::{
     collections::{HashMap, HashSet},
@@ -344,7 +344,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(font: &Path, gles: bool, medium_precision: bool) -> Result<Self, String> {
+    /// `shader_cache`: where linked programs are kept between starts (see `ProgramCache`).
+    pub fn new(
+        font: &Path,
+        gles: bool,
+        medium_precision: bool,
+        shader_cache: Option<&Path>,
+    ) -> Result<Self, String> {
         let directory = font.parent().ok_or("Invalid font path")?;
         let began = Instant::now();
         let mut fonts = HashMap::new();
@@ -392,12 +398,13 @@ impl Renderer {
             fragment_prefix.clone()
         };
         let vertex_prefix_dissolve = vertex_prefix.clone();
-        let program = link(
+        let mut cache = ProgramCache::new(shader_cache.filter(|_| gles));
+        let program = cache.link(
             &(vertex_prefix.clone() + include_str!("shaders/paint.vert")),
             &(fragment_prefix.clone() + include_str!("shaders/paint.frag")),
             &[c"a_position", c"a_uv", c"a_color", c"a_shape", c"a_params"],
         )?;
-        let glass_program = match link(
+        let glass_program = match cache.link(
             &(vertex_prefix.clone() + include_str!("shaders/paint.vert")),
             &(fragment_prefix.clone() + include_str!("shaders/glass.frag")),
             &[c"a_position", c"a_uv", c"a_color", c"a_shape", c"a_params"],
@@ -408,7 +415,7 @@ impl Renderer {
                 return Err(error);
             }
         };
-        let vector_program = match link(
+        let vector_program = match cache.link(
             &(vertex_prefix.clone() + include_str!("shaders/vector.vert")),
             &(fragment_prefix.clone() + include_str!("shaders/vector.frag")),
             &[c"a_position", c"a_offset", c"a_color", c"a_coverage"],
@@ -422,7 +429,7 @@ impl Renderer {
                 return Err(error);
             }
         };
-        let text_program = match link(
+        let text_program = match cache.link(
             &(vertex_prefix + include_str!("shaders/text.vert")),
             &(fragment_prefix + include_str!("shaders/vector.frag")),
             &[c"a_position", c"a_offset", c"a_origin", c"a_coverage"],
@@ -439,7 +446,7 @@ impl Renderer {
         };
         let mut dissolve_programs = [0; 2];
         for (index, define) in ["", "#define DISSOLVE_SINGLE\n"].into_iter().enumerate() {
-            dissolve_programs[index] = match link(
+            dissolve_programs[index] = match cache.link(
                 &(vertex_prefix_dissolve.clone() + include_str!("shaders/paint.vert")),
                 &(fragment_prefix_dissolve.clone()
                     + define
@@ -462,11 +469,14 @@ impl Renderer {
         }
         if cfg!(feature = "webos") {
             crate::platform::status(&format!(
-                "startup: renderer font {} ms, shaders and setup {} ms",
+                "startup: renderer font {} ms, shaders and setup {} ms ({} programs loaded, {} compiled)",
                 font_ms,
-                began.elapsed().as_millis() - font_ms
+                began.elapsed().as_millis() - font_ms,
+                cache.loaded,
+                cache.compiled
             ));
         }
+        cache.store();
         // The one-image variant has no u_texture2/u_mix: their location is
         // -1, which GL ignores when set.
         let dissolve_uniforms = dissolve_programs.map(|program| {
