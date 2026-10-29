@@ -139,3 +139,51 @@ pub fn watch() {
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
 pub fn watch() {}
+
+/// 0 until the TV has said, then 1 (its clock is set) or 2 (not yet: no network since power-on,
+/// so it reads a default date such as 1 January).
+static TIME: AtomicU8 = AtomicU8::new(0);
+
+/// Whether the TV's clock is set. Unknown counts as set: only the TV's own word hides the time.
+pub fn time_valid() -> bool {
+    TIME.load(Ordering::Relaxed) != 2
+}
+
+/// A `getSystemTime` reply's `timeValid`, if it has one.
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
+pub fn parse_valid(reply: &Value) -> Option<bool> {
+    reply.get("timeValid").and_then(Value::as_bool)
+}
+
+/// Follows whether the TV's clock is set, pushed by the system service as it syncs.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_time() {
+    let request = json!({"subscribe": true});
+    let subscribed = crate::luna::subscribe(
+        "luna://com.palm.systemservice/time/getSystemTime",
+        &request,
+        |reply| {
+            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                crate::platform::status(&format!("time events ended: {reply}"));
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_secs(30));
+                    watch_time();
+                });
+                return;
+            }
+            if let Some(valid) = parse_valid(&reply) {
+                TIME.store(if valid { 1 } else { 2 }, Ordering::Relaxed);
+            }
+        },
+    );
+    match subscribed {
+        Ok(()) => crate::platform::status("time events: on"),
+        Err(error) => crate::platform::status(&format!("time events: {error}")),
+    }
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_time() {}

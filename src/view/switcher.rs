@@ -114,7 +114,7 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         out.fade(first, alpha, 0.55 + 0.45 * near);
     };
     for (index, id) in switcher.apps.iter().enumerate() {
-        let Some(app) = state.inventory.apps.iter().find(|app| &app.id == id) else {
+        let Some(app) = state.switcher_app(id) else {
             continue;
         };
         let shift = reflow.map_or(0., |(slot, left)| if index >= slot { left } else { 0. });
@@ -122,14 +122,14 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         if rect.x > 1920. || rect.x + rect.w < 0. {
             continue;
         }
-        draw(out, app, rect, near, appear);
+        draw(out, &app, rect, near, appear);
         if switcher.dismissed.is_none() {
             out.control(Target::Switch(index), rect, false);
         }
     }
     // Up closes an app: its window lifts away and fades, as on tvOS.
     for (id, start, offset) in &switcher.closing {
-        let Some(app) = state.inventory.apps.iter().find(|app| &app.id == id) else {
+        let Some(app) = state.switcher_app(id) else {
             continue;
         };
         let t = (crate::clock::since(start).as_secs_f32() * 1000.
@@ -148,6 +148,6 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
             h,
         );
         let fade = 1. - ((t - 0.6) / 0.4).clamp(0., 1.);
-        draw(out, app, thrown, near, fade * (1. - leave));
+        draw(out, &app, thrown, near, fade * (1. - leave));
     }
 }

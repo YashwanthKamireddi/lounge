@@ -43,13 +43,26 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     // The date leads, set exactly like the time: one line, one voice.
     let date = i18n::short_date(now);
     let date_style = style;
-    let date_width = assets.width(&date, date_style) + 14. * k;
-    let clock_width = assets.width(&clock, style);
+    // Until the TV has set its clock (no network since power-on), it reads a default date such
+    // as 1 January: the pill leaves the date and time out rather than show a wrong one.
+    let set = state.clock_set;
+    let (date_width, clock_width) = if set {
+        (
+            assets.width(&date, date_style) + 14. * k,
+            assets.width(&clock, style),
+        )
+    } else {
+        (0., 0.)
+    };
+    let gap = if set { 18. * k } else { 0. };
     let extra = temperature.as_ref().map_or(0., |(text, _)| {
-        (18. + 30. + 8.) * k + assets.width(text, style)
+        gap + (30. + 8.) * k + assets.width(text, style)
     });
     // The avatar: a chosen picture, else the signed-in profile's initial.
     let avatar = state.avatar.is_some() || state.profile.is_some();
+    if !set && temperature.is_none() && !avatar {
+        return;
+    }
     let width =
         40. * k + date_width + clock_width + extra + if avatar { (14. + 50.) * k } else { 0. };
     let pill = Rect::new(1836. - width, 49., width, PILL_HEIGHT);
@@ -117,22 +130,24 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     }
     out.draw.push(Draw::Soft(None));
     let mut x = pill.x + 20. * k;
-    out.text(
-        date,
-        Rect::new(x, line(30. * k), date_width, 30. * k),
-        date_style,
-        ink,
-        false,
-    );
-    x += date_width;
-    out.text(
-        clock,
-        Rect::new(x, line(30. * k), clock_width + 2., 30. * k),
-        style,
-        ink,
-        false,
-    );
-    x += clock_width + 18. * k;
+    if set {
+        out.text(
+            date,
+            Rect::new(x, line(30. * k), date_width, 30. * k),
+            date_style,
+            ink,
+            false,
+        );
+        x += date_width;
+        out.text(
+            clock,
+            Rect::new(x, line(30. * k), clock_width + 2., 30. * k),
+            style,
+            ink,
+            false,
+        );
+        x += clock_width + gap;
+    }
     if let Some((text, icon)) = temperature {
         out.icon(
             assets,

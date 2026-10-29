@@ -9,7 +9,7 @@ impl State {
             return;
         }
         let known = |id: &String| {
-            self.inventory.apps.iter().any(|app| &app.id == id)
+            self.switcher_app(id).is_some()
                 && id != crate::platform::APP_ID
                 && id != crate::platform::HOME_ID
         };
@@ -56,6 +56,32 @@ impl State {
             .filter(|app| app.id != SETTINGS_TILE && app.id != SEARCH_TILE)
             .nth(slot)
             .map_or_else(Vec::new, |app| vec![Effect::Launch(app.id.clone())])
+    }
+
+    /// An app the switcher can show: an installed app, or one of LG's own overlay apps
+    /// (Settings, Search), which the grid never lists.
+    pub fn switcher_app(&self, id: &str) -> Option<App> {
+        self.inventory
+            .apps
+            .iter()
+            .find(|app| app.id == id)
+            .cloned()
+            .or_else(|| {
+                crate::platform::OVERLAY_APPS
+                    .iter()
+                    .find(|(app, _)| *app == id)
+                    .map(|(app, title)| App::new(app, title))
+            })
+    }
+
+    /// A launch was asked for a moment ago: a second press then is the same press twice. Only
+    /// that window holds presses back; webOS answering late (a slow network, a busy TV) never
+    /// swallows the next press.
+    pub fn launch_busy(&self) -> bool {
+        self.launching
+            && self
+                .launch_started
+                .is_some_and(|at| crate::clock::since(at) < std::time::Duration::from_millis(1500))
     }
 
     pub fn note_launch(&mut self, id: &str) {

@@ -119,7 +119,7 @@ impl State {
                 self.open_keyboard(TextField::Apps);
                 return vec![];
             }
-            Target::App(id) | Target::Input(id) if !self.launching => {
+            Target::App(id) | Target::Input(id) if !self.launch_busy() => {
                 return vec![Effect::Launch(id)];
             }
             Target::Search => {

@@ -162,6 +162,7 @@ impl Remote {
             {
                 self.press = None;
                 pending = state.quick_launch(quick_slot(key).unwrap_or(0));
+                note_launches(&pending, &format!("number key {key}"));
             }
             key if !repeat && webos && i32::from(key) == WEBOS_KEY_RECENT => {
                 self.press = None;
@@ -195,7 +196,17 @@ impl Remote {
             && held.target == state.focus
         {
             pending = state.activate();
+            note_launches(&pending, "OK");
         }
         pending
+    }
+}
+
+/// Records what made Lounge open an app, so an app opening unasked can be traced to its cause.
+pub(crate) fn note_launches(effects: &[crate::state::Effect], cause: &str) {
+    for effect in effects {
+        if let crate::state::Effect::Launch(id) = effect {
+            crate::platform::status(&format!("launch {id}: {cause}"));
+        }
     }
 }

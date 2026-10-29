@@ -348,6 +348,7 @@ fn run() -> Result<(), String> {
     // The switcher's snapshots and the TV's clock format, off this thread.
     let snapshots = snapshots::Service::new(webos, assets.root.clone());
     time_format::watch();
+    time_format::watch_time();
     let writer = storage::Writer::new(preferences_path.clone());
     effects(
         if webos {
@@ -625,6 +626,12 @@ impl Shell {
         if self.last_minute != Some(now.unix_timestamp() / 60) {
             self.last_minute = Some(now.unix_timestamp() / 60);
             self.state.hour = now.hour();
+            self.state.dirty = true;
+        }
+        // The TV set its clock (network back after power-on): the time appears at once.
+        let clock_set = time_format::time_valid();
+        if self.state.clock_set != clock_set {
+            self.state.clock_set = clock_set;
             self.state.dirty = true;
         }
         if let Some(pictures) = &self.avatars {
@@ -960,7 +967,8 @@ impl Shell {
                         && hit(&self.scene.controls, &self.window, x, y, &self.state).as_ref()
                             == Some(&held.target) =>
                 {
-                    pending = self.state.activate()
+                    pending = self.state.activate();
+                    input::note_launches(&pending, "pointer click");
                 }
                 None if self.scene.modal.is_some_and(|rect| {
                     pointer_position(&self.window, x, y).is_some_and(|(x, y)| !rect.contains(x, y))

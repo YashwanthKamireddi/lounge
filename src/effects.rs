@@ -40,11 +40,12 @@ pub(crate) fn effects(
                     continue;
                 }
                 state.note_launch(&id);
-                if !state.launching {
+                if !state.launch_busy() {
                     // webOS plays its own native launch transition; Lounge adds
                     // nothing over it (a second animation read as a flicker).
                     if platform.webos {
                         state.launching = true;
+                        state.launch_started = Some(crate::clock::now());
                         platform.send(Request::Launch(id));
                     } else {
                         let title = state

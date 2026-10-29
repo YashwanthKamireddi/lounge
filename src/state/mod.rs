@@ -231,6 +231,8 @@ pub struct State {
     pub avatar_from: Option<(String, Instant)>,
     /// The hour on the TV's clock, for the automatic appearance.
     pub hour: u8,
+    /// Whether the TV's clock is set; until it is, the time pill leaves the date and time out.
+    pub clock_set: bool,
     /// The appearance on screen (None until the first frame settles it), and
     /// the light share it is cross-fading from.
     light_shown: Option<bool>,
@@ -247,6 +249,8 @@ pub struct State {
     pub moving_since: Option<Instant>,
     pub loading: bool,
     pub launching: bool,
+    /// When the launch in progress was asked for (see `launch_busy`).
+    pub launch_started: Option<Instant>,
     pub notice: Option<(String, Instant)>,
     pub error: Option<String>,
     /// Inventory loads that failed in a row while no apps were shown yet.
@@ -392,6 +396,7 @@ impl State {
             avatar_since: crate::clock::now(),
             avatar_from: None,
             hour: 12,
+            clock_set: true,
             light_shown: None,
             appearance_from: None,
             preferences,
@@ -405,6 +410,7 @@ impl State {
             moving_since: None,
             loading: false,
             launching: false,
+            launch_started: None,
             notice: None,
             error: None,
             inventory_failures: 0,

@@ -1981,3 +1981,33 @@ fn an_uninstall_removes_the_tile_at_once_and_only_success_forgets_it() {
     assert!(state.preferences.recent.is_empty());
     assert!(state.uninstalling.is_empty());
 }
+
+#[test]
+fn the_time_pill_leaves_out_the_date_and_time_until_the_tv_has_set_its_clock() {
+    let mut state = ready();
+    let clock = crate::i18n::clock(time::OffsetDateTime::UNIX_EPOCH, state.hour_24);
+    assert!(ui_text(&state).contains(&clock));
+    state.clock_set = false;
+    let text = ui_text(&state);
+    assert!(!text.contains(&clock), "an unset clock shows no time");
+    assert!(
+        !text.contains(&crate::i18n::short_date(time::OffsetDateTime::UNIX_EPOCH)),
+        "nor the date"
+    );
+}
+
+#[test]
+fn a_launch_webos_has_not_answered_yet_never_swallows_a_later_press() {
+    crate::clock::record();
+    let mut state = ready();
+    state.launching = true;
+    state.launch_started = Some(crate::clock::now());
+    // The same press twice in a moment opens nothing twice.
+    assert!(state.launch_busy());
+    state.focus = Target::App("netflix".into());
+    assert_eq!(state.activate(), vec![]);
+    // webOS still has not answered 2 s later: the next press opens its app.
+    crate::clock::step(std::time::Duration::from_secs(2));
+    assert!(!state.launch_busy());
+    assert_eq!(state.activate(), vec![Effect::Launch("netflix".into())]);
+}

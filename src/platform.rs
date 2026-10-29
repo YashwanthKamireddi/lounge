@@ -859,13 +859,31 @@ pub fn opened_only(mut ids: Vec<String>, webos: bool) -> Vec<String> {
     ids
 }
 
-/// App IDs of open full-screen ("card") apps from a `running` reply.
+/// LG's own apps that open as an overlay over what is playing, yet are apps a viewer opens and
+/// returns to (Settings, Search). Every other overlay is a system panel or one of LG's ad and
+/// commerce containers, never something to switch back to.
+pub const OVERLAY_APPS: [(&str, &str); 2] = [
+    ("com.palm.app.settings", "Settings"),
+    ("com.webos.app.voice", "Search"),
+];
+
+/// App IDs of open apps from a `running` reply: full-screen ("card") apps, and the overlays in
+/// `OVERLAY_APPS`.
 fn card_ids(running: &Value) -> Vec<String> {
     running
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|entry| entry.get("defaultWindowType").and_then(Value::as_str) == Some("card"))
+        .filter(
+            |entry| match entry.get("defaultWindowType").and_then(Value::as_str) {
+                Some("card") => true,
+                Some("overlay") => entry
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| OVERLAY_APPS.iter().any(|(app, _)| *app == id)),
+                _ => false,
+            },
+        )
         .filter_map(|entry| entry.get("id")?.as_str())
         .filter(|id| valid_app_id(id))
         .map(str::to_owned)
