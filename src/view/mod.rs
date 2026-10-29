@@ -472,19 +472,48 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         }
         out.fade(start, 1. - gone, 1.);
     }
+    // Back: the Inputs panel shrinks back into its button as it fades, the reverse of opening.
+    if state.overlay.is_none()
+        && let Some(closed) = state.inputs_closed
+    {
+        let t = (crate::clock::since(closed).as_secs_f32() * 1000. / FADE_OUT_MS as f32).min(1.);
+        let gone = 1. - (1. - t).powi(3);
+        let button = out
+            .controls
+            .iter()
+            .find(|control| control.target == Target::InputsButton)
+            .map(|control| control.rect);
+        out.dim(1. - MENU_DIM * (1. - gone));
+        let start = out.draw.len();
+        let controls = out.controls.len();
+        inputs_panel(&mut out, state, assets);
+        out.controls.truncate(controls);
+        if let Some(button) = button {
+            let (cx, _) = button.center();
+            out.scale_about(start, cx, button.y + button.h, 1. - 0.14 * gone);
+        }
+        out.fade(start, 1. - gone, 1.);
+    }
     if let Some(
         overlay @ (Overlay::Options { .. }
         | Overlay::Keyboard
         | Overlay::Uninstall { .. }
-        | Overlay::Inputs),
+        | Overlay::Inputs
+        | Overlay::InputName(_)),
     ) = &state.overlay
     {
-        // A context menu opens beside the tile it acts on, as on tvOS.
+        // A context menu opens beside the tile it acts on, as on tvOS; the Inputs panel out of
+        // its button.
         let anchor = match overlay {
             Overlay::Options { id, .. } => out
                 .controls
                 .iter()
                 .find(|control| control.target == Target::App(id.clone()))
+                .map(|control| control.rect),
+            Overlay::Inputs | Overlay::InputName(_) => out
+                .controls
+                .iter()
+                .find(|control| control.target == Target::InputsButton)
                 .map(|control| control.rect),
             _ => None,
         };
@@ -508,7 +537,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
                 out.search = Some(panel..out.draw.len());
             }
             Overlay::Uninstall { id, .. } => alert::uninstall(&mut out, state, assets, id),
-            Overlay::Inputs => inputs_panel(&mut out, state, assets),
+            Overlay::Inputs | Overlay::InputName(_) => inputs_panel(&mut out, state, assets),
             Overlay::SystemKeyboard => {}
         }
         if opening.is_some() {
@@ -516,6 +545,10 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             if let (Overlay::Options { .. }, Some(tile)) = (overlay, anchor) {
                 let (cx, cy) = tile.center();
                 out.scale_about(panel, cx, cy, 0.82 + 0.18 * eased);
+            }
+            if let (Overlay::Inputs | Overlay::InputName(_), Some(button)) = (overlay, anchor) {
+                let (cx, _) = button.center();
+                out.scale_about(panel, cx, button.y + button.h, 0.86 + 0.14 * eased);
             }
             out.fade(panel, eased, 1.);
         }

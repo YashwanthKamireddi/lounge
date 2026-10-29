@@ -108,6 +108,12 @@ impl Replies {
                 let pending = state.uninstalled(&id, result);
                 state.queued.extend(pending);
             }
+            // A name the TV refused: read its inputs again, so the panel shows LG's own.
+            Response::InputNamed(Err(error)) => {
+                eprintln!("Lounge input name: {error}");
+                state.queued.push(state::Effect::Refresh);
+            }
+            Response::InputNamed(Ok(())) => {}
             Response::Closed(id, result) => {
                 if let Err(error) = result {
                     eprintln!("Lounge close {id}: {error}");

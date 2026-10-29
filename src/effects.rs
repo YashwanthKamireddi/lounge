@@ -36,6 +36,9 @@ pub(crate) fn effects(
             Effect::Close(id) => platform.send(Request::Close(id)),
             Effect::TvHome(set) => platform.send(Request::TvHome(set)),
             Effect::Uninstall(id) => platform.send(Request::Uninstall(id)),
+            Effect::NameInput(device, name, icon) => {
+                platform.send(Request::NameInput(device, name, icon))
+            }
             Effect::ClockFormat(hour_24) => crate::time_format::set(hour_24),
             Effect::Launch(id) => {
                 if scroll_preview::is_placeholder(&id) {

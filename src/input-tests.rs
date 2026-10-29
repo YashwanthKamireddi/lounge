@@ -215,7 +215,8 @@ impl Harness {
                 | Effect::Close(_)
                 | Effect::Quit
                 | Effect::Weather(_)
-                | Effect::ClockFormat(_) => {}
+                | Effect::ClockFormat(_)
+                | Effect::NameInput(..) => {}
             }
         }
         if self.state.moving.is_none() {

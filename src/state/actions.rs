@@ -34,6 +34,19 @@ impl State {
             self.options();
             return vec![];
         }
+        // Holding OK on an input in the Inputs panel names it (Live TV has its own name).
+        if let Target::InputPick(id) = self.focus.clone()
+            && let Some(input) = self.inventory.inputs.iter().find(|input| input.id == id)
+        {
+            let at = crate::model::INPUT_NAMES
+                .iter()
+                .position(|(name, _)| *name == input.title)
+                .map_or(0, |index| index + 1);
+            self.overlay = Some(Overlay::InputName(id));
+            self.focus = Target::InputName(at);
+            self.dirty = true;
+            return vec![];
+        }
         // Anywhere else a slow press is still a press: a Settings row, a
         // key, a menu pill or a switcher card does what OK does.
         self.activate()
@@ -345,12 +358,42 @@ impl State {
             Target::InputsButton => {
                 let first = self.input_choices().into_iter().next();
                 if let Some((id, ..)) = first {
+                    self.inputs_closed = None;
                     self.overlay = Some(Overlay::Inputs);
                     self.focus = Target::InputPick(id);
                     self.panel_started = (!self.preferences.reduced_motion).then(crate::clock::now);
                     self.dirty = true;
                 }
                 return vec![];
+            }
+            Target::InputName(index) => {
+                let Some(Overlay::InputName(id)) = self.overlay.clone() else {
+                    return vec![];
+                };
+                self.overlay = Some(Overlay::Inputs);
+                self.focus = Target::InputPick(id.clone());
+                let Some(input) = self
+                    .inventory
+                    .inputs
+                    .iter_mut()
+                    .find(|input| input.id == id)
+                else {
+                    return vec![];
+                };
+                // HDMI_<n>, LG's device id, from the port "HDMI <n>".
+                let device = input.port.replace(' ', "_");
+                let (name, icon) = match index {
+                    0 => (input.port.clone(), format!("{device}.png")),
+                    _ => {
+                        let (name, icon) = crate::model::INPUT_NAMES
+                            [(index - 1).min(crate::model::INPUT_NAMES.len() - 1)];
+                        (name.to_owned(), icon.to_owned())
+                    }
+                };
+                // Shown at once; the input events confirm it (or put the TV's name back).
+                input.title = name.clone();
+                self.dirty = true;
+                return vec![Effect::NameInput(device, name, icon)];
             }
             Target::InputPick(id) => {
                 self.overlay = None;
@@ -488,9 +531,17 @@ impl State {
             {
                 self.options_closed = Some((id.clone(), crate::clock::now()));
             }
+            if matches!(overlay, Overlay::Inputs) && !self.preferences.reduced_motion {
+                self.inputs_closed = Some(crate::clock::now());
+            }
             self.focus = match overlay {
                 Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. } => restore,
                 Overlay::Inputs => Target::InputsButton,
+                Overlay::InputName(id) => {
+                    // Back from the names returns to the input's row, the panel still open.
+                    self.overlay = Some(Overlay::Inputs);
+                    Target::InputPick(id)
+                }
                 Overlay::Keyboard | Overlay::SystemKeyboard => {
                     self.search_closed = (!self.preferences.reduced_motion
                         && matches!(overlay, Overlay::Keyboard))

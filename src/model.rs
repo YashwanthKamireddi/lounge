@@ -5,6 +5,18 @@ use std::collections::{BTreeMap, HashSet};
 /// LG's Live TV app: the first source in the Inputs panel.
 pub const LIVE_TV: &str = "com.webos.app.livetv";
 
+/// LG's names for what is plugged into an input, with the icon LG shows for each (from LG's own
+/// setup app): naming an input sets LG's label, so LG's menus say the same.
+pub const INPUT_NAMES: [(&str, &str); 7] = [
+    ("Set-Top Box", "settopbox.png"),
+    ("Satellite", "satellite.png"),
+    ("Streaming Box", "streamingbox.png"),
+    ("Game Console", "gameconsole.png"),
+    ("Blu-ray Player", "bluray.png"),
+    ("DVD Player", "dvd.png"),
+    ("Home Theater", "hometheater.png"),
+];
+
 pub const BACKGROUNDS: [(&str, &str); 9] = [
     ("slate", "Slate"),
     ("midnight", "Midnight"),

@@ -2109,3 +2109,51 @@ fn focus_outline_and_larger_names_are_switches_in_general_that_persist() {
     let old: crate::model::Preferences = serde_json::from_str("{}").unwrap();
     assert!(!old.focus_outline && !old.large_names);
 }
+
+#[test]
+fn holding_ok_on_an_input_names_it_as_lg_does_and_back_returns_to_it() {
+    let mut state = ready();
+    let input = state.inventory.inputs[1].clone();
+    state.overlay = Some(crate::state::Overlay::Inputs);
+    state.focus = Target::InputPick(input.id.clone());
+    state.hold();
+    assert!(
+        matches!(&state.overlay, Some(crate::state::Overlay::InputName(id)) if *id == input.id)
+    );
+    // The first name is the port's own; LG's names follow.
+    state.focus = Target::InputName(1);
+    let device = input.port.replace(' ', "_");
+    assert_eq!(
+        state.activate(),
+        vec![Effect::NameInput(
+            device.clone(),
+            "Set-Top Box".into(),
+            "settopbox.png".into()
+        )]
+    );
+    assert_eq!(state.inventory.inputs[1].title, "Set-Top Box");
+    assert_eq!(state.focus, Target::InputPick(input.id.clone()));
+    // Holding again starts on the current name; Back returns to the input, the panel open.
+    state.hold();
+    assert_eq!(state.focus, Target::InputName(1));
+    state.back();
+    assert_eq!(state.focus, Target::InputPick(input.id.clone()));
+    assert!(matches!(state.overlay, Some(crate::state::Overlay::Inputs)));
+    // The port's own name puts LG's default back.
+    state.hold();
+    state.focus = Target::InputName(0);
+    assert_eq!(
+        state.activate(),
+        vec![Effect::NameInput(
+            device.clone(),
+            input.port.clone(),
+            format!("{device}.png")
+        )]
+    );
+    // Live TV is not an input: a hold on it is OK, as anywhere but an app.
+    state.focus = Target::InputPick(crate::model::LIVE_TV.into());
+    assert_eq!(
+        state.hold(),
+        vec![Effect::Launch(crate::model::LIVE_TV.into())]
+    );
+}

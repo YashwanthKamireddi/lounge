@@ -222,7 +222,16 @@ fn bar_button(
     let icon = 30. * k;
     let width = 20. * k + icon + 10. * k + assets.width(label, style) + 24. * k;
     let base = Rect::new(x(width), 49., width, PILL_HEIGHT);
-    let focus = state.focus_amount(&target);
+    // Lit while its panel is open, as a tile stays lifted under its menu.
+    let focus = if target == Target::InputsButton
+        && matches!(
+            state.overlay,
+            Some(crate::state::Overlay::Inputs | crate::state::Overlay::InputName(_))
+        ) {
+        1.
+    } else {
+        state.focus_amount(&target)
+    };
     let grow = 0.06 * focus;
     let rect = Rect::new(
         base.x - base.w * grow / 2.,
@@ -268,7 +277,31 @@ fn bar_button(
 /// plugged in. The same clear liquid glass as the pill and the dock, white ink, and one white
 /// highlight gliding between rows (as the app menu's). OK switches; Back returns to the button.
 pub(super) fn inputs_panel(out: &mut Scene, state: &State, assets: &Assets) {
-    let choices = state.input_choices();
+    // Naming an input: the same panel lists the port's own name, then LG's names.
+    let naming = match &state.overlay {
+        Some(crate::state::Overlay::InputName(id)) => {
+            state.inventory.inputs.iter().find(|input| &input.id == id)
+        }
+        _ => None,
+    };
+    let choices: Vec<(String, String, Option<bool>)> = match naming {
+        Some(input) => std::iter::once(input.port.clone())
+            .chain(
+                crate::model::INPUT_NAMES
+                    .iter()
+                    .map(|(name, _)| (*name).to_owned()),
+            )
+            .map(|name| (input.id.clone(), name, None))
+            .collect(),
+        None => state.input_choices(),
+    };
+    let target = |index: usize, id: &str| {
+        if naming.is_some() {
+            Target::InputName(index)
+        } else {
+            Target::InputPick(id.to_owned())
+        }
+    };
     let (width, row_h, pad) = (560., 84., 12.);
     let panel = Rect::new(
         1836. - width,
@@ -276,11 +309,18 @@ pub(super) fn inputs_panel(out: &mut Scene, state: &State, assets: &Assets) {
         width,
         pad * 2. + row_h * choices.len() as f32,
     );
-    out.shadow(panel, 34., 48., 10., 0.28);
+    out.shadow(panel, 34., 56., 14., 0.34);
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
     out.glass_over(home_backdrop(state, assets), panel, 34., c(PLATTER, 0.34));
+    // The dock's light: a sheen falling from the top edge, and its specular rim.
+    out.draw.push(Draw::RoundedGradient(
+        panel,
+        34.,
+        c(0xffffff, 0.09),
+        c(0xffffff, 0.),
+    ));
     out.draw.push(Draw::Soft(None));
-    out.rim(panel, 34., 0.55, 0.06);
+    out.rim(panel, 34., 0.6, 0.07);
     let row_rect = |index: usize| {
         Rect::new(
             panel.x + pad,
@@ -292,70 +332,98 @@ pub(super) fn inputs_panel(out: &mut Scene, state: &State, assets: &Assets) {
     // One highlight, placed where focus is on its way to (focus amounts weight the rows).
     let focus: Vec<f32> = choices
         .iter()
-        .map(|(id, ..)| state.focus_amount(&Target::InputPick(id.clone())))
+        .enumerate()
+        .map(|(index, (id, ..))| state.focus_amount(&target(index, id)))
         .collect();
     let total: f32 = focus.iter().sum();
-    if total > 0.01 {
-        let y = focus
+    // Where the highlight is: between the rows focus is moving between.
+    let lit_y = (total > 0.01).then(|| {
+        focus
             .iter()
             .enumerate()
             .map(|(index, amount)| row_rect(index).y * amount)
             .sum::<f32>()
-            / total;
+            / total
+    });
+    if let Some(y) = lit_y {
+        // At full strength from the first frame: it glides between rows rather than fading,
+        // so no frame shows grey text on a half-white bar.
         let lit = Rect::new(panel.x + pad, y, panel.w - pad * 2., row_h);
+        out.shadow(lit, 24., 16., 4., 0.18);
         out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-        out.shape(lit, 24., c(0xffffff, 0.97 * total.min(1.)));
+        out.shape(lit, 24., c(0xffffff, 0.97));
         out.draw.push(Draw::Soft(None));
     }
-    for (index, (id, title, connected)) in choices.iter().enumerate() {
-        let row = row_rect(index);
-        let amount = focus[index];
-        // Nothing plugged in: still listed (it may be about to be), but quieter.
-        let rest = if *connected == Some(false) { 0.55 } else { 1. };
-        let (white, dark) = (c(0xffffff, rest), c(PLATTER, 1.));
-        let ink: [f32; 4] = std::array::from_fn(|i| white[i] + (dark[i] - white[i]) * amount);
-        let icon = if id == crate::model::LIVE_TV {
-            "tv".to_owned()
-        } else {
-            state
-                .inventory
-                .inputs
-                .iter()
-                .find(|input| &input.id == id)
-                .map_or("input-hdmi".to_owned(), |input| {
-                    format!("input-{}", super::shared::input_icon(input))
-                })
-        };
-        out.icon(
-            assets,
-            &icon,
-            Rect::new(row.x + 22., row.y + (row.h - 32.) / 2., 32., 32.),
-            ink,
-        );
-        let status =
-            connected.map(|plugged| i18n::t(if plugged { "connected" } else { "noDevice" }));
-        let title_y = if status.is_some() {
-            row.y + 12.
-        } else {
-            row.y + (row.h - 32.) / 2.
-        };
-        out.text(
-            title.as_str(),
-            Rect::new(row.x + 74., title_y, row.w - 96., 32.),
-            text(25., 600, 0.),
-            ink,
-            false,
-        );
-        if let Some(status) = status {
+    // The rows twice: light ink everywhere, then dark ink clipped to the highlight. Every pixel
+    // of text is then fully light on the glass or fully dark on the white bar, even while the
+    // bar glides between rows (a blended ink smeared both rows mid-glide).
+    let draw_rows = |out: &mut Scene, dark: bool| {
+        for (index, (id, title, connected)) in choices.iter().enumerate() {
+            let row = row_rect(index);
+            // Nothing plugged in: still listed (it may be about to be), but quieter.
+            let ink = if dark {
+                c(PLATTER, 1.)
+            } else {
+                c(0xffffff, if *connected == Some(false) { 0.55 } else { 1. })
+            };
+            let icon = if naming.is_some() {
+                "type".to_owned()
+            } else if id == crate::model::LIVE_TV {
+                "tv".to_owned()
+            } else {
+                state
+                    .inventory
+                    .inputs
+                    .iter()
+                    .find(|input| &input.id == id)
+                    .map_or("input-hdmi".to_owned(), |input| {
+                        format!("input-{}", super::shared::input_icon(input))
+                    })
+            };
+            out.icon(
+                assets,
+                &icon,
+                Rect::new(row.x + 22., row.y + (row.h - 32.) / 2., 32., 32.),
+                ink,
+            );
+            let status =
+                connected.map(|plugged| i18n::t(if plugged { "connected" } else { "noDevice" }));
+            let title_y = if status.is_some() {
+                row.y + 12.
+            } else {
+                row.y + (row.h - 32.) / 2.
+            };
             out.text(
-                status,
-                Rect::new(row.x + 74., row.y + 46., row.w - 96., 28.),
-                text(21., 500, 0.),
-                [ink[0], ink[1], ink[2], ink[3] * 0.7],
+                title.as_str(),
+                Rect::new(row.x + 74., title_y, row.w - 96., 32.),
+                text(25., 600, 0.),
+                ink,
                 false,
             );
+            if let Some(status) = status {
+                out.text(
+                    status,
+                    Rect::new(row.x + 74., row.y + 46., row.w - 96., 28.),
+                    text(21., 500, 0.),
+                    [ink[0], ink[1], ink[2], ink[3] * 0.7],
+                    false,
+                );
+            }
+            if !dark {
+                out.control(target(index, id), row, false);
+            }
         }
-        out.control(Target::InputPick(id.clone()), row, false);
+    };
+    draw_rows(out, false);
+    if let Some(y) = lit_y {
+        out.draw.push(Draw::Clip(Some(Rect::new(
+            panel.x + pad,
+            y,
+            panel.w - pad * 2.,
+            row_h,
+        ))));
+        draw_rows(out, true);
+        out.draw.push(Draw::Clip(None));
     }
 }
 

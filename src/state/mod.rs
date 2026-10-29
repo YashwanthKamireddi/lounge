@@ -112,6 +112,8 @@ pub enum Target {
     SearchButton,
     /// A source in the Inputs panel: Live TV or an input, by app id.
     InputPick(String),
+    /// A name in the Inputs panel's name list: 0 is the port's own name, then INPUT_NAMES.
+    InputName(usize),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -159,6 +161,8 @@ pub enum Overlay {
     },
     /// The sources under the Inputs button: Live TV and every input not switched Off.
     Inputs,
+    /// The Inputs panel naming one input (by app id): the port's name, then LG's names.
+    InputName(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -202,6 +206,8 @@ pub enum Effect {
     Uninstall(String),
     /// Set the TV's clock to 24-hour (true) or 12-hour.
     ClockFormat(bool),
+    /// Name an input as LG does (its device id, LG's name, LG's icon file).
+    NameInput(String, String, String),
 }
 
 pub const KEYS: [&str; 40] = [
@@ -323,6 +329,8 @@ pub struct State {
     pub options_closed: Option<(String, Instant)>,
     /// The dock app Up left for the Search or Inputs button: Down and Back go back to it.
     pub bar_return: Option<Target>,
+    /// When Back closed the Inputs panel: it shrinks back into its button meanwhile.
+    pub inputs_closed: Option<Instant>,
     /// Search just closed: its page fades off the home.
     pub search_closed: Option<Instant>,
     /// That page as it was last drawn, fading out.
@@ -465,6 +473,7 @@ impl State {
             settings_level: (0, 0),
             options_closed: None,
             bar_return: None,
+            inputs_closed: None,
             search_closed: None,
             search_ghost: None,
             expanded: false,
@@ -574,6 +583,15 @@ impl State {
                 self.rearranged = None;
                 self.entering.clear();
             }
+            self.dirty = true;
+        }
+        if self
+            .inputs_closed
+            .is_some_and(|at| crate::clock::since(at).as_millis() >= u128::from(FADE_OUT_MS))
+        {
+            self.inputs_closed = None;
+        }
+        if self.inputs_closed.is_some() {
             self.dirty = true;
         }
         if let Some((_, _, at)) = &self.leaving {
@@ -703,6 +721,7 @@ impl State {
             || self.settings_since.is_some()
             || self.rearranged.is_some()
             || self.leaving.is_some()
+            || self.inputs_closed.is_some()
             || (self.moving.is_some() && self.move_raise() < 1.)
             || self.avatar_from.is_some()
             || self.appearance_from.is_some()

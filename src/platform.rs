@@ -435,6 +435,8 @@ pub enum Request {
     TvHome(Option<bool>),
     /// Remove an installed app (confirmed in Lounge's alert first).
     Uninstall(String),
+    /// Name an input as LG's own setup does: its device id, LG's name and LG's icon file.
+    NameInput(String, String, String),
 }
 pub enum Response {
     Inventory(Result<(Inventory, Option<String>), String>),
@@ -445,6 +447,8 @@ pub enum Response {
     /// Whether Lounge is the TV's Home, after the request.
     TvHome(Result<bool, String>),
     Uninstalled(String, Result<(), String>),
+    /// Whether the TV took an input's new name.
+    InputNamed(Result<(), String>),
 }
 
 pub struct Platform {
@@ -543,6 +547,15 @@ impl Platform {
                         tv_home(set)
                     } else {
                         Err("Home is set on the TV".into())
+                    }),
+                    Request::NameInput(device, name, icon) => Response::InputNamed(if webos {
+                        call(
+                            "luna://com.webos.service.eim/setDeviceInfo",
+                            json!({"id": device, "locString": name, "icon": icon}),
+                        )
+                        .map(|_| ())
+                    } else {
+                        Ok(())
                     }),
                     // `send` routes these to the apps thread.
                     Request::Launch(_) | Request::Close(_) => continue,
