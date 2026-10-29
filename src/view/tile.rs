@@ -89,6 +89,14 @@ pub(super) fn tile(
         );
     }
     tile_face(out, assets, app, rect, radius);
+    // Focus outline (Settings › General): the lift alone can be hard to follow from across the
+    // room; a white ring fades in with it.
+    if state.preferences.focus_outline && lift > 0. {
+        let start = out.draw.len();
+        // Bolder than a control's ring: it is for eyes that miss the lift.
+        out.border(rect.inset(-7.), radius + 7., 5., c(0xffffff, 1.));
+        out.fade(start, lift, 1.);
+    }
     if pinned {
         out.icon(
             assets,
@@ -103,14 +111,19 @@ pub(super) fn tile(
     // The app in hand has Move's instructions where its name goes (overlays::move_hint).
     if let Some([r, g, b, _]) = names.filter(|_| state.moving.as_ref() != Some(&app.id)) {
         out.text(
-            fit_caption(assets, &app.title, caption_style(focused), base.w - 8.),
+            fit_caption(
+                assets,
+                &app.title,
+                caption_style(focused, state.preferences.large_names),
+                base.w - 8.,
+            ),
             Rect::new(
                 base.x + 4.,
                 base.y + base.h + LABEL_GAP,
                 base.w - 8.,
                 caption_height,
             ),
-            caption_style(focused),
+            caption_style(focused, state.preferences.large_names),
             [r, g, b, 0.6 + 0.4 * lift],
             true,
         );
@@ -275,7 +288,10 @@ pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect,
 }
 
 pub(super) fn caption_height(state: &State, assets: &Assets, app: &App, width: f32) -> f32 {
-    let style = caption_style(state.focus == Target::App(app.id.clone()));
+    let style = caption_style(
+        state.focus == Target::App(app.id.clone()),
+        state.preferences.large_names,
+    );
     let lines = assets
         .lines(
             &fit_caption(assets, &app.title, style, width - 8.),
@@ -304,8 +320,9 @@ fn fit_caption(assets: &Assets, title: &str, style: TextStyle, width: f32) -> St
 }
 
 /// tvOS Caption 2: SF Pro Medium 23/30.
-fn caption_style(focused: bool) -> TextStyle {
-    text(23., if focused { 600 } else { 500 }, 0.).leading(30. / 23.)
+fn caption_style(focused: bool, large: bool) -> TextStyle {
+    let size = if large { 29. } else { 23. };
+    text(size, if focused { 600 } else { 500 }, 0.).leading(30. / 23.)
 }
 
 fn brand_mark(out: &mut Scene, assets: &Assets, app: &App, rect: Rect) {

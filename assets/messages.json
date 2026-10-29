@@ -117,8 +117,8 @@
   "topResults": "Top Results",
   "moveHint": "Move with the arrows. Press OK when done.",
   "aboutSettings": "Choose how Lounge looks and what the weather shows.",
-  "aboutInterface": "App names, the clock, appearance, motion and cover art.",
-  "aboutInterfaceNoArt": "App names, the clock, appearance and motion.",
+  "aboutInterface": "App names, the clock, appearance, motion, focus and cover art.",
+  "aboutInterfaceNoArt": "App names, the clock, appearance, motion and focus.",
   "tvHome": "Lounge as Home",
   "tvHomeLounge": "Lounge is now the TV's Home",
   "tvHomeLg": "LG Home is back",
@@ -141,5 +141,7 @@
   "soundMode": "Sound",
   "allSettings": "All TV settings",
   "minutes": "{count} min",
-  "controlError": "The TV didn't take that change."
+  "controlError": "The TV didn't take that change.",
+  "focusOutline": "Focus outline",
+  "largeNames": "Larger app names"
 }

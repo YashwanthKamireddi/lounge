@@ -201,6 +201,8 @@ impl State {
                         return vec![];
                     }
                     2 => self.preferences.reduced_motion = !self.preferences.reduced_motion,
+                    11 => self.preferences.focus_outline = !self.preferences.focus_outline,
+                    12 => self.preferences.large_names = !self.preferences.large_names,
                     9 => {
                         self.subpage = Some(Subpage::Appearance);
                         if !self.preferences.reduced_motion {

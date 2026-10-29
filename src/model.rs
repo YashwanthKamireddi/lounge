@@ -177,6 +177,11 @@ pub struct Preferences {
     /// Bundled Top Shelf art behind the dock; off shows the wallpaper.
     pub top_shelf_art: bool,
     pub reduced_motion: bool,
+    /// A white ring around what has focus, besides its lift: easier to follow from across
+    /// the room.
+    pub focus_outline: bool,
+    /// App names under the tiles a size larger.
+    pub large_names: bool,
     #[serde(deserialize_with = "lenient_modes")]
     pub input_modes: BTreeMap<String, InputMode>,
     #[serde(deserialize_with = "crate::weather::deserialize_enabled")]
@@ -225,6 +230,8 @@ impl Default for Preferences {
             show_names: false,
             top_shelf_art: false,
             reduced_motion: false,
+            focus_outline: false,
+            large_names: false,
             input_modes: BTreeMap::new(),
             show_weather: true,
             weather_location: None,

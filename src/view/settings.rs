@@ -758,6 +758,28 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     false,
                 ),
                 (
+                    11,
+                    "focusOutline",
+                    "eye-bold",
+                    if state.preferences.focus_outline {
+                        i18n::t("stateOn")
+                    } else {
+                        i18n::t("stateOff")
+                    },
+                    false,
+                ),
+                (
+                    12,
+                    "largeNames",
+                    "type",
+                    if state.preferences.large_names {
+                        i18n::t("stateOn")
+                    } else {
+                        i18n::t("stateOff")
+                    },
+                    false,
+                ),
+                (
                     10,
                     "tvHome",
                     "tv",
