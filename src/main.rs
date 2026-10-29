@@ -968,6 +968,26 @@ impl Shell {
                 );
             }
             Event::MouseWheel {
+                timestamp, x, y, ..
+            } if self.state.overlay.is_none()
+                && self.presence.front(timestamp).is_some()
+                && !self.state.pointer =>
+            {
+                // Pointer hidden (arrow-key use): the wheel moves focus a step at a time as the
+                // arrows do, as on LG's own Home, so focus never scrolls out of sight.
+                let direction = match (x.signum(), y.signum()) {
+                    (1, _) => Some(state::Direction::Right),
+                    (-1, _) => Some(state::Direction::Left),
+                    (_, 1) => Some(state::Direction::Up),
+                    (_, -1) => Some(state::Direction::Down),
+                    _ => None,
+                };
+                if let Some(direction) = direction {
+                    self.remote.press = None;
+                    pending = self.state.direction(direction, &self.scene.controls);
+                }
+            }
+            Event::MouseWheel {
                 timestamp,
                 x,
                 y,
