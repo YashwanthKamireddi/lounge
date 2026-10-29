@@ -278,11 +278,19 @@ for (const [brand, [top, bottom]] of Object.entries(surfaces)) {
     .toFile(path.join(out, 'surfaces', `${brand}.png`));
 }
 await generateVectorAssets();
-await sharp(path.join(source, 'app-icon.svg'))
+// LG's app list rounds an app's icon itself and expects it full-bleed and opaque, as the
+// store apps ship theirs: the icon drops the logo's own rounded tile (rounded twice, it read as a
+// smaller square inside LG's card) and the sofa fills more of it, as other apps' marks do.
+const appIcon = Buffer.from(
+  (await fs.readFile(path.join(source, 'app-icon.svg'), 'utf8'))
+    .replace('<g clip-path="url(#tile)">', '<g>')
+    .replace('scale(1.1)', 'scale(1.32)'),
+);
+await sharp(appIcon, { density: 300 })
   .resize(80, 80)
   .png()
   .toFile(path.join(out, 'app-icon.png'));
-await sharp(path.join(source, 'app-icon.svg'))
+await sharp(appIcon, { density: 300 })
   .resize(130, 130)
   .png()
   .toFile(path.join(out, 'app-icon-large.png'));
