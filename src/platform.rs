@@ -516,21 +516,81 @@ fn launch(id: &str) -> Result<(), String> {
         .lock()
         .map(|mut fronts| fronts.launching(id, std::time::Instant::now()))
         .unwrap_or(false);
+    let stale = !stalled && started_before_clock(id);
+    if stale {
+        status(&format!(
+            "launch {id}: started unseen before the TV's clock was set; starting it afresh"
+        ));
+    }
     if stalled {
         status(&format!(
             "launch {id}: its last launch never showed; starting it afresh"
         ));
-        if let Err(error) = close(id) {
-            status(&format!(
-                "launch {id}: closing the stalled app failed: {error}"
-            ));
-        }
+    }
+    if (stalled || stale)
+        && let Err(error) = close(id)
+    {
+        status(&format!(
+            "launch {id}: closing the stale app failed: {error}"
+        ));
     }
     call(
         "luna://com.webos.applicationManager/launch",
         json!({"id": id}),
     )
     .map(|_| ())
+}
+
+/// Whether `id` is running unseen (started by LG's preloader, never brought to the front since)
+/// from before this run saw the TV set its clock. Its page loaded with a wrong date and failed
+/// (YouTube: ERR_CERT_DATE_INVALID), and opening it would only show that dead page.
+fn started_before_clock(id: &str) -> bool {
+    let Some(set_at) = crate::time_format::set_at() else {
+        return false;
+    };
+    let unseen = FRONTS
+        .lock()
+        .is_ok_and(|fronts| fronts.live && !fronts.fronted.contains_key(id));
+    if !unseen {
+        return false;
+    }
+    let Ok(reply) = call("luna://com.webos.applicationManager/running", json!({})) else {
+        return false;
+    };
+    let pid = reply
+        .get("running")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|entry| entry.get("id").and_then(Value::as_str) == Some(id))
+        .and_then(|entry| {
+            ["webprocessid", "processid"].iter().find_map(|key| {
+                entry
+                    .get(*key)
+                    .and_then(Value::as_str)
+                    .and_then(|pid| pid.parse::<u32>().ok())
+            })
+        });
+    pid.and_then(process_started)
+        .is_some_and(|started| started < set_at)
+}
+
+/// When process `pid` started, from its start time in /proc (clock ticks since boot).
+fn process_started(pid: u32) -> Option<std::time::Instant> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // Fields after the command name (which may hold spaces) in parentheses; start time is
+    // field 22, the 20th after it.
+    let after = stat.get(stat.rfind(')')? + 2..)?;
+    let ticks: u64 = after.split_whitespace().nth(19)?.parse().ok()?;
+    let uptime: f64 = std::fs::read_to_string("/proc/uptime")
+        .ok()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()?;
+    // /proc counts in USER_HZ, fixed at 100 for user space on every Linux architecture.
+    let age = uptime - ticks as f64 / 100.;
+    std::time::Instant::now().checked_sub(std::time::Duration::from_secs_f64(age.max(0.)))
 }
 
 /// Ends `id`: WebAppMgr's `killApp` first (`closeByAppId` only sends a web
@@ -1422,6 +1482,15 @@ pub fn elevated(command: &str, field: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod status_tests {
     use super::*;
+
+    #[test]
+    fn a_process_start_time_reads_from_proc() {
+        let started = process_started(std::process::id()).expect("this test's own process");
+        let age = std::time::Instant::now().duration_since(started);
+        // Started within this test run, and the clock-tick reading is not off by a factor.
+        assert!(age < std::time::Duration::from_secs(600), "age {age:?}");
+        assert!(process_started(u32::MAX).is_none());
+    }
 
     #[test]
     fn a_long_run_keeps_its_start_and_latest_lines() {

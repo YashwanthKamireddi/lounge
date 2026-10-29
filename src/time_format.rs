@@ -143,6 +143,16 @@ pub fn watch() {}
 /// 0 until the TV has said, then 1 (its clock is set) or 2 (not yet: no network since power-on,
 /// so it reads a default date such as 1 January).
 static TIME: AtomicU8 = AtomicU8::new(0);
+/// When the TV's clock was seen going from unset to set, if Lounge saw it happen.
+static SET_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// When this run saw the TV set its clock. Anything started before then started with a wrong
+/// date: a web page loaded then failed its certificate checks.
+pub fn set_at() -> Option<std::time::Instant> {
+    *SET_AT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// Whether the TV's clock is set. Unknown counts as set: only the TV's own word hides the time.
 pub fn time_valid() -> bool {
@@ -175,7 +185,13 @@ pub fn watch_time() {
                 return;
             }
             if let Some(valid) = parse_valid(&reply) {
-                TIME.store(if valid { 1 } else { 2 }, Ordering::Relaxed);
+                let was = TIME.swap(if valid { 1 } else { 2 }, Ordering::Relaxed);
+                if valid && was == 2 {
+                    *SET_AT
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        Some(std::time::Instant::now());
+                }
             }
         },
     );

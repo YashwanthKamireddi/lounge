@@ -286,10 +286,7 @@ const appIcon = Buffer.from(
     .replace('<g clip-path="url(#tile)">', '<g>')
     .replace('scale(1.1)', 'scale(1.32)'),
 );
-await sharp(appIcon, { density: 300 })
-  .resize(80, 80)
-  .png()
-  .toFile(path.join(out, 'app-icon.png'));
+await sharp(appIcon, { density: 300 }).resize(80, 80).png().toFile(path.join(out, 'app-icon.png'));
 await sharp(appIcon, { density: 300 })
   .resize(130, 130)
   .png()
