@@ -62,12 +62,15 @@ try {
     return state;
   };
   // Home opens on the first dock favourite; Down enters the grid below.
+  // (Live TV is not in the grid: it leads the Inputs panel.)
   const home = await scenario('home', 'down');
-  assert.deepEqual(home.focus, { App: 'com.webos.app.livetv' });
-  const hidden = await scenario('apps', 'apps,down,menu,right,enter');
-  assert.ok(hidden.preferences.hidden.includes('com.webos.app.livetv'));
-  assert.deepEqual(hidden.focus, { App: 'lounge.settings' });
-  // Reload from disk and show Live TV again from Settings › General › Hidden apps,
+  assert.deepEqual(home.focus, { App: 'lounge.settings' });
+  // Hide the app after Settings (Settings itself cannot be hidden).
+  const hidden = await scenario('apps', 'apps,down,right,menu,right,enter');
+  assert.equal(hidden.preferences.hidden.length, 1);
+  assert.ok(!hidden.preferences.hidden.includes('com.webos.app.livetv'));
+  assert.ok(hidden.focus.App && !hidden.preferences.hidden.includes(hidden.focus.App));
+  // Reload from disk and show it again from Settings › General › Hidden apps,
   // one row up from the end (Quit app, on the desktop): rows above it (cover art) depend on
   // local art.
   const restored = await scenario(
@@ -101,7 +104,7 @@ try {
   assert.deepEqual(input.focus, { InputPick: 'com.webos.app.livetv' });
   const closed = await scenario('dialog-closed', 'apps,down,menu,click:100:900');
   assert.equal(closed.modal, false);
-  assert.deepEqual(closed.focus, { App: 'com.webos.app.livetv' });
+  assert.deepEqual(closed.focus, { App: 'lounge.settings' });
   const fixedTime = ['--time', '2026-10-21T20:41:00+02:00'];
   const one = await scenario('density-1x', 'home,down', fixedTime);
   const two = await scenario('density-2x', 'home,down', [...fixedTime, '--capture-scale', '2']);

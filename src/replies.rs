@@ -108,20 +108,6 @@ impl Replies {
                 let pending = state.uninstalled(&id, result);
                 state.queued.extend(pending);
             }
-            Response::Controls(result) => match result {
-                Ok(controls) => {
-                    state.tv_controls = Some(controls);
-                    state.dirty = true;
-                }
-                Err(error) => eprintln!("Lounge controls: {error}"),
-            },
-            // The panel showed the change at once; a refusal puts the value back as the TV has it.
-            Response::ControlSet(change, Err(error)) => {
-                eprintln!("Lounge control {change:?}: {error}");
-                state.notify(i18n::t("controlError"));
-                state.queued.push(state::Effect::ReadControls);
-            }
-            Response::ControlSet(_, Ok(())) => {}
             Response::Closed(id, result) => {
                 if let Err(error) = result {
                     eprintln!("Lounge close {id}: {error}");

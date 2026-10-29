@@ -37,6 +37,8 @@ try {
   const logos = (await fs.readdir(path.join(root, 'assets/logos')))
     .filter((file) => file.endsWith('.svg'))
     .map((file) => path.parse(file).name)
+    // Live TV is not a grid app (it leads the Inputs panel), so search never shows it.
+    .filter((logo) => logo !== 'live-tv')
     .sort();
   const cards = [];
   for (const [index, logo] of logos.entries()) {

@@ -5,33 +5,6 @@ use std::collections::{BTreeMap, HashSet};
 /// LG's Live TV app: the first source in the Inputs panel.
 pub const LIVE_TV: &str = "com.webos.app.livetv";
 
-/// The TV's quick controls, as last read: the Controls panel shows and changes them.
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-pub struct TvControls {
-    /// Minutes until the TV turns off; 0 is off.
-    pub sleep_minutes: u32,
-    pub picture: Option<Choice>,
-    pub sound: Option<Choice>,
-}
-
-/// A setting's current value and the values the TV offers for it.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct Choice {
-    pub current: String,
-    pub options: Vec<String>,
-}
-
-/// One change made in the Controls panel.
-#[derive(Clone, Debug, PartialEq)]
-pub enum ControlChange {
-    Sleep(u32),
-    Picture(String),
-    Sound(String),
-}
-
-/// The sleep timer's steps, in minutes, as LG's own Quick Settings offers them (0 is off).
-pub const SLEEP_STEPS: [u32; 9] = [0, 10, 20, 30, 60, 90, 120, 180, 240];
-
 pub const BACKGROUNDS: [(&str, &str); 9] = [
     ("slate", "Slate"),
     ("midnight", "Midnight"),

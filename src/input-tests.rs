@@ -164,7 +164,6 @@ impl Harness {
                         Target::App(app) | Target::Input(app) | Target::InputPick(app) => {
                             assert_eq!(app, &id)
                         }
-                        Target::ControlRow(3) => assert_eq!(id, "com.palm.app.settings"),
                         Target::Switch(_) => {}
                         other => panic!("{what} launched {id} from {other:?}"),
                     }
@@ -208,19 +207,6 @@ impl Harness {
                     let next = self.state.uninstalled(&id, result);
                     self.state.queued.extend(next);
                 }
-                Effect::ReadControls => {
-                    // The TV answers, or (now and then) never does.
-                    if self.random.chance(80) {
-                        self.state.tv_controls = Some(crate::model::TvControls {
-                            sleep_minutes: 0,
-                            picture: Some(crate::model::Choice {
-                                current: "normal".into(),
-                                options: vec!["vivid".into(), "normal".into(), "cinema".into()],
-                            }),
-                            sound: None,
-                        });
-                    }
-                }
                 Effect::TvHome(_) => {
                     self.state.tv_home_busy = false;
                     self.state.tv_home = Some(self.random.chance(50));
@@ -229,8 +215,7 @@ impl Harness {
                 | Effect::Close(_)
                 | Effect::Quit
                 | Effect::Weather(_)
-                | Effect::ClockFormat(_)
-                | Effect::SetControl(_) => {}
+                | Effect::ClockFormat(_) => {}
             }
         }
         if self.state.moving.is_none() {
