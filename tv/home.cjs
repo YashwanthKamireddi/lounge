@@ -519,6 +519,44 @@ function boot() {
     system.pause(2);
   }
   apply(settings, false);
+  homeAfterBoot();
+}
+
+// A cold boot shows Home. LG's boot manager opens the last input (or Live TV) and, unlike a
+// Quick Start wake, never starts Home: once it has, Home is opened over it. Only what the boot
+// manager opens is replaced; an app someone opened meanwhile stays. Bounded: 60 s at most.
+function startupScreen(app) {
+  return (
+    app === 'com.webos.app.livetv' ||
+    /^com\.webos\.app\.(hdmi\d+|externalinput\.[a-z0-9]+)$/.test(app)
+  );
+}
+
+function homeAfterBoot() {
+  for (var i = 0; i < 30; i++) {
+    var app = '';
+    try {
+      app = foreground();
+    } catch (error) {
+      // sam is busy with the boot; ask again (and say why on the last try).
+      if (i === 29) system.log(error.message);
+    }
+    if (app === HOME) return;
+    if (app && !startupScreen(app)) {
+      system.log('boot: ' + app + ' is in front; Home stays behind it');
+      return;
+    }
+    if (app) {
+      try {
+        accepted(luna('luna://com.webos.applicationManager/launch', { id: HOME }), 'Open Home');
+        system.log('boot: opened Home over ' + app);
+      } catch (error) {
+        system.log(error.message);
+      }
+      return;
+    }
+    system.pause(2);
+  }
 }
 
 function status() {

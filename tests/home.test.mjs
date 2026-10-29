@@ -325,11 +325,24 @@ test('a mount that does not take is rolled back to stock LG Home', () => {
   assert.equal(state.mounts.length, 0);
 });
 
-test('the boot apply never takes the screen from an input or app', () => {
-  const { run, state } = tv({ config: enabled, front: 'com.webos.app.hdmi2' });
+test('a cold boot opens Lounge over the input or Live TV the boot manager chose', () => {
+  for (const front of ['com.webos.app.hdmi2', 'com.webos.app.livetv']) {
+    const { run, state } = tv({ config: enabled, front });
+    run('boot');
+    assert.deepEqual(state.calls, [
+      `mount --bind ${APP_DIR}/lounge ${EXE}`,
+      'kill 1981 SIGTERM',
+      'launch com.webos.app.home',
+    ]);
+    assert.equal(state.front, 'com.webos.app.home');
+  }
+});
+
+test('a cold boot leaves an app someone opened in front', () => {
+  const { run, state } = tv({ config: enabled, front: 'netflix' });
   run('boot');
   assert.deepEqual(state.calls, [`mount --bind ${APP_DIR}/lounge ${EXE}`, 'kill 1981 SIGTERM']);
-  assert.equal(state.front, 'com.webos.app.hdmi2');
+  assert.equal(state.front, 'netflix');
 });
 
 test('the boot apply opens Lounge where LG Home was in front', () => {
