@@ -445,50 +445,58 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
-    if webos && platform::is_home() {
+    let lifecycle_sender = if webos && platform::is_home() {
         // SAFETY: as above.
         let lifecycle_type = unsafe { sdl.event()?.register_event()? };
-        let sender = sdl.event()?.event_sender();
-        let registered = platform::register_home(move |event| {
-            let _ = sender.push_event(Event::User {
-                timestamp: 0,
-                window_id: 0,
-                type_: lifecycle_type,
-                code: match event {
-                    platform::Lifecycle::Relaunch => 1,
-                    platform::Lifecycle::Close => 2,
-                },
-                data1: std::ptr::null_mut(),
-                data2: std::ptr::null_mut(),
-            });
-        });
-        match registered {
-            Ok(()) => {
-                lifecycle = Some(lifecycle_type);
-                platform::status("home lifecycle (registerApp): on");
-            }
-            Err(error) => platform::status(&format!("home lifecycle: {error}")),
-        }
-    }
+        lifecycle = Some(lifecycle_type);
+        Some((lifecycle_type, sdl.event()?.event_sender()))
+    } else {
+        None
+    };
+    // Each stream waits for the bus to take it (~15 ms each, ~75 ms together on the TV): on a
+    // worker, so the first frame does not wait for them. Their events reach the loop as SDL
+    // events whenever they start.
     if webos {
-        match platform::watch_opened(app_in_front) {
-            Ok(()) => platform::status("foreground events (opened apps): on"),
-            Err(error) => platform::status(&format!("foreground events: {error}")),
-        }
-        match platform::watch_launches(home) {
-            Ok(()) => platform::status("launch events (Home key): on"),
-            Err(error) => platform::status(&format!("launch events: {error}")),
-        }
-        match platform::watch_apps(apps_changed) {
-            Ok(()) => platform::status("app list events: on"),
-            Err(error) => platform::status(&format!("app list events: {error}")),
-        }
-        match platform::watch_running(platform.running.clone()) {
-            Ok(()) => platform::status("running events: on"),
-            Err(error) => {
-                platform::status(&format!("running events: {error}; asking on Back instead"))
+        let running = platform.running.clone();
+        std::thread::spawn(move || {
+            if let Some((lifecycle_type, sender)) = lifecycle_sender {
+                let registered = platform::register_home(move |event| {
+                    let _ = sender.push_event(Event::User {
+                        timestamp: 0,
+                        window_id: 0,
+                        type_: lifecycle_type,
+                        code: match event {
+                            platform::Lifecycle::Relaunch => 1,
+                            platform::Lifecycle::Close => 2,
+                        },
+                        data1: std::ptr::null_mut(),
+                        data2: std::ptr::null_mut(),
+                    });
+                });
+                platform::status(&match registered {
+                    Ok(()) => "home lifecycle (registerApp): on".to_owned(),
+                    Err(error) => format!("home lifecycle: {error}"),
+                });
             }
-        }
+            match platform::watch_opened(app_in_front) {
+                Ok(()) => platform::status("foreground events (opened apps): on"),
+                Err(error) => platform::status(&format!("foreground events: {error}")),
+            }
+            match platform::watch_launches(home) {
+                Ok(()) => platform::status("launch events (Home key): on"),
+                Err(error) => platform::status(&format!("launch events: {error}")),
+            }
+            match platform::watch_apps(apps_changed) {
+                Ok(()) => platform::status("app list events: on"),
+                Err(error) => platform::status(&format!("app list events: {error}")),
+            }
+            match platform::watch_running(running) {
+                Ok(()) => platform::status("running events: on"),
+                Err(error) => {
+                    platform::status(&format!("running events: {error}; asking on Back instead"))
+                }
+            }
+        });
     }
     // Developer flag: log every input event (stderr goes to /dev/null otherwise).
     let log_events = webos && std::path::Path::new("/tmp/lounge-events").exists();
