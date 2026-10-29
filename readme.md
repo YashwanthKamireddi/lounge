@@ -17,19 +17,16 @@
 
 ## Why it feels different
 
-Most LG home screens are web pages. Lounge is a native Rust + OpenGL ES program, drawn straight to
-the TV's graphics plane. Measured on an LG 65UQ801C0SB:
+Lounge is a native Rust + OpenGL ES program, drawn straight to the TV's graphics plane. It is the
+TV's real Home: power-on, the Home button and Back all land on it. Measured on an LG 65UQ801C0SB
+(webOS 7.6):
 
-|                               |                                                    |
-| ----------------------------- | -------------------------------------------------- |
-| **Cold start**                | first frame in ~0.7 s                              |
-| **Home from an app**          | back in ~0.1 s                                     |
-| **Behind YouTube or Netflix** | draws nothing, keeps ~16 MB: the app gets the TV   |
-| **Every frame**               | repaints only what changed, one pass for all glass |
-
-It is the TV's real Home: power-on, the Home button and Back all land on Lounge, the way they would
-on LG's own. Every app wears its tvOS card, shipped in the package and on screen from the first
-frame.
+|                               |                                                         |
+| ----------------------------- | ------------------------------------------------------- |
+| **Cold start**                | first frame in 0.42 s (shaders kept compiled on the TV) |
+| **Home from an app**          | back in ~0.1 s                                          |
+| **Behind YouTube or Netflix** | draws nothing, keeps ~16 MB: the app gets the TV        |
+| **Every frame**               | repaints only what changed, one pass for all glass      |
 
 <table>
   <tr>
@@ -42,9 +39,34 @@ frame.
   </tr>
 </table>
 
-Glass dock and grid · Search and Inputs above the dock (Up reaches them) · app switcher · hold OK
-to move, hide or uninstall · Light, Dark or Automatic · nine wallpapers · cover art · weather ·
-focus outline and larger names for anyone who needs them.
+### On screen
+
+- **Liquid glass throughout:** the dock, the time pill, Search and Inputs, menus, alerts and the
+  switcher are one material, lit the same way in Light, Dark or Automatic.
+- **Inputs one press away:** Up from the dock reaches Search on the left and Inputs on the right.
+  Inputs lists Live TV and every HDMI port, plugged-in ones first, and names them with LG's own
+  names (Set-Top Box, Game Console, …) so LG's menus agree.
+- **Hold OK on any app** to move, hide or uninstall it. Moving glides the others out of the way;
+  a hidden or removed app shrinks away before the gap closes.
+- **An app switcher** for what is open: OK opens, Up closes, Back returns.
+- **Search** on a letter grid: any letter within five presses, results as you type.
+- **Every app wears its card**, LG's system apps their own icons, on white or graphite to match
+  the appearance.
+- **For everyone in the room:** a focus outline and larger app names, one switch each; reduced
+  motion; weather beside the time.
+
+### Underneath
+
+- **Push, never poll:** app installs, plugged-in devices, open apps and the Home key arrive as
+  events from webOS. Nothing wakes up on a timer.
+- **Out of the way:** behind an app Lounge frees its textures and sleeps. An update installed
+  while you watch takes effect at the next Home press, never over the app.
+- **Ready for bad days:** an app that never reached the screen is restarted rather than signalled
+  again; an app slow to open says so; a TV without the time yet shows no wrong date.
+- **Safe as Home:** a bind mount and one Homebrew Channel hook, nothing written to LG's firmware.
+  Three failed starts in a minute hand Home back to LG by themselves.
+- **Tested hard:** 150+ unit tests, a 16 000-press randomised remote test, and native smoke tests of
+  rendering, navigation, weather and every bundled logo on each change.
 
 ## Install
 

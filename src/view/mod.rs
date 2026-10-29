@@ -43,7 +43,9 @@ const GRID_PITCH: f32 = HOME_TILE_PITCH;
 // 324x194 at r39; focused it grows 1.14x, staying clear of its neighbours
 // (the 30 px gap).
 const TILE_RADIUS: f32 = 39.;
-const FOCUS_SCALE: f32 = 0.14;
+/// How much a focused tile grows: enough to read as selected, small enough that it stays a card
+/// of the same family and, in the first column, inside the dock's 16 px padding.
+const FOCUS_SCALE: f32 = 0.09;
 const DOCK_RADIUS: f32 = 72.;
 const LABEL_GAP: f32 = 26.;
 /// Settings' backdrop: the blurred wallpaper at this brightness (home's is
