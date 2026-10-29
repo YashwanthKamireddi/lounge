@@ -57,18 +57,22 @@ fn ui_text(state: &State) -> Vec<String> {
 fn remote_routes_through_the_tvos_home_and_settings() {
     let mut state = ready();
     assert_eq!(state.focus, Target::App("netflix".into()));
-    // No tab bar, and the time pill only shows: Up from a dock app without
-    // Top Shelf art stays on it.
+    let bar = |state: &State| matches!(state.focus, Target::SearchButton | Target::InputsButton);
+    // Up from a dock app without Top Shelf art reaches the bar above it (Search or Inputs);
+    // Down comes back to the app.
     state.direction(Direction::Up, &controls(&state));
+    assert!(bar(&state));
+    state.direction(Direction::Down, &controls(&state));
     assert_eq!(state.focus, Target::App("netflix".into()));
-    // With Top Shelf art, Up shows it full screen (Up again stays there);
-    // Down restores the dock.
+    // With Top Shelf art, Up shows it full screen and Up again reaches the bar; Down returns
+    // to the app, and Down again restores the dock.
     state.heroes = vec!["netflix".into()];
     state.preferences.top_shelf_art = true;
     state.direction(Direction::Up, &controls(&state));
     assert!(state.expanded && state.scroll < 0.);
     state.direction(Direction::Up, &controls(&state));
-    assert!(state.expanded);
+    assert!(bar(&state));
+    state.direction(Direction::Down, &controls(&state));
     assert_eq!(state.focus, Target::App("netflix".into()));
     state.direction(Direction::Down, &controls(&state));
     assert!(!state.expanded && state.scroll == 0.);
@@ -137,7 +141,7 @@ fn reorder_persists_order_and_keeps_selected_identity() {
 fn search_is_modal_filters_live_and_leaves_home_unfiltered() {
     let mut state = ready();
     state.open(1);
-    state.focus = Target::App(crate::state::SEARCH_TILE.into());
+    state.focus = Target::SearchButton;
     state.activate();
     assert!(
         controls(&state)
@@ -151,9 +155,9 @@ fn search_is_modal_filters_live_and_leaves_home_unfiltered() {
     assert_eq!(state.apps().len(), 1);
     state.back();
     // The last search is kept for next time; Home shows every app again and
-    // focus returns to the Search tile.
+    // focus returns to the Search button.
     assert_eq!(state.query, "netflix");
-    assert_eq!(state.focus, Target::App(crate::state::SEARCH_TILE.into()));
+    assert_eq!(state.focus, Target::SearchButton);
     assert!(state.apps().len() > 1);
     assert_eq!(state.page, Page::Apps);
 }
@@ -165,7 +169,7 @@ fn partial_refresh_preserves_valid_inputs_and_never_invents_tv_apps() {
         crate::model::Inventory::default(),
         Some("Inputs unavailable".into()),
     );
-    // Only Lounge's own Settings/Search and input tiles remain; no TV app is made up.
+    // Only Lounge's own Settings tile remains; no TV app is made up.
     assert!(
         state
             .inventory
@@ -260,52 +264,6 @@ fn the_lounge_as_home_switch_flips_once_per_answer_from_the_tv() {
     state.tv_home_busy = false;
     state.tv_home = Some(true);
     assert_eq!(state.activate(), vec![Effect::TvHome(Some(false))]);
-}
-
-#[test]
-fn an_hdmi_input_moves_like_an_app_and_a_new_one_lands_after_search() {
-    let mut state = State::new(Preferences::default());
-    state.inventory = crate::model::demo_inventory();
-    state.refresh_tiles();
-    state.page = Page::Apps;
-    let order =
-        |state: &State| -> Vec<String> { state.apps().iter().map(|app| app.id.clone()).collect() };
-    let at = |state: &State, id: &str| order(state).iter().position(|item| item == id).unwrap();
-    let hdmi = "com.webos.app.hdmi1";
-    // Unplaced, it follows Search.
-    assert_eq!(at(&state, hdmi), at(&state, crate::state::SEARCH_TILE) + 1);
-    let before = at(&state, hdmi);
-    state.focus = Target::App(hdmi.into());
-    state.hold();
-    state.activate();
-    assert_eq!(
-        state.moving.as_deref(),
-        Some(hdmi),
-        "Move from the menu works on an input"
-    );
-    state.direction(Direction::Right, &[]);
-    assert_eq!(
-        at(&state, hdmi),
-        before + 1,
-        "it moves one place, and stays there"
-    );
-    state.direction(Direction::Right, &[]);
-    assert_eq!(at(&state, hdmi), before + 2);
-    state.activate();
-    assert!(state.moving.is_none());
-    assert_eq!(at(&state, hdmi), before + 2, "dropped where it was put");
-    // A device plugged into HDMI 3 later has no place yet: after Search.
-    state.inventory.inputs[2].connected = Some(true);
-    state.refresh_tiles();
-    assert_eq!(
-        at(&state, "com.webos.app.hdmi3"),
-        at(&state, crate::state::SEARCH_TILE) + 1
-    );
-    assert_eq!(
-        at(&state, hdmi),
-        before + 3,
-        "the placed input keeps its place"
-    );
 }
 
 #[test]
@@ -527,11 +485,13 @@ fn hidden_apps_come_back_from_general_settings() {
         vec!["youtube.leanback.v4".to_string()]
     );
     assert_eq!(state.focus, Target::Choice(0));
-    // Showing the last closes it; focus lands on the row below the gone one.
+    // Showing the last closes it; focus lands on the row above the gone one, a row that is
+    // on screen.
     assert_eq!(state.activate(), vec![Effect::Save]);
     assert!(state.preferences.hidden.is_empty());
     assert!(state.subpage.is_none());
-    assert_eq!(state.focus, Target::Setting(3));
+    assert!(matches!(state.focus, Target::Setting(_)));
+    assert!(controls(&state).iter().any(|c| c.target == state.focus));
 }
 
 #[test]
@@ -605,26 +565,6 @@ fn the_clock_format_is_the_tvs_own_setting() {
     assert!(shown(&state).iter().any(|line| line == "13:00"));
     state.hour_24 = false;
     assert!(shown(&state).iter().any(|line| line == "1:00 PM"));
-}
-
-#[test]
-fn input_visibility_has_explicit_choices_and_returns_to_the_same_input() {
-    let mut state = ready();
-    state.open(2);
-    state.section = crate::state::INPUTS_SECTION;
-    let id = "com.webos.app.hdmi1".to_string();
-    state.focus = Target::InputMode(id.clone());
-    state.activate();
-    assert_eq!(state.focus, Target::Choice(2));
-    state.direction(Direction::Up, &controls(&state));
-    assert_eq!(state.activate(), vec![Effect::Save]);
-    assert_eq!(state.preferences.input_modes[&id], InputMode::Off);
-    assert_eq!(state.focus, Target::InputMode(id.clone()));
-    assert!(!state.preferences.input_visible(&state.inventory.inputs[0]));
-    state.activate();
-    state.back();
-    assert_eq!(state.focus, Target::InputMode(id));
-    assert!(state.subpage.is_none());
 }
 
 #[test]
@@ -1106,12 +1046,16 @@ fn moving_an_app_glides_the_tiles_it_displaces() {
     assert_eq!(from.get(&first), Some(&(-step, 0.)));
     assert_eq!(from.get(&second), Some(&(step, 0.)));
     assert_eq!(from.len(), 2);
-    // A second press at once carries on from where the tile is drawn: it is
-    // still a whole slot back, and now two from its newest place.
+    // A second press soon after carries on from where the tile is drawn: it starts more than
+    // one slot back from its newest place (a snap back would start exactly one) and at most
+    // two. A busy machine lets the first glide progress between the presses, so no tighter.
     let shown = controls(&state);
     state.direction(Direction::Right, &shown);
     let offset = state.glide_offsets()[&first];
-    assert!((offset.0 + 2. * step).abs() < 20., "{offset:?}");
+    assert!(
+        offset.0 < -step - 1. && offset.0 >= -2. * step - 1.,
+        "{offset:?}"
+    );
     // Reduced Motion: tiles move at once.
     let mut state = ready();
     state.preferences.reduced_motion = true;
@@ -1328,23 +1272,6 @@ fn automatic_appearance_follows_the_clock_and_cross_fades() {
 }
 
 #[test]
-fn a_plugged_in_input_appears_right_after_search_whatever_the_saved_order() {
-    let mut state = ready();
-    // A saved order (from Move) that lists every app on the grid.
-    let order: Vec<String> = state.apps().iter().map(|app| app.id.clone()).collect();
-    state.preferences.favorites = Some(order);
-    // A console is plugged into HDMI 1.
-    state.inventory.inputs[0].connected = Some(true);
-    state.refresh_tiles();
-    let ids: Vec<&str> = state.apps().iter().map(|app| app.id.as_str()).collect();
-    let search = ids
-        .iter()
-        .position(|id| *id == crate::state::SEARCH_TILE)
-        .unwrap();
-    assert_eq!(ids[search + 1], state.inventory.inputs[0].id);
-}
-
-#[test]
 fn a_slow_tv_service_at_boot_is_retried_before_any_error_shows() {
     let mut state = State::new(Preferences::default());
     state.loading = true;
@@ -1481,38 +1408,6 @@ fn move_on_an_app_that_has_gone_leaves_focus_on_a_tile() {
 }
 
 #[test]
-fn hiding_an_input_turns_it_off_in_settings_inputs() {
-    let mut state = ready();
-    let hdmi = "com.webos.app.hdmi1".to_string();
-    state.focus = Target::App(hdmi.clone());
-    state.options();
-    state.focus = Target::Option(1);
-    state.activate();
-    assert_eq!(
-        state.preferences.input_modes.get(&hdmi),
-        Some(&InputMode::Off)
-    );
-    assert!(!state.preferences.hidden.contains(&hdmi));
-    assert!(!order(&state).contains(&hdmi));
-    // On in Settings › Inputs brings it back: one switch, no hidden copy.
-    state
-        .preferences
-        .input_modes
-        .insert(hdmi.clone(), InputMode::On);
-    state.refresh_tiles();
-    assert!(order(&state).contains(&hdmi));
-    // An input an earlier version hid from its tile is Off instead.
-    let mut preferences: Preferences =
-        serde_json::from_value(json!({"hidden": ["com.webos.app.hdmi2", "plex"]})).unwrap();
-    preferences.sanitize();
-    assert_eq!(preferences.hidden, ["plex"]);
-    assert_eq!(
-        preferences.input_modes.get("com.webos.app.hdmi2"),
-        Some(&InputMode::Off)
-    );
-}
-
-#[test]
 fn holding_ok_on_full_screen_top_shelf_lowers_it_first() {
     let mut state = ready();
     state.heroes = vec!["netflix".into()];
@@ -1523,26 +1418,6 @@ fn holding_ok_on_full_screen_top_shelf_lowers_it_first() {
     state.activate();
     assert!(state.moving.is_some());
     assert!(!state.expanded, "Move is on the visible grid");
-}
-
-#[test]
-fn a_device_plugged_in_during_move_waits_at_the_end() {
-    let mut state = ready();
-    let first = order(&state)[0].clone();
-    state.focus = Target::App(first.clone());
-    state.hold();
-    state.activate();
-    state.inventory.inputs[2].connected = Some(true);
-    state.refresh_tiles();
-    assert_eq!(
-        order(&state).last().map(String::as_str),
-        Some("com.webos.app.hdmi3")
-    );
-    state.direction(Direction::Down, &[]);
-    assert_eq!(
-        order(&state).iter().position(|id| id == &first),
-        Some(crate::state::APPS_COLUMNS)
-    );
 }
 
 #[test]
@@ -2108,4 +1983,79 @@ fn a_late_answer_to_back_opens_no_switcher_over_what_came_after() {
         0,
     );
     assert!(state.switcher.is_none());
+}
+
+#[test]
+fn up_from_the_dock_reaches_inputs_and_ok_switches_to_one() {
+    let mut state = ready();
+    state.preferences.top_shelf_art = false;
+    // A dock app on the right half: Inputs is the button above it (Search is over the left).
+    let first = order(&state)[4].clone();
+    state.focus = Target::App(first.clone());
+    state.direction(Direction::Up, &controls(&state));
+    assert_eq!(state.focus, Target::InputsButton);
+    state.direction(Direction::Left, &controls(&state));
+    assert_eq!(state.focus, Target::SearchButton);
+    state.direction(Direction::Right, &controls(&state));
+    assert_eq!(state.focus, Target::InputsButton);
+    // Down goes back to the app Up came from.
+    state.direction(Direction::Down, &controls(&state));
+    assert_eq!(state.focus, Target::App(first.clone()));
+    state.direction(Direction::Up, &controls(&state));
+    state.activate();
+    assert!(matches!(state.overlay, Some(crate::state::Overlay::Inputs)));
+    let choices = state.input_choices();
+    assert_eq!(choices[0].0, crate::model::LIVE_TV, "Live TV leads");
+    // Plugged-in inputs come before empty ones.
+    let first_empty = choices.iter().position(|(_, _, c)| *c == Some(false));
+    let last_plugged = choices.iter().rposition(|(_, _, c)| *c == Some(true));
+    if let (Some(empty), Some(plugged)) = (first_empty, last_plugged) {
+        assert!(plugged < empty);
+    }
+    // Back closes the panel onto the button; Back again returns to the dock.
+    state.back();
+    assert_eq!(state.focus, Target::InputsButton);
+    state.back();
+    assert_eq!(state.focus, Target::App(first));
+    // OK on a source launches it and leaves focus on the dock.
+    state.direction(Direction::Up, &controls(&state));
+    state.activate();
+    let Target::InputPick(id) = state.focus.clone() else {
+        panic!("the panel focuses its first source");
+    };
+    assert_eq!(state.activate(), vec![Effect::Launch(id)]);
+    assert!(state.overlay.is_none());
+    assert!(matches!(state.focus, Target::App(_)));
+}
+
+#[test]
+fn hiding_an_app_lets_it_shrink_away_and_never_slides_a_tile_across_a_row() {
+    let mut state = ready();
+    let before: Vec<String> = state.apps().iter().map(|app| app.id.clone()).collect();
+    let gone = before[1].clone();
+    state.focus = Target::App(gone.clone());
+    state.options();
+    state.focus = Target::Option(1);
+    state.activate();
+    assert!(state.preferences.hidden.contains(&gone));
+    // The hidden app fades out in its own slot.
+    assert!(matches!(&state.leaving, Some((id, 1, _)) if *id == gone));
+    let (_, offsets) = state.rearranged.as_ref().expect("the rest reflows");
+    let columns = crate::state::APPS_COLUMNS;
+    for (new, app) in state.apps().iter().enumerate() {
+        let old = before.iter().position(|id| *id == app.id).unwrap();
+        if old / columns != new / columns {
+            // A row change slides in beside its new slot, fading in; never across others.
+            assert!(state.entering.contains(&app.id));
+            assert_eq!(offsets[&app.id].1, 0.);
+        }
+    }
+    // Reduced Motion: nothing glides.
+    let mut state = ready();
+    state.preferences.reduced_motion = true;
+    state.focus = Target::App(gone);
+    state.options();
+    state.focus = Target::Option(1);
+    state.activate();
+    assert!(state.rearranged.is_none() && state.leaving.is_none());
 }

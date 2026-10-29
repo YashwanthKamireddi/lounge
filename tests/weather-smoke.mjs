@@ -230,7 +230,7 @@ try {
   );
   const latest = await scenario(
     'latest-search',
-    `${locationPage},type:slow,back,enter,click:900:197,click:1770:294,type:Paris,back,enter,await-search,down,enter`,
+    `${locationPage},type:slow,back,enter,click:900:197,click:548:838,type:Paris,back,enter,await-search,down,enter`,
   );
   assert.equal(latest.preferences.weather_location.name, 'Paris');
   assert.ok(latest.weather.results.length === 0);

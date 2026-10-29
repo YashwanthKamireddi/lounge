@@ -26,7 +26,7 @@ use crate::{
 };
 use glass::{shelf_art, shelf_dissolve};
 use home::{home, library};
-use overlays::{footer, header, keyboard, move_hint, options, toast};
+use overlays::{footer, header, inputs_panel, keyboard, move_hint, options, toast};
 use settings::settings;
 use shared::{c, detail_style};
 use std::{
@@ -473,7 +473,10 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         out.fade(start, 1. - gone, 1.);
     }
     if let Some(
-        overlay @ (Overlay::Options { .. } | Overlay::Keyboard | Overlay::Uninstall { .. }),
+        overlay @ (Overlay::Options { .. }
+        | Overlay::Keyboard
+        | Overlay::Uninstall { .. }
+        | Overlay::Inputs),
     ) = &state.overlay
     {
         // A context menu opens beside the tile it acts on, as on tvOS.
@@ -505,6 +508,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
                 out.search = Some(panel..out.draw.len());
             }
             Overlay::Uninstall { id, .. } => alert::uninstall(&mut out, state, assets, id),
+            Overlay::Inputs => inputs_panel(&mut out, state, assets),
             Overlay::SystemKeyboard => {}
         }
         if opening.is_some() {

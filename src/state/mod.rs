@@ -10,14 +10,13 @@ mod switcher;
 mod text;
 
 use crate::i18n;
-use crate::model::{App, Appearance, BACKGROUNDS, InputMode, Inventory, Preferences};
+use crate::model::{App, Appearance, BACKGROUNDS, Inventory, Preferences};
 use crate::weather::{self, Unit};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
 pub const WEATHER_SECTION: usize = 2;
-pub const INPUTS_SECTION: usize = 3;
-pub const SECTION_COUNT: usize = 4;
+pub const SECTION_COUNT: usize = 3;
 pub const APPS_COLUMNS: usize = 5;
 pub const HOME_STRIP_LEFT: f32 = 84.;
 pub const HOME_STRIP_RIGHT: f32 = 1836.;
@@ -92,7 +91,6 @@ pub enum Target {
     Sidebar(usize),
     Setting(usize),
     Background(usize),
-    InputMode(String),
     Choice(usize),
     Retry,
     DismissNotice,
@@ -108,6 +106,12 @@ pub enum Target {
     WeatherResult(usize),
     /// An alert's buttons, top to bottom (the action, then Cancel).
     Alert(usize),
+    /// The labelled Inputs button beside the time pill (Up from the dock's right half).
+    InputsButton,
+    /// The labelled Search button at the top left (Up from the dock's left half).
+    SearchButton,
+    /// A source in the Inputs panel: Live TV or an input, by app id.
+    InputPick(String),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -153,12 +157,13 @@ pub enum Overlay {
         id: String,
         restore: Target,
     },
+    /// The sources under the Inputs button: Live TV and every input not switched Off.
+    Inputs,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Subpage {
     Clock,
-    Input(String),
     WeatherLocation,
     Temperature,
     Hidden,
@@ -295,6 +300,11 @@ pub struct State {
     /// from its new slot then (pixels). The offsets ease to nothing, so every
     /// tile glides from exactly where it was on screen, even mid-glide.
     pub rearranged: Option<(Instant, Glide)>,
+    /// Tiles that changed rows in the last reflow: they fade in as they glide (see `glide_from`).
+    pub entering: Vec<String>,
+    /// An app that just left the grid (hidden, uninstalled): it shrinks and fades out in its
+    /// old slot, by index, from this moment.
+    pub leaving: Option<(String, usize, Instant)>,
     /// Move changed the home order and it is not on disk yet (it is saved
     /// once Move ends).
     pub unsaved_order: bool,
@@ -308,6 +318,8 @@ pub struct State {
     pub settings_previous: (u8, usize),
     /// The context menu just closed (for which app, when): it fades away.
     pub options_closed: Option<(String, Instant)>,
+    /// The dock app Up left for the Search or Inputs button: Down and Back go back to it.
+    pub bar_return: Option<Target>,
     /// Search just closed: its page fades off the home.
     pub search_closed: Option<Instant>,
     /// That page as it was last drawn, fading out.
@@ -345,6 +357,8 @@ pub struct State {
 /// tvOS-style app switcher over Home: open apps as large cards.
 /// How long tiles take to glide to their new slots in Move mode, in ms.
 /// Each gliding tile's offset from its slot, in pixels, by app.
+/// How long an app that leaves the grid takes to shrink and fade out of its slot.
+pub const LEAVE_MS: f32 = 200.;
 pub type Glide = std::collections::HashMap<String, (f32, f32)>;
 /// Automatic inventory retries before the error shows (with LG's 6.5 s
 /// request timeout, about 50 s in all).
@@ -438,12 +452,15 @@ impl State {
             switcher: None,
             settings_since: None,
             rearranged: None,
+            entering: Vec::new(),
+            leaving: None,
             unsaved_order: false,
             settings_ghost: None,
             page_ghost: None,
             settings_previous: (0, 0),
             settings_level: (0, 0),
             options_closed: None,
+            bar_return: None,
             search_closed: None,
             search_ghost: None,
             expanded: false,
@@ -550,6 +567,13 @@ impl State {
         if let Some((at, _)) = &self.rearranged {
             if crate::clock::since(at).as_secs_f32() * 1000. >= REARRANGE_MS {
                 self.rearranged = None;
+                self.entering.clear();
+            }
+            self.dirty = true;
+        }
+        if let Some((_, _, at)) = &self.leaving {
+            if crate::clock::since(at).as_secs_f32() * 1000. >= LEAVE_MS {
+                self.leaving = None;
             }
             self.dirty = true;
         }
@@ -673,6 +697,7 @@ impl State {
             || self.shelf_pending.is_some()
             || self.settings_since.is_some()
             || self.rearranged.is_some()
+            || self.leaving.is_some()
             || (self.moving.is_some() && self.move_raise() < 1.)
             || self.avatar_from.is_some()
             || self.appearance_from.is_some()
@@ -879,19 +904,11 @@ impl State {
             icon: None,
             removable: false,
         };
-        let mut tiles = vec![
-            tile(SETTINGS_TILE, i18n::t("settings"), "lounge-settings"),
-            tile(SEARCH_TILE, i18n::t("search"), "lounge-search"),
-        ];
-        for input in &self.inventory.inputs {
-            if self.preferences.input_visible(input)
-                && !self.inventory.apps.iter().any(|app| app.id == input.id)
-            {
-                // The name the owner gave the input on the TV, else its port.
-                tiles.push(tile(&input.id, &input.title, "lounge-input"));
-            }
-        }
-        self.inventory.apps.extend(tiles);
+        // Search and the inputs are buttons in the bar above the dock (Up reaches them), so the
+        // grid holds apps and Lounge's Settings only.
+        self.inventory
+            .apps
+            .push(tile(SETTINGS_TILE, i18n::t("settings"), "lounge-settings"));
     }
 
     pub fn reconcile_focus(&mut self) {

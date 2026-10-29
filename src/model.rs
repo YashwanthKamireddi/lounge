@@ -2,6 +2,9 @@ use crate::weather::{Location, Unit};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
+/// LG's Live TV app: the first source in the Inputs panel.
+pub const LIVE_TV: &str = "com.webos.app.livetv";
+
 pub const BACKGROUNDS: [(&str, &str); 9] = [
     ("slate", "Slate"),
     ("midnight", "Midnight"),

@@ -113,7 +113,7 @@ impl State {
                 }
                 return vec![];
             }
-            Target::App(id) if id == SEARCH_TILE => {
+            Target::SearchButton => {
                 self.open_keyboard(TextField::Apps);
                 return vec![];
             }
@@ -249,23 +249,6 @@ impl State {
                 self.preferences.background = BACKGROUNDS[index].0.into();
                 return vec![Effect::Save];
             }
-            Target::InputMode(id) => {
-                let mode = self
-                    .preferences
-                    .input_modes
-                    .get(&id)
-                    .copied()
-                    .unwrap_or_default();
-                self.subpage = Some(Subpage::Input(id));
-                if !self.preferences.reduced_motion {
-                    self.panel_started = Some(crate::clock::now());
-                }
-                self.focus = Target::Choice(match mode {
-                    InputMode::On => 0,
-                    InputMode::Off => 1,
-                    InputMode::Auto => 2,
-                });
-            }
             Target::Choice(index) => {
                 match self.subpage.clone() {
                     // The TV's own setting, not a Lounge preference: every
@@ -277,13 +260,6 @@ impl State {
                     }
                     Some(Subpage::Appearance) => {
                         self.preferences.appearance = APPEARANCES[index.min(APPEARANCES.len() - 1)];
-                    }
-                    Some(Subpage::Input(id)) => {
-                        self.preferences.input_modes.insert(
-                            id,
-                            [InputMode::On, InputMode::Off, InputMode::Auto][index.min(2)],
-                        );
-                        self.refresh_tiles();
                     }
                     Some(Subpage::Temperature) => {
                         self.preferences.temperature_unit = if index == 1 {
@@ -348,10 +324,12 @@ impl State {
                 if !self.can_uninstall(&id) {
                     return vec![];
                 }
-                // The tile goes at once, as on tvOS; focus takes the tile
-                // that moves into its place.
-                let slot = self.apps().iter().position(|app| app.id == id);
+                // The tile goes at once, as on tvOS, and the ones behind it glide into its
+                // place; focus takes the tile that moves there.
+                let before: Vec<String> = self.apps().iter().map(|app| app.id.clone()).collect();
+                let slot = before.iter().position(|item| *item == id);
                 self.uninstalling.push(id.clone());
+                self.glide_from(&before);
                 if let Some(slot) = slot {
                     let apps = self.apps();
                     self.focus = apps
@@ -362,6 +340,23 @@ impl State {
                 return vec![Effect::Uninstall(id)];
             }
             Target::Alert(_) => return self.back(),
+            Target::InputsButton => {
+                let first = self.input_choices().into_iter().next();
+                if let Some((id, ..)) = first {
+                    self.overlay = Some(Overlay::Inputs);
+                    self.focus = Target::InputPick(id);
+                    self.panel_started = (!self.preferences.reduced_motion).then(crate::clock::now);
+                    self.dirty = true;
+                }
+                return vec![];
+            }
+            Target::InputPick(id) => {
+                self.overlay = None;
+                self.panel_started = None;
+                self.leave_bar();
+                self.note_launch(&id);
+                return vec![Effect::Launch(id)];
+            }
             Target::Option(index) => {
                 let Some(Overlay::Options { id, restore }) = self.overlay.take() else {
                     return vec![];
@@ -387,16 +382,7 @@ impl State {
                     // The app went while its menu was open (uninstalled,
                     // unplugged): focus goes back to a tile, as for Hide.
                 }
-                if index == 1 && self.inventory.inputs.iter().any(|input| input.id == id) {
-                    // An input is shown or hidden in one place, Settings ›
-                    // Inputs, so hiding its tile turns it Off there (the way
-                    // to bring it back is where one would look for it).
-                    self.preferences
-                        .input_modes
-                        .insert(id.clone(), crate::model::InputMode::Off);
-                    self.refresh_tiles();
-                    self.notify(i18n::format("appHidden", &[("app", &title)]));
-                } else if index == 1 && id != SETTINGS_TILE {
+                if index == 1 && id != SETTINGS_TILE {
                     if self.preferences.hidden.contains(&id) {
                         self.preferences.hidden.retain(|item| item != &id);
                         self.notify(i18n::format("appRestored", &[("app", &title)]));
@@ -404,6 +390,7 @@ impl State {
                         self.preferences.hidden.push(id.clone());
                         self.notify(i18n::format("appHidden", &[("app", &title)]));
                     }
+                    self.glide_from(&old_ids);
                 }
                 self.focus = restore;
                 self.pointer = false;
@@ -501,6 +488,7 @@ impl State {
             }
             self.focus = match overlay {
                 Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. } => restore,
+                Overlay::Inputs => Target::InputsButton,
                 Overlay::Keyboard | Overlay::SystemKeyboard => {
                     self.search_closed = (!self.preferences.reduced_motion
                         && matches!(overlay, Overlay::Keyboard))
@@ -508,6 +496,10 @@ impl State {
                     self.keyboard_return()
                 }
             };
+            return vec![];
+        }
+        if matches!(self.focus, Target::InputsButton | Target::SearchButton) {
+            self.leave_bar();
             return vec![];
         }
         if self.page == Page::Apps && self.expanded {
@@ -536,7 +528,7 @@ impl State {
         }
         if self.page == Page::Apps && self.focus == Target::Search {
             self.query.clear();
-            self.focus = Target::App(SEARCH_TILE.into());
+            self.focus = Target::SearchButton;
             self.scroll = 0.;
             return vec![];
         }
@@ -588,5 +580,34 @@ impl State {
         self.snapshots.remove(id);
         self.reconcile_focus();
         vec![Effect::Save, Effect::Refresh]
+    }
+
+    /// What the Inputs panel lists, in order: Live TV, then every input, plugged-in ones first
+    /// (port order kept within each), as (app id, name, whether a device is plugged in).
+    pub fn input_choices(&self) -> Vec<(String, String, Option<bool>)> {
+        let live = self
+            .inventory
+            .apps
+            .iter()
+            .filter(|app| app.id == crate::model::LIVE_TV)
+            .map(|app| (app.id.clone(), app.title.clone(), None));
+        let inputs = self
+            .inventory
+            .inputs
+            .iter()
+            .map(|input| (input.id.clone(), input.title.clone(), input.connected));
+        let (plugged, rest): (Vec<_>, Vec<_>) =
+            inputs.partition(|(_, _, connected)| *connected == Some(true));
+        live.chain(plugged).chain(rest).collect()
+    }
+
+    /// From the Search or Inputs button back to the dock app Up came from.
+    pub(super) fn leave_bar(&mut self) {
+        self.focus = self
+            .bar_return
+            .take()
+            .filter(|target| matches!(target, Target::App(id) if self.apps().iter().any(|app| &app.id == id)))
+            .unwrap_or_else(|| self.first_content());
+        self.dirty = true;
     }
 }

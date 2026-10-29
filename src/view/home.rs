@@ -462,6 +462,36 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     // Move mode: a reorder glides every displaced tile (dock and grid alike)
     // from its old slot to its new one, easing out, as tvOS rearranges.
     let glide = state.glide_offsets();
+    let arrived = state
+        .rearranged
+        .as_ref()
+        .map_or(1., |(at, _)| State::glide_eased(*at));
+    if let Some((id, index, at)) = &state.leaving
+        && let Some(app) = state.inventory.apps.iter().find(|app| &app.id == id)
+    {
+        let t = (crate::clock::since(at).as_secs_f32() * 1000. / crate::state::LEAVE_MS).min(1.);
+        let gone = 1. - (1. - t).powi(3);
+        let (x, y) = slot(*index);
+        let start = out.draw.len();
+        let controls = out.controls.len();
+        tile(
+            out,
+            state,
+            assets,
+            app,
+            Rect::new(x, y, HOME_TILE_WIDTH, FACE_HEIGHT),
+            None,
+            false,
+        );
+        out.controls.truncate(controls);
+        out.scale_about(
+            start,
+            x + HOME_TILE_WIDTH / 2.,
+            y + FACE_HEIGHT / 2.,
+            1. - 0.2 * gone,
+        );
+        out.fade(start, 1. - gone, 1.);
+    }
     for (index, app) in apps.iter().enumerate() {
         let row = index / APPS_COLUMNS;
         let (mut x, mut y) = slot(index);
@@ -469,6 +499,8 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
             x += dx;
             y += dy;
         }
+        let entering = state.entering.contains(&app.id);
+        let start = out.draw.len();
         let focused = state.focus == Target::App(app.id.clone());
         tile(
             out,
@@ -479,6 +511,9 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
             (row > 0 && (state.preferences.show_names || focused)).then_some(WHITE),
             false,
         );
+        if entering {
+            out.fade(start, arrived, 1.);
+        }
     }
     shelf_chevron(out, state, assets, dock_y);
 }

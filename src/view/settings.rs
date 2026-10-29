@@ -1,11 +1,11 @@
 //! Settings: the section list and each section's page.
 use super::{
     Assets, MAIN_TOP, Scene,
-    shared::{PLATTER, c, detail_style, input_icon, input_status, row_style, shelf_style, text},
+    shared::{PLATTER, c, detail_style, row_style, shelf_style, text},
 };
 use crate::{
     i18n,
-    model::{Appearance, BACKGROUNDS, InputMode},
+    model::{Appearance, BACKGROUNDS},
     renderer::Draw,
     state::{
         APPEARANCES, AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target,
@@ -388,11 +388,10 @@ fn appearance_label(appearance: Appearance) -> (&'static str, Option<&'static st
 }
 
 /// Settings' sections and their symbols.
-const SECTIONS: [(&str, &str); 4] = [
+const SECTIONS: [(&str, &str); 3] = [
     ("interface", "settings"),
     ("background", "tv"),
     ("weather", "weather-partly-cloudy"),
-    ("inputs", "input-hdmi"),
 ];
 
 pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
@@ -408,12 +407,6 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
         (Some(Subpage::Avatar), _) => i18n::t("profilePicture"),
         (Some(Subpage::WeatherLocation), _) => i18n::t("location"),
         (Some(Subpage::Temperature), _) => i18n::t("temperature"),
-        (Some(Subpage::Input(id)), _) => state
-            .inventory
-            .inputs
-            .iter()
-            .find(|input| &input.id == id)
-            .map_or(i18n::t("inputs"), |input| input.port.as_str()),
         (None, false) => i18n::t(SECTIONS[state.section.min(SECTIONS.len() - 1)].0),
     };
     // tvOS push: the page being left slides away and fades as the new one
@@ -561,7 +554,6 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
             ),
             ("aboutBackground", ""),
             ("aboutWeather", "weather-partly-cloudy"),
-            ("aboutInputs", "input-hdmi-bold"),
         ][section],
     };
     if glyph.is_empty() {
@@ -656,31 +648,6 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 (i18n::t("hour12"), None, !state.hour_24),
                 (i18n::t("hour24"), None, state.hour_24),
             ],
-            Subpage::Input(id) => {
-                let current = state
-                    .preferences
-                    .input_modes
-                    .get(id)
-                    .copied()
-                    .unwrap_or_default();
-                vec![
-                    (
-                        i18n::t("stateOn"),
-                        Some(i18n::t("inputAlways")),
-                        current == InputMode::On,
-                    ),
-                    (
-                        i18n::t("stateOff"),
-                        Some(i18n::t("inputNever")),
-                        current == InputMode::Off,
-                    ),
-                    (
-                        i18n::t("stateAuto"),
-                        Some(i18n::t("inputWhenConnected")),
-                        current == InputMode::Auto,
-                    ),
-                ]
-            }
             Subpage::Temperature => vec![
                 (
                     i18n::t("celsius"),
@@ -959,45 +926,6 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
             }
         }
         WEATHER_SECTION => weather_settings(out, state, assets),
-        _ => {
-            for (index, input) in state.inventory.inputs.iter().enumerate() {
-                let mode = state
-                    .preferences
-                    .input_modes
-                    .get(&input.id)
-                    .copied()
-                    .unwrap_or_default();
-                row(
-                    out,
-                    state,
-                    assets,
-                    Row {
-                        target: Target::InputMode(input.id.clone()),
-                        rect: Rect::new(LIST_X, 164.8 + index as f32 * 116. - s, LIST_W, 104.),
-                        title: &input.port,
-                        icon: Some(&format!("input-{}", input_icon(input))),
-                        value: Some(i18n::t(match mode {
-                            InputMode::On => "stateOn",
-                            InputMode::Off => "stateOff",
-                            InputMode::Auto => "stateAuto",
-                        })),
-                        description: Some(&input_status(input)),
-                        selected: false,
-                        chevron: true,
-                    },
-                );
-            }
-            // No refresh row: plugging a device in or out updates the list by itself
-            // (platform::watch_inputs).
-            if state.inventory.inputs.is_empty() {
-                out.text(
-                    i18n::t("noInputs"),
-                    Rect::new(LIST_X + 24., 165. - s, LIST_W - 48., 32.),
-                    row_style(),
-                    out.theme.ink(0.72),
-                    false,
-                );
-            }
-        }
+        _ => {}
     }
 }

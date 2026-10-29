@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     i18n,
-    renderer::Draw,
+    renderer::{Draw, WHITE},
     state::{Rect, State, Target},
 };
 
@@ -68,31 +68,24 @@ fn alert(
         + PAD;
     let panel = Rect::new((1920. - WIDTH) / 2., (1080. - height) / 2., WIDTH, height);
     out.modal = Some(panel);
-    // Regular Liquid Glass, as the context menu and banners are, lifted off
-    // the dimmed screen by one soft shadow.
+    // The same clear Liquid Glass as the dock, the pills and the menu (the wallpaper, blurred,
+    // through it; white ink in both appearances), lifted off the dimmed screen by one shadow.
     out.shadow(panel, RADIUS, 60., 24., 0.45);
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    out.glass(
-        assets,
-        state.wallpaper(),
+    out.glass_over(
+        super::glass::home_backdrop(state, assets),
         panel,
         RADIUS,
-        out.theme.veil(0.72),
+        c(PLATTER, 0.34),
     );
-    out.draw.push(Draw::RoundedGradient(
-        panel,
-        RADIUS,
-        c(0xffffff, 0.1),
-        c(0xffffff, 0.02),
-    ));
     out.draw.push(Draw::Soft(None));
-    out.rim(panel, RADIUS, 0.5, 0.08);
+    out.rim(panel, RADIUS, 0.55, 0.06);
     let mut y = panel.y + PAD;
     out.text(
         title,
         Rect::new(panel.x + PAD, y, inner, title_lines * 46.),
         title_style,
-        out.theme.ink(1.),
+        WHITE,
         true,
     );
     y += title_lines * 46. + 14.;
@@ -100,7 +93,7 @@ fn alert(
         message,
         Rect::new(panel.x + PAD, y, inner, message_lines * 35.),
         message_style,
-        out.theme.ink(0.62),
+        c(0xffffff, 0.68),
         true,
     );
     y += message_lines * 35. + 44.;
@@ -124,13 +117,18 @@ fn alert(
             out.shadow(button, radius, 24., 8. * focus, 0.3 * focus);
         }
         out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-        out.shape(button, radius, out.theme.wash(0.12 * (1. - focus)));
+        // At rest a button is a lighter pane of the same glass with its rim; focused it turns
+        // white, as every focused control does.
+        out.shape(button, radius, c(0xffffff, 0.16 * (1. - focus)));
         out.shape(button, radius, c(0xffffff, 0.97 * focus));
         out.draw.push(Draw::Soft(None));
-        let ink = if destructive == Some(index) {
-            out.theme.destructive(focus)
+        out.rim(button, radius, 0.45 * (1. - focus), 0.05 * (1. - focus));
+        let ink: [f32; 4] = if destructive == Some(index) {
+            // Red that reads on the dark glass at rest, and the system red once focused.
+            let (rest, lit) = (c(0xff6961, 1.), c(0xff3b30, 1.));
+            std::array::from_fn(|i| rest[i] + (lit[i] - rest[i]) * focus)
         } else {
-            let (rest, lit) = (out.theme.ink(1.), c(PLATTER, 1.));
+            let (rest, lit) = (WHITE, c(PLATTER, 1.));
             std::array::from_fn(|i| rest[i] + (lit[i] - rest[i]) * focus)
         };
         out.text(

@@ -96,9 +96,9 @@ try {
   assert.deepEqual(saved.preferences.favorites.slice(0, 2), ['youtube.leanback.v4', 'netflix']);
   const clock = await scenario('clock', 'settings,click:1300:200,click:1300:284');
   assert.equal(clock.subpage, 'Clock');
-  const input = await scenario('inputs', 'settings,down,down,down,enter,enter,up,enter');
-  assert.equal(input.preferences.input_modes['com.webos.app.hdmi1'], 'Off');
-  assert.equal(input.subpage, null);
+  // Up from the dock's right half reaches Inputs; OK opens its panel on Live TV.
+  const input = await scenario('inputs', 'apps,right,right,right,right,up,enter');
+  assert.deepEqual(input.focus, { InputPick: 'com.webos.app.livetv' });
   const closed = await scenario('dialog-closed', 'apps,down,menu,click:100:900');
   assert.equal(closed.modal, false);
   assert.deepEqual(closed.focus, { App: 'com.webos.app.livetv' });

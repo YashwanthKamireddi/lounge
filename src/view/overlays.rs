@@ -61,11 +61,13 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
     // The avatar: a chosen picture, else the signed-in profile's initial.
     let avatar = state.avatar.is_some() || state.profile.is_some();
     if !set && temperature.is_none() && !avatar {
+        bar_buttons(out, state, assets, 1836.);
         return;
     }
     let width =
         40. * k + date_width + clock_width + extra + if avatar { (14. + 50.) * k } else { 0. };
     let pill = Rect::new(1836. - width, 49., width, PILL_HEIGHT);
+    bar_buttons(out, state, assets, pill.x - 16.);
     // Text, icon and avatar sit on the capsule's centre line.
     let line = |height: f32| pill.y + (pill.h - height) / 2.;
     let first = out.draw.len();
@@ -165,6 +167,196 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
         );
     }
     out.fade(first, fade, 1.);
+}
+
+/// The bar's buttons: Search at the top left and Inputs beside the time pill, glass capsules
+/// that always say what they are (an icon alone was missed by the people who most need it).
+/// Up from the dock focuses the one above that half of the screen; OK opens it.
+fn bar_buttons(out: &mut Scene, state: &State, assets: &Assets, inputs_right: f32) {
+    // A focused button is always fully there, even while the grid glides back to the top.
+    let focused = matches!(state.focus, Target::SearchButton | Target::InputsButton);
+    let shown = if focused { 1. } else { pill_shown(state) };
+    if state.page != Page::Apps || shown <= 0. {
+        return;
+    }
+    let first = out.draw.len();
+    bar_button(
+        out,
+        state,
+        assets,
+        Target::SearchButton,
+        "search",
+        i18n::t("search"),
+        |_| 84.,
+    );
+    if !state.input_choices().is_empty() {
+        bar_button(
+            out,
+            state,
+            assets,
+            Target::InputsButton,
+            "input-hdmi-bold",
+            i18n::t("inputs"),
+            |width| inputs_right - width,
+        );
+    }
+    out.fade(first, shown, 1.);
+    if shown <= 0.5 {
+        out.controls.retain(|control| {
+            !matches!(control.target, Target::SearchButton | Target::InputsButton)
+        });
+    }
+}
+
+fn bar_button(
+    out: &mut Scene,
+    state: &State,
+    assets: &Assets,
+    target: Target,
+    icon_name: &str,
+    label: &str,
+    x: impl Fn(f32) -> f32,
+) {
+    let k = PILL_SCALE;
+    let style = text(25. * k, 600, 0.);
+    let icon = 30. * k;
+    let width = 20. * k + icon + 10. * k + assets.width(label, style) + 24. * k;
+    let base = Rect::new(x(width), 49., width, PILL_HEIGHT);
+    let focus = state.focus_amount(&target);
+    let grow = 0.06 * focus;
+    let rect = Rect::new(
+        base.x - base.w * grow / 2.,
+        base.y - base.h * grow / 2.,
+        base.w * (1. + grow),
+        base.h * (1. + grow),
+    );
+    out.shadow(rect, rect.h / 2., 48., 4. + 8. * focus, 0.2 + 0.15 * focus);
+    out.glass_over(
+        home_backdrop(state, assets),
+        rect,
+        rect.h / 2.,
+        c(PLATTER, 0.34),
+    );
+    out.rim(rect, rect.h / 2., 0.55 * (1. - focus), 0.06 * (1. - focus));
+    // Focused, it turns white with dark ink, as every focused control does.
+    out.shape(rect, rect.h / 2., c(0xffffff, 0.97 * focus));
+    let (rest, lit) = (WHITE, c(PLATTER, 1.));
+    let ink: [f32; 4] = std::array::from_fn(|i| rest[i] + (lit[i] - rest[i]) * focus);
+    let line = |height: f32| rect.y + (rect.h - height) / 2.;
+    out.icon(
+        assets,
+        icon_name,
+        Rect::new(rect.x + 20. * k, line(icon), icon, icon),
+        ink,
+    );
+    out.text(
+        label,
+        Rect::new(
+            rect.x + 20. * k + icon + 10. * k,
+            line(30. * k),
+            rect.w,
+            30. * k,
+        ),
+        style,
+        ink,
+        false,
+    );
+    out.control(target, base, false);
+}
+
+/// The Inputs panel, under the time pill: Live TV, then each input, with whether a device is
+/// plugged in. The same clear liquid glass as the pill and the dock, white ink, and one white
+/// highlight gliding between rows (as the app menu's). OK switches; Back returns to the button.
+pub(super) fn inputs_panel(out: &mut Scene, state: &State, assets: &Assets) {
+    let choices = state.input_choices();
+    let (width, row_h, pad) = (560., 84., 12.);
+    let panel = Rect::new(
+        1836. - width,
+        49. + PILL_HEIGHT + 16.,
+        width,
+        pad * 2. + row_h * choices.len() as f32,
+    );
+    out.shadow(panel, 34., 48., 10., 0.28);
+    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+    out.glass_over(home_backdrop(state, assets), panel, 34., c(PLATTER, 0.34));
+    out.draw.push(Draw::Soft(None));
+    out.rim(panel, 34., 0.55, 0.06);
+    let row_rect = |index: usize| {
+        Rect::new(
+            panel.x + pad,
+            panel.y + pad + index as f32 * row_h,
+            panel.w - pad * 2.,
+            row_h,
+        )
+    };
+    // One highlight, placed where focus is on its way to (focus amounts weight the rows).
+    let focus: Vec<f32> = choices
+        .iter()
+        .map(|(id, ..)| state.focus_amount(&Target::InputPick(id.clone())))
+        .collect();
+    let total: f32 = focus.iter().sum();
+    if total > 0.01 {
+        let y = focus
+            .iter()
+            .enumerate()
+            .map(|(index, amount)| row_rect(index).y * amount)
+            .sum::<f32>()
+            / total;
+        let lit = Rect::new(panel.x + pad, y, panel.w - pad * 2., row_h);
+        out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+        out.shape(lit, 24., c(0xffffff, 0.97 * total.min(1.)));
+        out.draw.push(Draw::Soft(None));
+    }
+    for (index, (id, title, connected)) in choices.iter().enumerate() {
+        let row = row_rect(index);
+        let amount = focus[index];
+        // Nothing plugged in: still listed (it may be about to be), but quieter.
+        let rest = if *connected == Some(false) { 0.55 } else { 1. };
+        let (white, dark) = (c(0xffffff, rest), c(PLATTER, 1.));
+        let ink: [f32; 4] = std::array::from_fn(|i| white[i] + (dark[i] - white[i]) * amount);
+        let icon = if id == crate::model::LIVE_TV {
+            "tv".to_owned()
+        } else {
+            state
+                .inventory
+                .inputs
+                .iter()
+                .find(|input| &input.id == id)
+                .map_or("input-hdmi".to_owned(), |input| {
+                    format!("input-{}", super::shared::input_icon(input))
+                })
+        };
+        out.icon(
+            assets,
+            &icon,
+            Rect::new(row.x + 22., row.y + (row.h - 32.) / 2., 32., 32.),
+            ink,
+        );
+        let status =
+            connected.map(|plugged| i18n::t(if plugged { "connected" } else { "noDevice" }));
+        let title_y = if status.is_some() {
+            row.y + 12.
+        } else {
+            row.y + (row.h - 32.) / 2.
+        };
+        out.text(
+            title.as_str(),
+            Rect::new(row.x + 74., title_y, row.w - 96., 32.),
+            text(25., 600, 0.),
+            ink,
+            false,
+        );
+        if let Some(status) = status {
+            out.text(
+                status,
+                Rect::new(row.x + 74., row.y + 46., row.w - 96., 28.),
+                text(21., 500, 0.),
+                [ink[0], ink[1], ink[2], ink[3] * 0.7],
+                false,
+            );
+        }
+        out.control(Target::InputPick(id.clone()), row, false);
+    }
 }
 
 fn keycap(out: &mut Scene, label: &str, x: f32, y: f32, w: f32) {
@@ -335,13 +527,12 @@ pub(super) fn options(
 }
 
 pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
-    // tvOS search: large query, one linear keyboard row, live results below.
+    // Search: large query, a letter grid on the left, live results beside it.
     let location = state.keyboard_field == TextField::Location;
     let screen = Rect::new(0., 0., 1920., 1080.);
     out.modal = Some(screen);
-    // Apple's Linear Keyboard template: #2b2b2d, a 56pt glyph at (104,164),
-    // the Bold 57 query from x187, keys on one row, results below a rule.
-    // The light appearance's keyboard is Apple's light grey.
+    // #2b2b2d (Apple's light grey in the light appearance), a 56pt glyph at (104,164) and the
+    // Bold 57 query from x187.
     out.shape(screen, 0., out.theme.pick(c(0x2b2b2d, 1.), c(0xf2f2f7, 1.)));
     out.icon(
         assets,
@@ -380,19 +571,45 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
             assets.width(typed, query_style) + 6.
         };
     out.shape(Rect::new(caret_x, 166., 4., 54.), 2., c(0x0a84ff, 1.));
-    let pitch = 1752. / KEYS.len() as f32;
+    // A 6×6 grid of a–z and 0–9 with Space, Delete, Clear and Done beneath, as the TV apps
+    // people already know (Netflix, YouTube): any letter is at most five presses away, where
+    // tvOS's single 40-key row took up to 39. Results sit to its right.
+    let (key_w, key_h, gap) = (96., 80., 8.);
+    let (left, top) = (84., 270.);
+    let key_rect = |index: usize| -> Rect {
+        if index < 36 {
+            let (row, column) = (index / 6, index % 6);
+            Rect::new(
+                left + column as f32 * (key_w + gap),
+                top + row as f32 * (key_h + gap),
+                key_w,
+                key_h,
+            )
+        } else {
+            // Space spans three keys; Delete, Clear and Done one each.
+            let column = [0., 3., 4., 5.][index - 36];
+            let span = if index == 36 { 3. } else { 1. };
+            Rect::new(
+                left + column * (key_w + gap),
+                top + 6. * (key_h + gap),
+                span * key_w + (span - 1.) * gap,
+                key_h,
+            )
+        }
+    };
     for (index, key) in KEYS.iter().enumerate() {
-        let rect = Rect::new(84. + index as f32 * pitch, 262., pitch, 66.);
+        let rect = key_rect(index);
         let focused = state.focus == Target::Key(index);
         if focused {
-            let plate = Rect::new(rect.x - 8., rect.y - 6., rect.w + 16., rect.h + 12.);
-            out.shadow(plate, 14., 20., 12., 0.45);
-            out.shape(plate, 14., WHITE);
+            out.shadow(rect, 16., 20., 10., 0.4);
+            out.shape(rect, 16., WHITE);
+        } else {
+            out.shape(rect, 16., out.theme.wash(0.08));
         }
         let ink = if focused {
             c(PLATTER, 1.)
         } else {
-            out.theme.ink(0.62)
+            out.theme.ink(0.78)
         };
         let icon = match *key {
             "Space" => Some("space"),
@@ -405,13 +622,18 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
             out.icon(
                 assets,
                 icon,
-                Rect::new(rect.x + (rect.w - 30.) / 2., rect.y + 18., 30., 30.),
+                Rect::new(
+                    rect.x + (rect.w - 32.) / 2.,
+                    rect.y + (rect.h - 32.) / 2.,
+                    32.,
+                    32.,
+                ),
                 ink,
             );
         } else {
             out.text(
                 key.to_lowercase(),
-                Rect::new(rect.x, rect.y + 6., rect.w, 52.),
+                Rect::new(rect.x, rect.y + (rect.h - 52.) / 2., rect.w, 52.),
                 text(40., if focused { 650 } else { 500 }, 0.).leading(1.3),
                 ink,
                 true,
@@ -419,7 +641,6 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
         }
         out.control(Target::Key(index), rect, false);
     }
-    out.shape(Rect::new(80., 371., 1760., 1.), 0., out.theme.wash(0.3));
     if !location {
         // Search never offers itself as a result.
         let apps: Vec<_> = state
@@ -427,37 +648,38 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
             .into_iter()
             .filter(|app| app.id != SEARCH_TILE)
             .collect();
+        let results_x = 760.;
         if apps.is_empty() && !typed.is_empty() {
             out.text(
                 i18n::format("noMatchesHint", &[("query", typed)]),
-                Rect::new(80., 410., 1760., 32.),
+                Rect::new(results_x, 280., 1840. - results_x, 32.),
                 row_style(),
                 out.theme.ink(0.5),
                 false,
             );
             return;
         }
-        // "Top Results": two rows of four large lockups (410 wide, 450 pitch).
+        // "Top Results" beside the keys: three columns of lockups, three rows.
         out.text(
             i18n::t("topResults"),
-            Rect::new(80., 390., 1760., 38.),
+            Rect::new(results_x, 262., 1000., 38.),
             text(31., 650, 0.),
             out.theme.ink(0.55),
             false,
         );
         let ink = out.theme.ink(1.);
-        for (index, app) in apps.iter().take(8).enumerate() {
-            let (row, column) = (index / 4, index % 4);
+        for (index, app) in apps.iter().take(9).enumerate() {
+            let (row, column) = (index / 3, index % 3);
             tile(
                 out,
                 state,
                 assets,
                 app,
                 Rect::new(
-                    80. + column as f32 * 450.,
-                    486. + row as f32 * 300.,
-                    410.,
-                    231.,
+                    results_x + column as f32 * 370.,
+                    326. + row as f32 * 250.,
+                    330.,
+                    186.,
                 ),
                 Some(ink),
                 false,
@@ -481,13 +703,16 @@ pub(super) fn move_hint(out: &mut Scene, state: &State, assets: &Assets) {
         return;
     };
     let notice = i18n::t("moveHint");
-    let style = text(22., 500, 0.);
-    let width = assets.width(notice, style) + 48.;
-    let height = 44.;
+    // The bar buttons' glass and type: a capsule as tall as the time pill.
+    let k = PILL_SCALE;
+    let style = text(25. * k, 600, 0.);
+    let height = PILL_HEIGHT;
+    let width = assets.width(notice, style) + 56. * k;
     let (cx, _) = tile.center();
     // Centred on the name line, which sits LABEL_GAP under the face; the lifted face reaches
-    // ~10 px further, and the next row starts well below the line.
-    let below = tile.y + FACE_HEIGHT + LABEL_GAP;
+    // ~10 px further, and the next row starts well below the line. On the bottom row it goes
+    // above the app instead.
+    let below = tile.y + FACE_HEIGHT + LABEL_GAP - 6.;
     let y = if below + height <= 1040. {
         below
     } else {
@@ -500,26 +725,25 @@ pub(super) fn move_hint(out: &mut Scene, state: &State, assets: &Assets) {
         height,
     );
     let start = out.draw.len();
-    out.shadow(rect, height / 2., 24., 6., 0.28);
+    out.shadow(rect, height / 2., 48., 6., 0.3);
     out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    out.glass(
-        assets,
-        state.wallpaper(),
+    out.glass_over(
+        home_backdrop(state, assets),
         rect,
         height / 2.,
-        out.theme.veil(0.6),
+        c(PLATTER, 0.34),
     );
     out.draw.push(Draw::Soft(None));
-    out.rim(rect, height / 2., 0.5, 0.06);
+    out.rim(rect, height / 2., 0.55, 0.06);
     out.text(
         notice,
-        Rect::new(rect.x + 24., rect.y + (height - 28.) / 2., width - 48., 28.),
+        Rect::new(rect.x, rect.y + (height - 30. * k) / 2., width, 30. * k),
         style,
-        out.theme.ink(1.),
-        false,
+        WHITE,
+        true,
     );
     if !state.preferences.reduced_motion {
-        let shown = (state.move_raise()).clamp(0., 1.);
+        let shown = state.move_raise().clamp(0., 1.);
         out.fade(start, shown, 1.);
     }
 }

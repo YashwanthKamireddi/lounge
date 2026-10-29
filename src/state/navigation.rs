@@ -48,12 +48,6 @@ impl State {
                     .unwrap_or(3),
             ),
             WEATHER_SECTION => Target::WeatherToggle,
-            INPUTS_SECTION => self
-                .inventory
-                .inputs
-                .first()
-                .map(|input| Target::InputMode(input.id.clone()))
-                .unwrap_or(Target::Setting(3)),
             _ => Target::Setting(0),
         }
     }
@@ -66,11 +60,18 @@ impl State {
         self.pointer = false;
         self.focus = match self.subpage.take() {
             Some(Subpage::Clock) => Target::Setting(1),
-            Some(Subpage::Input(id)) => Target::InputMode(id),
             Some(Subpage::WeatherLocation) => Target::WeatherLocation,
             Some(Subpage::Temperature) => Target::WeatherTemperature,
-            // Its row goes once nothing is hidden; focus takes the row below.
-            Some(Subpage::Hidden) => Target::Setting(if self.hidden_count() > 0 { 7 } else { 3 }),
+            // Its row goes once nothing is hidden; focus takes the row above it.
+            Some(Subpage::Hidden) => Target::Setting(if self.hidden_count() > 0 {
+                7
+            } else if !self.heroes.is_empty() {
+                6
+            } else if self.tv_home.is_some() {
+                10
+            } else {
+                2
+            }),
             Some(Subpage::Avatar) => Target::Setting(8),
             Some(Subpage::Appearance) => Target::Setting(9),
             None => Target::Sidebar(self.section),
@@ -179,6 +180,24 @@ impl State {
             }
             return vec![];
         }
+        if self.overlay.is_none()
+            && matches!(self.focus, Target::InputsButton | Target::SearchButton)
+        {
+            // Down goes back to the dock app Up came from; Left and Right cross the bar.
+            match direction {
+                Direction::Down => self.leave_bar(),
+                Direction::Left if self.focus == Target::InputsButton => {
+                    self.focus(Target::SearchButton, controls)
+                }
+                Direction::Right
+                    if self.focus == Target::SearchButton && !self.input_choices().is_empty() =>
+                {
+                    self.focus(Target::InputsButton, controls)
+                }
+                _ => {}
+            }
+            return vec![];
+        }
         if self.overlay.is_none() {
             if self.page == Page::Home
                 && let Target::App(id) = &self.focus
@@ -274,7 +293,6 @@ impl State {
             if matches!(
                 self.focus,
                 Target::Setting(1 | 7 | 8 | 9)
-                    | Target::InputMode(_)
                     | Target::WeatherLocation
                     | Target::WeatherTemperature
             ) && matches!(direction, Direction::Right)
@@ -284,17 +302,6 @@ impl State {
             if matches!(self.focus, Target::Setting(_) | Target::WeatherToggle)
                 && matches!(direction, Direction::Right)
             {
-                return vec![];
-            }
-            if let Target::InputMode(id) = &self.focus
-                && matches!(direction, Direction::Up)
-                && self
-                    .inventory
-                    .inputs
-                    .first()
-                    .is_some_and(|input| &input.id == id)
-            {
-                self.focus(Target::Sidebar(INPUTS_SECTION), controls);
                 return vec![];
             }
             if self.focus == Target::Setting(0) && matches!(direction, Direction::Up) {
@@ -384,14 +391,25 @@ impl State {
                     // Its grid index still defines the route; reveal_focus then
                     // scrolls it into view, without letting the fixed nav steal Up.
                     let next = match direction {
-                        // tvOS: Up from the dock shows Top Shelf full screen
-                        // (Down returns); the time pill above is never focused.
-                        // Only apps with Top Shelf art go full screen: a lone
-                        // wallpaper without the dock would only confuse.
+                        // Up from the dock: Top Shelf full screen first for an app with art
+                        // (Down returns), then the Inputs button beside the time pill. Only
+                        // apps with Top Shelf art go full screen: a lone wallpaper without
+                        // the dock would only confuse.
                         Direction::Up
                             if index < APPS_COLUMNS && (self.expanded || !self.has_art(id)) =>
                         {
-                            None
+                            // The bar's button above the tile's half of the screen: Search over
+                            // the left, Inputs over the right.
+                            let x = controls
+                                .iter()
+                                .find(|control| control.target == self.focus)
+                                .map_or(0., |control| control.rect.center().0);
+                            self.bar_return = Some(self.focus.clone());
+                            Some(if x >= 960. && !self.input_choices().is_empty() {
+                                Target::InputsButton
+                            } else {
+                                Target::SearchButton
+                            })
                         }
                         Direction::Up if index < APPS_COLUMNS => {
                             self.expanded = true;

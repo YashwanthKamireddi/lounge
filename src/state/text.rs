@@ -137,7 +137,7 @@ impl State {
         if self.keyboard_field == TextField::Location {
             Target::WeatherSearch
         } else {
-            Target::App(SEARCH_TILE.into())
+            Target::SearchButton
         }
     }
 }
