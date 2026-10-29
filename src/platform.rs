@@ -311,6 +311,37 @@ pub fn watch_launches(home: Wake) -> Result<(), String> {
     )
 }
 
+/// Calls `changed` whenever webOS's list of apps changes (an install, update or removal), so the
+/// grid shows it at once instead of at the next return to Home. Push-based: no polling.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_apps(changed: Wake) -> Result<(), String> {
+    let first = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    crate::luna::subscribe(
+        "luna://com.webos.applicationManager/listApps",
+        &json!({"subscribe": true}),
+        move |reply| {
+            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                status(&format!("app list events ended: {reply}"));
+                let changed = changed.clone();
+                resubscribe("app list events", move || watch_apps(changed.clone()));
+                return;
+            }
+            // The first reply is the list as it is now, which Lounge has already read; after it
+            // only a reply naming a change (an app added, updated or removed) counts.
+            if !first.swap(false, std::sync::atomic::Ordering::Relaxed)
+                && reply.get("change").is_some()
+            {
+                changed();
+            }
+        },
+    )
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_apps(_changed: Wake) -> Result<(), String> {
+    Err("App list events need an ARM webOS build".into())
+}
+
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
 pub fn watch_launches(_home: Wake) -> Result<(), String> {
     Err("Launch events need an ARM webOS build".into())

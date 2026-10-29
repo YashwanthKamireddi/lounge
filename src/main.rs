@@ -60,6 +60,8 @@ use time::OffsetDateTime;
 
 /// How long an inventory read stays fresh before a return re-reads it.
 const INVENTORY_FRESH: Duration = Duration::from_secs(30);
+/// The code of the wake-up that says webOS's list of apps changed.
+const APPS_CHANGED: i32 = 1;
 fn main() {
     debug::debug_log();
     // stderr goes nowhere on the TV: how a run ends is kept in the status log.
@@ -412,6 +414,18 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
+    // webOS changed its list of apps (an install, update or removal): read it again now.
+    let apps_sender = sdl.event()?.event_sender();
+    let apps_changed: platform::Wake = std::sync::Arc::new(move || {
+        let _ = apps_sender.push_event(Event::User {
+            timestamp: 0,
+            window_id: 0,
+            type_: home_type,
+            code: APPS_CHANGED,
+            data1: std::ptr::null_mut(),
+            data2: std::ptr::null_mut(),
+        });
+    });
     if webos && platform::is_home() {
         // SAFETY: as above.
         let lifecycle_type = unsafe { sdl.event()?.register_event()? };
@@ -445,6 +459,10 @@ fn run() -> Result<(), String> {
         match platform::watch_launches(home) {
             Ok(()) => platform::status("launch events (Home key): on"),
             Err(error) => platform::status(&format!("launch events: {error}")),
+        }
+        match platform::watch_apps(apps_changed) {
+            Ok(()) => platform::status("app list events: on"),
+            Err(error) => platform::status(&format!("app list events: {error}")),
         }
         match platform::watch_running(platform.running.clone()) {
             Ok(()) => platform::status("running events: on"),
@@ -820,6 +838,12 @@ impl Shell {
                     self.remote.press = None;
                     self.presence.raise();
                     self.state.dirty = true;
+                }
+            }
+            Event::User { type_, code, .. } if type_ == self.home_type && code == APPS_CHANGED => {
+                if !self.state.loading {
+                    self.last_refresh = Instant::now();
+                    pending.push(Effect::Refresh);
                 }
             }
             Event::User { type_, .. } if type_ == self.home_type => {
