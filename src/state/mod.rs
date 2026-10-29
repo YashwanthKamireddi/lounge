@@ -256,6 +256,9 @@ pub struct State {
     pub launching: bool,
     /// When the launch in progress was asked for (see `launch_busy`).
     pub launch_started: Option<Instant>,
+    /// An app asked to open that has not yet taken the screen: its name, when it was asked
+    /// for, and how much has been said about it (see `say_launch_progress`).
+    pub launch_waiting: Option<(String, Instant, u8)>,
     pub notice: Option<(String, Instant)>,
     pub error: Option<String>,
     /// Inventory loads that failed in a row while no apps were shown yet.
@@ -428,6 +431,7 @@ impl State {
             loading: false,
             launching: false,
             launch_started: None,
+            launch_waiting: None,
             notice: None,
             error: None,
             inventory_failures: 0,
@@ -525,6 +529,7 @@ impl State {
     }
 
     pub fn tick(&mut self) {
+        self.say_launch_progress();
         self.track_focus();
         self.glide_scroll();
         if let Some(switcher) = &mut self.switcher {
@@ -1004,5 +1009,43 @@ impl State {
 
     pub fn hidden_count(&self) -> usize {
         self.hidden_apps().len()
+    }
+}
+
+/// How long an app may take to appear before Lounge says it is on its way, and before it says
+/// the app is slow (most open within a second; a stalled network can take much longer).
+const LAUNCH_SAY_OPENING: Duration = Duration::from_secs(2);
+const LAUNCH_SAY_SLOW: Duration = Duration::from_secs(15);
+
+impl State {
+    /// While an app is on its way and Lounge is still what the TV shows, say so: "Opening
+    /// YouTube…" after two seconds, and after fifteen that it is taking a while. A press that
+    /// seems to do nothing is pressed again, and again.
+    fn say_launch_progress(&mut self) {
+        let Some((title, at, said)) = &mut self.launch_waiting else {
+            return;
+        };
+        let waited = crate::clock::since(at);
+        let message = if *said == 0 && waited >= LAUNCH_SAY_OPENING {
+            *said = 1;
+            i18n::format("appOpening", &[("app", title)])
+        } else if *said == 1 && waited >= LAUNCH_SAY_SLOW {
+            *said = 2;
+            i18n::format("appSlow", &[("app", title)])
+        } else {
+            return;
+        };
+        self.notify(message);
+    }
+
+    /// The app took the screen (or Lounge left it): nothing more to say about the launch.
+    pub fn launch_arrived(&mut self) {
+        if self
+            .launch_waiting
+            .take()
+            .is_some_and(|(_, _, said)| said > 0)
+        {
+            self.notice = None;
+        }
     }
 }

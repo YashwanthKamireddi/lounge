@@ -53,6 +53,13 @@ pub(crate) fn effects(
                 if platform.webos {
                     state.launching = true;
                     state.launch_started = Some(crate::clock::now());
+                    let title = state
+                        .inventory
+                        .apps
+                        .iter()
+                        .find(|a| a.id == id)
+                        .map_or(id.clone(), |app| app.title.clone());
+                    state.launch_waiting = Some((title, crate::clock::now(), 0));
                     platform.send(Request::Launch(id));
                 } else {
                     let title = state

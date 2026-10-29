@@ -119,10 +119,19 @@ impl Replies {
                 match result {
                     Err(error) => {
                         eprintln!("{error}");
+                        state.launch_waiting = None;
                         state.notify(i18n::t("appOpenError"));
                     }
                     Ok(()) => {
-                        state.notice = None;
+                        // webOS took the request; the app may still be on its way, and then
+                        // "Opening …" stays until it arrives (State::launch_arrived).
+                        if state
+                            .launch_waiting
+                            .as_ref()
+                            .is_none_or(|(_, _, said)| *said == 0)
+                        {
+                            state.notice = None;
+                        }
                         state.dirty = true;
                     }
                 }

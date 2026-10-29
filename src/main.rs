@@ -875,6 +875,7 @@ impl Shell {
                 }
             }
             Event::User { type_, code, .. } if type_ == self.home_type && code == APP_IN_FRONT => {
+                self.state.launch_arrived();
                 if self.app_covers() {
                     self.leave_for_update();
                 }
@@ -913,6 +914,7 @@ impl Shell {
             } if window_id == self.window.id() => match win_event {
                 WindowEvent::Hidden | WindowEvent::Minimized => {
                     self.presence.hide();
+                    self.state.launch_arrived();
                     save_order(&mut self.state, &self.writer);
                     self.leave_for_update();
                     release_memory(&mut self.renderer, &mut self.preload);
@@ -924,6 +926,9 @@ impl Shell {
                 }
                 WindowEvent::FocusLost => {
                     self.remote.press = None;
+                    if self.state.launching {
+                        self.state.launch_arrived();
+                    }
                     self.presence.leave(self.state.launching);
                     if self.state.launching {
                         release_memory(&mut self.renderer, &mut self.preload);

@@ -2059,3 +2059,35 @@ fn hiding_an_app_lets_it_shrink_away_and_never_slides_a_tile_across_a_row() {
     state.activate();
     assert!(state.rearranged.is_none() && state.leaving.is_none());
 }
+
+#[test]
+fn a_slow_launch_says_it_is_on_its_way_then_that_it_is_slow() {
+    use std::time::Duration;
+    let mut state = ready();
+    let asked = crate::clock::now() - Duration::from_secs(3);
+    state.launch_waiting = Some(("YouTube".into(), asked, 0));
+    state.tick();
+    assert_eq!(state.notice.as_ref().unwrap().0, "Opening YouTube…");
+    // Fifteen seconds on and still not there: say so, once.
+    state.launch_waiting = Some(("YouTube".into(), asked - Duration::from_secs(13), 1));
+    state.tick();
+    assert!(
+        state
+            .notice
+            .as_ref()
+            .unwrap()
+            .0
+            .starts_with("YouTube is taking a while")
+    );
+    state.notice = None;
+    state.tick();
+    assert!(state.notice.is_none());
+    // The app took the screen: the message goes with it.
+    state.notify("Opening YouTube…");
+    state.launch_arrived();
+    assert!(state.notice.is_none() && state.launch_waiting.is_none());
+    // A quick launch says nothing at all.
+    state.launch_waiting = Some(("YouTube".into(), crate::clock::now(), 0));
+    state.tick();
+    assert!(state.notice.is_none());
+}

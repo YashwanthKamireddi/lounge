@@ -132,5 +132,7 @@
   "appearanceAuto": "Automatic",
   "appearanceAutoDetail": "Light by day, dark from 7 PM to 6 AM",
   "aboutHidden": "Hidden from Home. Select one to bring it back.",
-  "switcherHint": "OK opens  ·  Up closes  ·  Back returns to Home"
+  "switcherHint": "OK opens  ·  Up closes  ·  Back returns to Home",
+  "appOpening": "Opening {app}…",
+  "appSlow": "{app} is taking a while to open. Check the internet connection, or press Home and try again."
 }
