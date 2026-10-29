@@ -185,12 +185,12 @@ fn weather_tick(state: &mut State, service: &weather_service::Service, visible: 
 /// Lounge's start as the TV's Home, or a normal start that opens that Home instead. Some(result)
 /// ends this run before any window exists.
 /// As Home: mounts the updated executable in LG Home's place and becomes it (the same
-/// process, so webOS sees nothing change). Returns only if that failed.
-fn restart_updated_home(before: impl FnOnce()) {
+/// process, so webOS sees nothing change). Only at start, before a window or LS2 connection
+/// exists. Returns only if that failed.
+fn restart_updated_home() {
     match platform::refresh_home_mount() {
         Ok(()) => {
             use std::os::unix::process::CommandExt;
-            before();
             platform::status("home: a package update replaced Lounge; starting the new one");
             let error = std::process::Command::new(platform::LG_HOME_EXE)
                 .args(std::env::args_os().skip(1))
@@ -214,7 +214,7 @@ fn home_start(options: &Options) -> Option<Result<(), String>> {
     // A package update replaced the executable the mount holds: mount the new one and start
     // again from it, once (the same process, so webOS sees nothing change).
     if platform::home_mount_stale() && std::env::var_os("LOUNGE_HOME_RESTARTED").is_none() {
-        restart_updated_home(|| {});
+        restart_updated_home();
     }
     if crash_guard::begin(std::path::Path::new(crash_guard::HOME_MARKER)) {
         platform::status("home: started 3 times in a minute without coming up; LG Home is back");
@@ -875,11 +875,23 @@ impl Shell {
                 WindowEvent::Hidden | WindowEvent::Minimized => {
                     self.presence.hide();
                     save_order(&mut self.state, &self.writer);
-                    // Resident as Home, an update only takes effect on a restart: behind
-                    // the app, where nobody sees it, Lounge becomes the new version.
+                    // Resident as Home, an update only takes effect on a restart. Behind the
+                    // app Lounge mounts the new version and exits, and the next Home press
+                    // starts it. Restarting in place instead brought the new window over the
+                    // app, and the old LS2 connection, kept across exec, held Home's service
+                    // name so the lifecycle registration failed (seen 2026-10-29).
                     if platform::is_home() && platform::executable_replaced() {
-                        // Settings still queued are written first.
-                        restart_updated_home(|| self.writer.finish());
+                        match platform::refresh_home_mount() {
+                            Ok(()) => {
+                                platform::status(
+                                    "home: a package update replaced Lounge; it starts on the next Home press",
+                                );
+                                self.running = false;
+                            }
+                            Err(error) => platform::status(&format!(
+                                "home: renewing the mount failed: {error}"
+                            )),
+                        }
                     }
                     release_memory(&mut self.renderer, &mut self.preload);
                     self.remote.press = None;
