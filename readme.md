@@ -37,6 +37,10 @@ TV's real Home: power-on, the Home button and Back all land on it. Measured on a
     <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app shows Move, Hide and Uninstall as glass pills under it"></td>
     <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings › General in the Light appearance"></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="docs/readme/grid.jpg" alt="Every app in a grid under the dock, each wearing its card"></td>
+    <td width="50%"><img src="docs/readme/search.jpg" alt="Search: a letter grid with results as you type"></td>
+  </tr>
 </table>
 
 ### On screen

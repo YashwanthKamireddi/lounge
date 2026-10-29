@@ -492,7 +492,22 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
         );
         out.fade(start, 1. - gone, 1.);
     }
-    for (index, app) in apps.iter().enumerate() {
+    // The lifted tile (the app in hand during Move, else the focused one) is drawn last, so it
+    // passes over its neighbours as it glides and grows instead of under them.
+    let lifted = state.moving.clone().or_else(|| match &state.focus {
+        Target::App(id) => Some(id.clone()),
+        _ => None,
+    });
+    let order = apps
+        .iter()
+        .enumerate()
+        .filter(|(_, app)| Some(&app.id) != lifted.as_ref())
+        .chain(
+            apps.iter()
+                .enumerate()
+                .filter(|(_, app)| Some(&app.id) == lifted.as_ref()),
+        );
+    for (index, app) in order {
         let row = index / APPS_COLUMNS;
         let (mut x, mut y) = slot(index);
         if let Some((dx, dy)) = glide.get(&app.id) {
