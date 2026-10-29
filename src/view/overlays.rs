@@ -174,7 +174,10 @@ pub(super) fn header(out: &mut Scene, state: &State, assets: &Assets, now: Offse
 /// Up from the dock focuses the one above that half of the screen; OK opens it.
 fn bar_buttons(out: &mut Scene, state: &State, assets: &Assets, inputs_right: f32) {
     // A focused button is always fully there, even while the grid glides back to the top.
-    let focused = matches!(state.focus, Target::SearchButton | Target::InputsButton);
+    let focused = matches!(
+        state.focus,
+        Target::SearchButton | Target::InputsButton | Target::ControlsButton
+    );
     let shown = if focused { 1. } else { pill_shown(state) };
     if state.page != Page::Apps || shown <= 0. {
         return;
@@ -188,6 +191,25 @@ fn bar_buttons(out: &mut Scene, state: &State, assets: &Assets, inputs_right: f3
         "search",
         i18n::t("search"),
         |_| 84.,
+    );
+    // Controls sits left of Inputs (or of the time, with no inputs to show).
+    let controls_right = if state.input_choices().is_empty() {
+        inputs_right
+    } else {
+        let k = PILL_SCALE;
+        let style = text(25. * k, 600, 0.);
+        inputs_right
+            - (20. * k + 30. * k + 10. * k + assets.width(i18n::t("inputs"), style) + 24. * k)
+            - 16.
+    };
+    bar_button(
+        out,
+        state,
+        assets,
+        Target::ControlsButton,
+        "sliders",
+        i18n::t("controls"),
+        |width| controls_right - width,
     );
     if !state.input_choices().is_empty() {
         bar_button(
@@ -203,7 +225,10 @@ fn bar_buttons(out: &mut Scene, state: &State, assets: &Assets, inputs_right: f3
     out.fade(first, shown, 1.);
     if shown <= 0.5 {
         out.controls.retain(|control| {
-            !matches!(control.target, Target::SearchButton | Target::InputsButton)
+            !matches!(
+                control.target,
+                Target::SearchButton | Target::InputsButton | Target::ControlsButton
+            )
         });
     }
 }
@@ -356,6 +381,151 @@ pub(super) fn inputs_panel(out: &mut Scene, state: &State, assets: &Assets) {
             );
         }
         out.control(Target::InputPick(id.clone()), row, false);
+    }
+}
+
+/// A TV setting's value as people know it from LG's own menus.
+fn mode_label(value: &str) -> String {
+    let known = match value {
+        "vivid" => "Vivid",
+        "normal" | "standard" => "Standard",
+        "eco" => "Eco",
+        "cinema" => "Cinema",
+        "sports" => "Sports",
+        "game" => "Game Optimiser",
+        "filmMaker" => "Filmmaker",
+        "expert1" => "Expert (Bright Room)",
+        "expert2" => "Expert (Dark Room)",
+        "aiPicture" | "aiPictureMode" => "AI Picture",
+        "aiSoundPlus" => "AI Sound Pro",
+        "aiSound" => "AI Sound",
+        "movie" => "Cinema",
+        "news" => "Clear Voice",
+        "music" => "Music",
+        "dtsVirtualX" => "DTS Virtual:X",
+        "bassBlast" => "Bass Boost",
+        "voiceEnhance" => "Voice Enhance",
+        "custom" => "Custom",
+        _ => "",
+    };
+    if known.is_empty() {
+        let mut label = value.to_owned();
+        if let Some(first) = label.get_mut(0..1) {
+            first.make_ascii_uppercase();
+        }
+        label
+    } else {
+        known.to_owned()
+    }
+}
+
+/// The Controls panel, under the bar: the sleep timer, picture and sound modes (Left and Right
+/// change them, OK steps on) and LG's full settings. The same clear glass and gliding highlight
+/// as the Inputs panel. Until the TV has answered, the rows show nothing rather than a guess.
+pub(super) fn controls_panel(out: &mut Scene, state: &State, assets: &Assets) {
+    let controls = state.tv_controls.as_ref();
+    let sleep = controls.map(|controls| {
+        if controls.sleep_minutes == 0 {
+            i18n::t("stateOff").to_owned()
+        } else {
+            i18n::format("minutes", &[("count", &controls.sleep_minutes.to_string())])
+        }
+    });
+    let picture = controls
+        .and_then(|controls| controls.picture.as_ref())
+        .map(|choice| mode_label(&choice.current));
+    let sound = controls
+        .and_then(|controls| controls.sound.as_ref())
+        .map(|choice| mode_label(&choice.current));
+    let rows: [(&str, &str, Option<String>); 4] = [
+        ("moon", i18n::t("sleepTimer"), sleep),
+        ("sparkles", i18n::t("pictureMode"), picture),
+        ("volume-bold", i18n::t("soundMode"), sound),
+        ("gear", i18n::t("allSettings"), None),
+    ];
+    let (width, row_h, pad) = (620., 84., 12.);
+    let panel = Rect::new(
+        1836. - width,
+        49. + PILL_HEIGHT + 16.,
+        width,
+        pad * 2. + row_h * rows.len() as f32,
+    );
+    out.shadow(panel, 34., 48., 10., 0.28);
+    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+    out.glass_over(home_backdrop(state, assets), panel, 34., c(PLATTER, 0.34));
+    out.draw.push(Draw::Soft(None));
+    out.rim(panel, 34., 0.55, 0.06);
+    let row_rect = |index: usize| {
+        Rect::new(
+            panel.x + pad,
+            panel.y + pad + index as f32 * row_h,
+            panel.w - pad * 2.,
+            row_h,
+        )
+    };
+    let focus: Vec<f32> = (0..rows.len())
+        .map(|index| state.focus_amount(&Target::ControlRow(index)))
+        .collect();
+    let total: f32 = focus.iter().sum();
+    if total > 0.01 {
+        let y = focus
+            .iter()
+            .enumerate()
+            .map(|(index, amount)| row_rect(index).y * amount)
+            .sum::<f32>()
+            / total;
+        out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+        out.shape(
+            Rect::new(panel.x + pad, y, panel.w - pad * 2., row_h),
+            24.,
+            c(0xffffff, 0.97 * total.min(1.)),
+        );
+        out.draw.push(Draw::Soft(None));
+    }
+    let style = text(25., 600, 0.);
+    for (index, (icon, title, value)) in rows.iter().enumerate() {
+        let row = row_rect(index);
+        let amount = focus[index];
+        let (white, dark) = (WHITE, c(PLATTER, 1.));
+        let ink: [f32; 4] = std::array::from_fn(|i| white[i] + (dark[i] - white[i]) * amount);
+        out.icon(
+            assets,
+            icon,
+            Rect::new(row.x + 22., row.y + (row.h - 30.) / 2., 30., 30.),
+            ink,
+        );
+        out.text(
+            *title,
+            Rect::new(row.x + 72., row.y + (row.h - 32.) / 2., 260., 32.),
+            style,
+            ink,
+            false,
+        );
+        if let Some(value) = value {
+            // ‹ value ›: the arrows say Left and Right change it.
+            let value_style = text(23., 500, 0.).right();
+            out.text(
+                value.as_str(),
+                Rect::new(row.x + row.w - 300., row.y + (row.h - 30.) / 2., 250., 30.),
+                value_style,
+                [ink[0], ink[1], ink[2], 0.75],
+                false,
+            );
+            out.icon(
+                assets,
+                "right",
+                Rect::new(row.x + row.w - 40., row.y + (row.h - 20.) / 2., 20., 20.),
+                [ink[0], ink[1], ink[2], 0.6],
+            );
+        } else if index == 3 {
+            out.icon(
+                assets,
+                "right",
+                Rect::new(row.x + row.w - 40., row.y + (row.h - 20.) / 2., 20., 20.),
+                [ink[0], ink[1], ink[2], 0.6],
+            );
+        }
+        out.control(Target::ControlRow(index), row, false);
     }
 }
 

@@ -1994,8 +1994,14 @@ fn up_from_the_dock_reaches_inputs_and_ok_switches_to_one() {
     state.focus = Target::App(first.clone());
     state.direction(Direction::Up, &controls(&state));
     assert_eq!(state.focus, Target::InputsButton);
+    // Left and Right walk the bar: Search, Controls, Inputs.
+    state.direction(Direction::Left, &controls(&state));
+    assert_eq!(state.focus, Target::ControlsButton);
     state.direction(Direction::Left, &controls(&state));
     assert_eq!(state.focus, Target::SearchButton);
+    state.direction(Direction::Left, &controls(&state));
+    assert_eq!(state.focus, Target::SearchButton);
+    state.direction(Direction::Right, &controls(&state));
     state.direction(Direction::Right, &controls(&state));
     assert_eq!(state.focus, Target::InputsButton);
     // Down goes back to the app Up came from.
@@ -2090,4 +2096,57 @@ fn a_slow_launch_says_it_is_on_its_way_then_that_it_is_slow() {
     state.launch_waiting = Some(("YouTube".into(), crate::clock::now(), 0));
     state.tick();
     assert!(state.notice.is_none());
+}
+
+#[test]
+fn controls_change_the_sleep_timer_picture_and_sound_at_once_and_open_all_settings() {
+    use crate::model::{Choice, ControlChange, TvControls};
+    let mut state = ready();
+    state.focus = Target::ControlsButton;
+    assert_eq!(state.activate(), vec![Effect::ReadControls]);
+    assert!(matches!(
+        state.overlay,
+        Some(crate::state::Overlay::Controls)
+    ));
+    assert_eq!(state.focus, Target::ControlRow(0));
+    // Before the TV answers, a row changes nothing.
+    assert!(state.step_control(0, true).is_empty());
+    state.tv_controls = Some(TvControls {
+        sleep_minutes: 0,
+        picture: Some(Choice {
+            current: "normal".into(),
+            options: vec!["vivid".into(), "normal".into()],
+        }),
+        sound: None,
+    });
+    // Right steps the sleep timer on; Left wraps back past Off to the longest.
+    assert_eq!(
+        state.direction(Direction::Right, &controls(&state)),
+        vec![Effect::SetControl(ControlChange::Sleep(10))]
+    );
+    assert_eq!(state.tv_controls.as_ref().unwrap().sleep_minutes, 10);
+    state.step_control(0, false);
+    assert_eq!(
+        state.step_control(0, false),
+        vec![Effect::SetControl(ControlChange::Sleep(240))]
+    );
+    // OK steps the picture mode, wrapping.
+    state.focus = Target::ControlRow(1);
+    assert_eq!(
+        state.activate(),
+        vec![Effect::SetControl(ControlChange::Picture("vivid".into()))]
+    );
+    // A setting the TV did not report stays put.
+    assert!(state.step_control(2, true).is_empty());
+    // All TV settings opens LG's own; Back from the panel returns to its button.
+    state.focus = Target::ControlRow(3);
+    assert_eq!(
+        state.activate(),
+        vec![Effect::Launch("com.palm.app.settings".into())]
+    );
+    assert!(state.overlay.is_none());
+    state.focus = Target::ControlsButton;
+    state.activate();
+    state.back();
+    assert_eq!(state.focus, Target::ControlsButton);
 }

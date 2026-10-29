@@ -117,6 +117,22 @@ impl State {
                 self.open_keyboard(TextField::Apps);
                 return vec![];
             }
+            Target::ControlsButton => {
+                self.overlay = Some(Overlay::Controls);
+                self.focus = Target::ControlRow(0);
+                self.panel_started = (!self.preferences.reduced_motion).then(crate::clock::now);
+                self.dirty = true;
+                // Read afresh each time: the remote's own buttons change these too.
+                return vec![Effect::ReadControls];
+            }
+            Target::ControlRow(3) => {
+                // LG's full settings, for everything the panel does not show.
+                self.overlay = None;
+                self.panel_started = None;
+                self.leave_bar();
+                return vec![Effect::Launch("com.palm.app.settings".into())];
+            }
+            Target::ControlRow(row) => return self.step_control(row, true),
             Target::App(id) | Target::Input(id) if !self.launch_busy() => {
                 return vec![Effect::Launch(id)];
             }
@@ -489,6 +505,7 @@ impl State {
             self.focus = match overlay {
                 Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. } => restore,
                 Overlay::Inputs => Target::InputsButton,
+                Overlay::Controls => Target::ControlsButton,
                 Overlay::Keyboard | Overlay::SystemKeyboard => {
                     self.search_closed = (!self.preferences.reduced_motion
                         && matches!(overlay, Overlay::Keyboard))
@@ -498,7 +515,10 @@ impl State {
             };
             return vec![];
         }
-        if matches!(self.focus, Target::InputsButton | Target::SearchButton) {
+        if matches!(
+            self.focus,
+            Target::InputsButton | Target::SearchButton | Target::ControlsButton
+        ) {
             self.leave_bar();
             return vec![];
         }
@@ -609,5 +629,57 @@ impl State {
             .filter(|target| matches!(target, Target::App(id) if self.apps().iter().any(|app| &app.id == id)))
             .unwrap_or_else(|| self.first_content());
         self.dirty = true;
+    }
+
+    /// One step of a Controls row (forward or back, wrapping): shown at once, sent to the TV.
+    pub fn step_control(&mut self, row: usize, forward: bool) -> Vec<Effect> {
+        use crate::model::{ControlChange, SLEEP_STEPS};
+        let Some(controls) = &mut self.tv_controls else {
+            return vec![];
+        };
+        let step = |len: usize, at: usize| {
+            if forward {
+                (at + 1) % len
+            } else {
+                (at + len - 1) % len
+            }
+        };
+        let change = match row {
+            0 => {
+                let at = SLEEP_STEPS
+                    .iter()
+                    .position(|minutes| *minutes >= controls.sleep_minutes)
+                    .unwrap_or(0);
+                controls.sleep_minutes = SLEEP_STEPS[step(SLEEP_STEPS.len(), at)];
+                ControlChange::Sleep(controls.sleep_minutes)
+            }
+            1 | 2 => {
+                let choice = if row == 1 {
+                    &mut controls.picture
+                } else {
+                    &mut controls.sound
+                };
+                let Some(choice) = choice else {
+                    return vec![];
+                };
+                if choice.options.is_empty() {
+                    return vec![];
+                }
+                let at = choice
+                    .options
+                    .iter()
+                    .position(|option| *option == choice.current)
+                    .unwrap_or(0);
+                choice.current = choice.options[step(choice.options.len(), at)].clone();
+                if row == 1 {
+                    ControlChange::Picture(choice.current.clone())
+                } else {
+                    ControlChange::Sound(choice.current.clone())
+                }
+            }
+            _ => return vec![],
+        };
+        self.dirty = true;
+        vec![Effect::SetControl(change)]
     }
 }

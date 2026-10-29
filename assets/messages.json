@@ -134,5 +134,12 @@
   "aboutHidden": "Hidden from Home. Select one to bring it back.",
   "switcherHint": "OK opens  ·  Up closes  ·  Back returns to Home",
   "appOpening": "Opening {app}…",
-  "appSlow": "{app} is taking a while to open. Check the internet connection, or press Home and try again."
+  "appSlow": "{app} is taking a while to open. Check the internet connection, or press Home and try again.",
+  "controls": "Controls",
+  "sleepTimer": "Sleep timer",
+  "pictureMode": "Picture",
+  "soundMode": "Sound",
+  "allSettings": "All TV settings",
+  "minutes": "{count} min",
+  "controlError": "The TV didn't take that change."
 }

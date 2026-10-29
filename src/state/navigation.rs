@@ -181,22 +181,33 @@ impl State {
             return vec![];
         }
         if self.overlay.is_none()
-            && matches!(self.focus, Target::InputsButton | Target::SearchButton)
+            && matches!(
+                self.focus,
+                Target::InputsButton | Target::SearchButton | Target::ControlsButton
+            )
         {
             // Down goes back to the dock app Up came from; Left and Right cross the bar.
+            let mut bar = vec![Target::SearchButton, Target::ControlsButton];
+            if !self.input_choices().is_empty() {
+                bar.push(Target::InputsButton);
+            }
+            let at = bar
+                .iter()
+                .position(|target| *target == self.focus)
+                .unwrap_or(0);
             match direction {
                 Direction::Down => self.leave_bar(),
-                Direction::Left if self.focus == Target::InputsButton => {
-                    self.focus(Target::SearchButton, controls)
-                }
-                Direction::Right
-                    if self.focus == Target::SearchButton && !self.input_choices().is_empty() =>
-                {
-                    self.focus(Target::InputsButton, controls)
-                }
+                Direction::Left if at > 0 => self.focus(bar[at - 1].clone(), controls),
+                Direction::Right if at + 1 < bar.len() => self.focus(bar[at + 1].clone(), controls),
                 _ => {}
             }
             return vec![];
+        }
+        if let (Some(Overlay::Controls), Target::ControlRow(row)) = (&self.overlay, &self.focus)
+            && matches!(direction, Direction::Left | Direction::Right)
+        {
+            let row = *row;
+            return self.step_control(row, matches!(direction, Direction::Right));
         }
         if self.overlay.is_none() {
             if self.page == Page::Home
@@ -405,10 +416,12 @@ impl State {
                                 .find(|control| control.target == self.focus)
                                 .map_or(0., |control| control.rect.center().0);
                             self.bar_return = Some(self.focus.clone());
-                            Some(if x >= 960. && !self.input_choices().is_empty() {
-                                Target::InputsButton
-                            } else {
+                            Some(if x < 960. {
                                 Target::SearchButton
+                            } else if self.input_choices().is_empty() {
+                                Target::ControlsButton
+                            } else {
+                                Target::InputsButton
                             })
                         }
                         Direction::Up if index < APPS_COLUMNS => {

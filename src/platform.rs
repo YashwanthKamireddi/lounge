@@ -435,6 +435,10 @@ pub enum Request {
     TvHome(Option<bool>),
     /// Remove an installed app (confirmed in Lounge's alert first).
     Uninstall(String),
+    /// Read the sleep timer, picture and sound modes (the Controls panel opened).
+    ReadControls,
+    /// Change one of them.
+    SetControl(crate::model::ControlChange),
 }
 pub enum Response {
     Inventory(Result<(Inventory, Option<String>), String>),
@@ -445,6 +449,9 @@ pub enum Response {
     /// Whether Lounge is the TV's Home, after the request.
     TvHome(Result<bool, String>),
     Uninstalled(String, Result<(), String>),
+    Controls(Result<crate::model::TvControls, String>),
+    /// A change from the Controls panel, and whether the TV took it.
+    ControlSet(crate::model::ControlChange, Result<(), String>),
 }
 
 pub struct Platform {
@@ -544,6 +551,15 @@ impl Platform {
                     } else {
                         Err("Home is set on the TV".into())
                     }),
+                    Request::ReadControls => Response::Controls(if webos {
+                        read_controls()
+                    } else {
+                        Ok(demo_controls())
+                    }),
+                    Request::SetControl(change) => {
+                        let result = if webos { set_control(&change) } else { Ok(()) };
+                        Response::ControlSet(change, result)
+                    }
                     // `send` routes these to the apps thread.
                     Request::Launch(_) | Request::Close(_) => continue,
                 };
@@ -605,6 +621,132 @@ fn apps_thread(webos: bool, responses: mpsc::Sender<Response>) -> mpsc::Sender<R
         }
     });
     sender
+}
+
+/// A TV setting service call, made as Lounge; where Lounge's role may not make it, through
+/// Homebrew's root shell as `luna-send` (the same call, with the TV's own permissions).
+fn tv_call(uri: &str, payload: Value) -> Result<Value, String> {
+    call(uri, payload.clone()).or_else(|direct| {
+        let command = format!(
+            "luna-send -n 1 -a com.webos.app.home {uri} '{}' </dev/null",
+            payload.to_string().replace('\'', "")
+        );
+        let envelope = root_command(&command).map_err(|error| format!("{direct}; {error}"))?;
+        let stdout = envelope
+            .get("stdoutString")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let reply: Value = serde_json::from_str(stdout.trim())
+            .map_err(|error| format!("{direct}; {uri} through the root shell: {error}"))?;
+        checked_response(reply)
+    })
+}
+
+/// The sleep timer, picture and sound modes, as LG's Quick Settings reads them.
+fn read_controls() -> Result<crate::model::TvControls, String> {
+    let setting = |category: &str, key: &str| -> Option<crate::model::Choice> {
+        let read = tv_call(
+            "luna://com.webos.settingsservice/getSystemSettings",
+            json!({"category": category, "keys": [key]}),
+        )
+        .ok()?;
+        let current = read.get("settings")?.get(key)?.as_str()?.to_owned();
+        let described = tv_call(
+            "luna://com.webos.settingsservice/getSystemSettingDesc",
+            json!({"category": category, "keys": [key]}),
+        )
+        .ok()?;
+        let mut options: Vec<String> = described
+            .get("results")?
+            .as_array()?
+            .first()?
+            .get("values")?
+            .get("arrayExt")?
+            .as_array()?
+            .iter()
+            .filter(|value| {
+                value.get("visible").and_then(Value::as_bool) == Some(true)
+                    && value.get("active").and_then(Value::as_bool) != Some(false)
+            })
+            .filter_map(|value| value.get("value")?.as_str().map(str::to_owned))
+            .collect();
+        // The mode in use is always offered, even one the list hides.
+        if !options.contains(&current) {
+            options.push(current.clone());
+        }
+        Some(crate::model::Choice { current, options })
+    };
+    let sleep_minutes = tv_call(
+        "luna://com.webos.service.tvReservationAgent/timer/sleep/getRemainTime",
+        json!({}),
+    )
+    .ok()
+    .and_then(|reply| reply.get("sleepTimeSecond")?.as_u64())
+    .map_or(0, |seconds| {
+        u32::try_from(seconds.div_ceil(60)).unwrap_or(0)
+    });
+    Ok(crate::model::TvControls {
+        sleep_minutes,
+        picture: setting("picture", "pictureMode"),
+        sound: setting("sound", "soundMode"),
+    })
+}
+
+fn set_control(change: &crate::model::ControlChange) -> Result<(), String> {
+    use crate::model::ControlChange;
+    let setting = |category: &str, key: &str, value: &str| {
+        tv_call(
+            "luna://com.webos.settingsservice/setSystemSettings",
+            json!({"category": category, "settings": {key: value}}),
+        )
+        .map(|_| ())
+    };
+    match change {
+        ControlChange::Sleep(minutes) => tv_call(
+            "luna://com.webos.service.tvReservationAgent/timer/sleep/add",
+            json!({"sleepTimeMinute": minutes}),
+        )
+        .map(|_| ()),
+        ControlChange::Picture(mode) => setting("picture", "pictureMode", mode),
+        ControlChange::Sound(mode) => setting("sound", "soundMode", mode),
+    }
+}
+
+/// The desktop preview's controls: a plausible TV's.
+fn demo_controls() -> crate::model::TvControls {
+    let choice = |current: &str, options: &[&str]| crate::model::Choice {
+        current: current.into(),
+        options: options.iter().map(|option| (*option).into()).collect(),
+    };
+    crate::model::TvControls {
+        sleep_minutes: 0,
+        picture: Some(choice(
+            "normal",
+            &[
+                "vivid",
+                "normal",
+                "eco",
+                "cinema",
+                "sports",
+                "game",
+                "filmMaker",
+                "expert1",
+                "expert2",
+            ],
+        )),
+        sound: Some(choice(
+            "aiSoundPlus",
+            &[
+                "aiSoundPlus",
+                "standard",
+                "movie",
+                "news",
+                "sports",
+                "music",
+                "game",
+            ],
+        )),
+    }
 }
 
 /// Opens `id`. One whose last launch never reached the screen (a web app

@@ -110,6 +110,10 @@ pub enum Target {
     InputsButton,
     /// The labelled Search button at the top left (Up from the dock's left half).
     SearchButton,
+    /// The Controls button between Search and Inputs.
+    ControlsButton,
+    /// A row of the Controls panel: 0 sleep timer, 1 picture, 2 sound, 3 all settings.
+    ControlRow(usize),
     /// A source in the Inputs panel: Live TV or an input, by app id.
     InputPick(String),
 }
@@ -159,6 +163,8 @@ pub enum Overlay {
     },
     /// The sources under the Inputs button: Live TV and every input not switched Off.
     Inputs,
+    /// The TV's quick controls under the Controls button.
+    Controls,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -202,6 +208,10 @@ pub enum Effect {
     Uninstall(String),
     /// Set the TV's clock to 24-hour (true) or 12-hour.
     ClockFormat(bool),
+    /// Read the TV's quick controls (the Controls panel opened).
+    ReadControls,
+    /// Change one of them.
+    SetControl(crate::model::ControlChange),
 }
 
 pub const KEYS: [&str; 40] = [
@@ -224,6 +234,8 @@ pub struct State {
     /// Whether Lounge is the TV's Home; None until the TV has said (and
     /// always on the desktop, which has no Home to set).
     pub tv_home: Option<bool>,
+    /// The TV's quick controls, once read for the Controls panel.
+    pub tv_controls: Option<crate::model::TvControls>,
     /// A change of Home is on its way to the TV.
     pub tv_home_busy: bool,
     /// Where the focused tile sits in the grid, so focus can go to the tile
@@ -410,6 +422,7 @@ impl State {
             avatar: None,
             avatars: Vec::new(),
             tv_home: None,
+            tv_controls: None,
             tv_home_busy: false,
             focus_slot: 0,
             avatar_index: 0,
