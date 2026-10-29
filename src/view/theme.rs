@@ -21,6 +21,11 @@ impl Theme {
         }
     }
 
+    /// How light the appearance is: 0 dark, 1 light (between while it changes).
+    pub fn lightness(self) -> f32 {
+        self.light
+    }
+
     fn mix(self, dark: f32, light: f32) -> f32 {
         dark + (light - dark) * self.light
     }

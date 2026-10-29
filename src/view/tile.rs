@@ -136,12 +136,34 @@ pub(super) fn tile(
 /// The card face alone, shared by grid tiles and the launch splash.
 pub(super) fn tile_face(out: &mut Scene, assets: &Assets, app: &App, rect: Rect, radius: f32) {
     if assets.tiles.contains_key(&app.id) {
-        out.image(
-            assets.path(format!("tiles/{}.png", app.id)),
-            rect,
-            radius,
-            false,
-        );
+        // A card with a dark version (`<id>.dark.png`: LG's system icons) wears it in the Dark
+        // appearance, crossfading with the appearance itself.
+        let light = out.theme.lightness();
+        let dark = format!("{}.dark", app.id);
+        if assets.tiles.contains_key(&dark) && light < 1. {
+            out.image(
+                assets.path(format!("tiles/{dark}.png")),
+                rect,
+                radius,
+                false,
+            );
+            if light > 0. {
+                out.draw.push(Draw::TintedImage(
+                    assets.path(format!("tiles/{}.png", app.id)),
+                    rect,
+                    radius,
+                    false,
+                    [1., 1., 1., light],
+                ));
+            }
+        } else {
+            out.image(
+                assets.path(format!("tiles/{}.png", app.id)),
+                rect,
+                radius,
+                false,
+            );
+        }
         // No outline: tvOS icons have none, and a border pass shades the whole tile.
     } else if app.brand == "lounge-input" {
         // An input: the system tiles' grey with the HDMI glyph over its
