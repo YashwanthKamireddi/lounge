@@ -310,8 +310,21 @@ pictures for Netflix, YouTube and Prime Video.
 
 **Quitting.** Up in the switcher runs `com.palm.webappmanager/killApp {appId}` first (a web app's
 page otherwise keeps running: `closeByAppId` only backgrounds it), and `closeByAppId` when that
-does not succeed (native apps, which WebAppMgr does not know). Both are elevated (`killApp` is in
+does not succeed (native apps, which WebAppMgr does not know). As Home, Lounge's own role calls
+both; the normal app, or a refused call, goes through `exec` (`killApp` is in
 `private`/`applications.internal`). On the 7.6 TV, 94 of the listed apps are `type: web`.
+The switcher lists only apps someone brought to the front since they last ended: LG's
+preloader and the compositor's `autoReload` start apps (YouTube) unseen, and an app closed here
+or ended by webOS (`getAppLifeEvents` `close`/`stop`) leaves the list until it is opened again.
+
+**Launching.** Launches and closes run in the order asked on their own thread and LS2
+connection, never behind the worker's slower requests (Home's status read takes 4 s on the 7.6
+TV). An app whose previous launch never reached the front (a web app whose page never loaded on
+a slow network: webOS keeps it, and a launch only signals that dead page, so nothing appears)
+is closed and started afresh. A press counts only when it went down, by SDL's event time, on a
+Lounge in front and already drawn there, and ends in that same stretch on screen: a key that
+went down on an app, the screen saver or a waking TV and comes up on Lounge does nothing. Each
+launch is logged with its cause in `/tmp/lounge-status`.
 
 **Uninstall.** The context menu's last item, in system red, shown only where `listApps` says
 `removable: true` (or, without that flag, for apps under `/media/cryptofs/apps/` or

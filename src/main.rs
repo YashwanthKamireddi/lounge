@@ -43,13 +43,12 @@ mod window;
 mod tests;
 
 use effects::{effects, save_order};
-use input::{Press, hit, pointer_position};
+use input::{hit, pointer_position};
 use options::Options;
 use platform::{Platform, Request};
 use raster::Size;
 use sdl2::{
     event::{Event, WindowEvent},
-    keyboard::Keycode,
     mouse::MouseButton,
 };
 use state::{Effect, Overlay, State, Target};
@@ -126,6 +125,12 @@ fn compose(
     } else {
         scene
     }
+}
+
+/// SDL's clock, the one it stamps input events with.
+fn ticks() -> u32 {
+    // SAFETY: SDL is initialised before the loop that calls this.
+    unsafe { sdl2::sys::SDL_GetTicks() }
 }
 
 fn release_memory(renderer: &mut renderer::Renderer, preload: &mut preload::Preload) {
@@ -812,6 +817,7 @@ impl Shell {
                     // Home opened while this run is resident: to the front at once.
                     // SAFETY: the window outlives the event loop.
                     unsafe { sdl2::sys::SDL_RaiseWindow(self.window.raw()) };
+                    self.remote.press = None;
                     self.presence.raise();
                     self.state.dirty = true;
                 }
@@ -824,6 +830,7 @@ impl Shell {
                 // webOS's relaunch reaches SDL just after this event: hidden,
                 // the loop would sleep up to 2 s before pumping it.
                 self.presence.raise();
+                self.state.dirty = true;
                 let in_front = self.presence.settled();
                 platform::status(if in_front {
                     "home key: back to the top"
@@ -865,6 +872,7 @@ impl Shell {
                     // hidden-to-shown edge.
                     let returned = self.presence.show();
                     if returned {
+                        self.remote.press = None;
                         self.rewarm = true;
                         // The trim behind the app dropped the glyph outlines.
                         self.glyphs_warming = true;
@@ -896,6 +904,7 @@ impl Shell {
                 self.state.delete_surrounding_text(start, length);
             }
             Event::KeyDown {
+                timestamp,
                 keycode: Some(key),
                 repeat,
                 ..
@@ -904,87 +913,68 @@ impl Shell {
                     key,
                     repeat,
                     self.webos,
+                    self.presence.front(timestamp),
                     &mut self.state,
                     &self.scene.controls,
                 )
             }
             Event::KeyUp {
-                keycode: Some(Keycode::Return | Keycode::KpEnter),
+                timestamp,
+                keycode: Some(key),
                 ..
-            } => pending = self.remote.enter_up(&mut self.state),
-            Event::MouseMotion { x, y, .. }
-                if self.state.moving.is_none()
-                    && !matches!(self.state.overlay, Some(Overlay::SystemKeyboard)) =>
-            {
-                let hovered = hit(&self.scene.controls, &self.window, x, y, &self.state);
-                if let Some(target) = hovered.clone() {
-                    self.state.pointer_focus(target);
-                }
-                if self
+            } => {
+                pending = self
                     .remote
-                    .press
-                    .as_ref()
-                    .is_some_and(|p| p.pointer && hovered.as_ref() != Some(&p.target))
-                {
-                    self.remote.press = None;
-                }
+                    .key_up(key, self.presence.front(timestamp), &mut self.state)
+            }
+            Event::MouseMotion {
+                timestamp, x, y, ..
+            } => {
+                let hovered = hit(&self.scene.controls, &self.window, x, y, &self.state);
+                self.remote
+                    .pointer_moved(hovered, self.presence.front(timestamp), &mut self.state);
             }
             Event::MouseButtonDown {
-                mouse_btn, x, y, ..
+                timestamp,
+                mouse_btn: mouse_btn @ (MouseButton::Left | MouseButton::Right),
+                x,
+                y,
+                ..
             } => {
-                if let Some(target) = hit(&self.scene.controls, &self.window, x, y, &self.state)
-                    && self.state.moving.is_none()
-                {
-                    if matches!(self.state.overlay, Some(Overlay::SystemKeyboard)) {
-                        self.state.finish_text_input();
-                    }
-                    // Pointer-down must not normalize scroll and move the clicked control.
-                    self.state.pointer_focus(target);
-                    if mouse_btn == MouseButton::Right {
-                        self.state.options();
-                        self.remote.press = None;
-                    } else if mouse_btn == MouseButton::Left {
-                        self.remote.press = Some(Press {
-                            target: self.state.focus.clone(),
-                            start: Instant::now(),
-                            held: false,
-                            pointer: true,
-                        });
-                    }
-                } else if mouse_btn == MouseButton::Left {
-                    self.remote.press = None;
-                }
+                let target = hit(&self.scene.controls, &self.window, x, y, &self.state);
+                self.remote.pointer_down(
+                    target,
+                    mouse_btn == MouseButton::Right,
+                    self.presence.front(timestamp),
+                    &mut self.state,
+                );
             }
             Event::MouseButtonUp {
+                timestamp,
                 mouse_btn: MouseButton::Left,
                 x,
                 y,
                 ..
-            } => match self.remote.press.take() {
-                Some(held)
-                    if held.pointer
-                        && !held.held
-                        && hit(&self.scene.controls, &self.window, x, y, &self.state).as_ref()
-                            == Some(&held.target) =>
-                {
-                    pending = self.state.activate();
-                    input::note_launches(&pending, "pointer click");
-                }
-                None if self.scene.modal.is_some_and(|rect| {
+            } => {
+                let target = hit(&self.scene.controls, &self.window, x, y, &self.state);
+                let outside_modal = self.scene.modal.is_some_and(|rect| {
                     pointer_position(&self.window, x, y).is_some_and(|(x, y)| !rect.contains(x, y))
-                }) =>
-                {
-                    pending = self.state.back()
-                }
-                _ => {}
-            },
+                });
+                pending = self.remote.pointer_up(
+                    target,
+                    outside_modal,
+                    self.presence.front(timestamp),
+                    &mut self.state,
+                );
+            }
             Event::MouseWheel {
+                timestamp,
                 x,
                 y,
                 mouse_x,
                 mouse_y,
                 ..
-            } if self.state.overlay.is_none() => {
+            } if self.state.overlay.is_none() && self.presence.front(timestamp).is_some() => {
                 let over_favorites = self.state.page == state::Page::Home
                     && pointer_position(&self.window, mouse_x, mouse_y).is_some_and(|(x, y)| {
                         (64. ..1856.).contains(&x)
@@ -1027,24 +1017,7 @@ impl Shell {
             &self.writer,
             &self.weather_service,
         );
-        if self
-            .remote
-            .press
-            .as_ref()
-            .is_some_and(|p| !p.held && p.target != self.state.focus)
-        {
-            self.remote.press = None;
-        }
-        let pressed = self
-            .remote
-            .press
-            .as_ref()
-            .filter(|p| !p.held)
-            .map(|p| p.target.clone());
-        if self.state.pressed != pressed {
-            self.state.pressed = pressed;
-            self.state.dirty = true;
-        }
+        self.remote.settle(&mut self.state);
         // SDL may deliver several navigation events in a single poll.
         if self.state.dirty && self.presence.in_front() {
             self.scene = compose(&mut self.state, &self.assets, now, Some(&self.scene));
@@ -1054,13 +1027,10 @@ impl Shell {
     /// After input: OK-holds, scripted steps, the crash record, inventory
     /// retries, weather, and the on-screen keyboard.
     fn follow_up(&mut self) -> Result<(), String> {
-        if let Some(held) = &mut self.remote.press
-            && !held.held
-            && held.start.elapsed() >= Duration::from_millis(500)
-        {
-            held.held = true;
-            self.state.pressed = None;
-            let pending = self.state.hold();
+        let pending = self
+            .remote
+            .hold_due(self.presence.front(ticks()), &mut self.state);
+        if !pending.is_empty() {
             self.running &= effects(
                 pending,
                 &mut self.state,
@@ -1215,6 +1185,7 @@ impl Shell {
                 self.renderer.damage = self.partial.region(&self.scene.draw, width, height);
                 self.renderer.render(&self.scene.draw, width, height);
                 self.window.gl_swap_window();
+                self.presence.presented(ticks());
                 self.partial.drawn(&self.scene.draw);
                 if self.presented == 0 {
                     self.stage("first frame");

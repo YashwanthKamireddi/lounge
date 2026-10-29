@@ -11,7 +11,11 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
     let Some(switcher) = &state.switcher else {
         return;
     };
-    out.controls.clear();
+    // Leaving, it fades over a home that is live at once (`State::back`): the
+    // home's controls stay, so a press during the fade lands where it shows.
+    if switcher.dismissed.is_none() {
+        out.controls.clear();
+    }
     let ease = |t: f32| 1. - (1. - t.clamp(0., 1.)).powi(3);
     // In over 0.28 s; Back fades it out over the live home, settling back.
     let leave = switcher.dismissed.map_or(0., |start| {

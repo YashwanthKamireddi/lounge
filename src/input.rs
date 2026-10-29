@@ -10,6 +10,9 @@ pub(crate) struct Press {
     pub(crate) start: Instant,
     pub(crate) held: bool,
     pub(crate) pointer: bool,
+    /// The stretch on screen it began in (`Presence::front`): it acts only if
+    /// it ends in the same one.
+    pub(crate) front: u64,
 }
 
 /// Fastest pace of a held arrow key: about nine moves a second.
@@ -80,6 +83,11 @@ pub(crate) fn hit(
 
 /// The remote, as Lounge reads it: what each key does, an OK held for the menu,
 /// and a held arrow moving at an even pace.
+///
+/// `front` is `Presence::front`: None while Lounge is not on screen or not yet
+/// drawn since it came to the front. Input then does nothing at all (a key let
+/// go on Lounge may have gone down on an app, the screen saver or a TV waking
+/// up), and a press acts only when it began and ended in the same stretch.
 pub(crate) struct Remote {
     /// OK (or a click) held down on a target, until released or cancelled.
     pub(crate) press: Option<Press>,
@@ -101,9 +109,23 @@ impl Remote {
         key: Keycode,
         repeat: bool,
         webos: bool,
+        front: Option<u64>,
         state: &mut State,
         controls: &[Control],
     ) -> Vec<Effect> {
+        // Whatever is pressed next supersedes a switcher still being asked for.
+        state.switcher_asked = false;
+        let Some(front) = front else {
+            self.press = None;
+            // Drawn again at once, so the next press counts.
+            state.dirty = true;
+            if !repeat
+                && (matches!(key, Keycode::Return | Keycode::KpEnter) || quick_slot(key).is_some())
+            {
+                crate::platform::status(&format!("{key} before Lounge was on screen: ignored"));
+            }
+            return vec![];
+        };
         let mut pending = vec![];
         match key {
             // A held arrow moves at a steady cadence: repeats that
@@ -133,6 +155,7 @@ impl Remote {
                     start: crate::clock::now(),
                     held: false,
                     pointer: false,
+                    front,
                 });
             }
             Keycode::Escape | Keycode::AcBack if !repeat => {
@@ -187,20 +210,180 @@ impl Remote {
         pending
     }
 
-    /// OK released: a press that was neither held nor moved off activates.
-    pub(crate) fn enter_up(&mut self, state: &mut State) -> Vec<Effect> {
+    /// A key came up: OK released activates a press that was neither held
+    /// nor moved off, and began on this same stretch on screen.
+    pub(crate) fn key_up(
+        &mut self,
+        key: Keycode,
+        front: Option<u64>,
+        state: &mut State,
+    ) -> Vec<Effect> {
+        if !matches!(key, Keycode::Return | Keycode::KpEnter) {
+            return vec![];
+        }
         let mut pending = vec![];
         if let Some(held) = self.press.take()
             && !held.pointer
             && !held.held
+            && front == Some(held.front)
             && held.target == state.focus
         {
             pending = state.activate();
-            note_launches(&pending, "OK");
+            note_launches(&pending, &held.describe("OK"));
         }
         pending
     }
+
+    /// The pointer moved over `hovered` (None: nothing there).
+    pub(crate) fn pointer_moved(
+        &mut self,
+        hovered: Option<Target>,
+        front: Option<u64>,
+        state: &mut State,
+    ) {
+        if front.is_none() || state.moving.is_some() {
+            return;
+        }
+        if matches!(state.overlay, Some(Overlay::SystemKeyboard)) {
+            return;
+        }
+        if let Some(target) = hovered.clone() {
+            state.pointer_focus(target);
+        }
+        if self
+            .press
+            .as_ref()
+            .is_some_and(|press| press.pointer && hovered.as_ref() != Some(&press.target))
+        {
+            self.press = None;
+        }
+    }
+
+    /// A pointer button went down over `target`.
+    pub(crate) fn pointer_down(
+        &mut self,
+        target: Option<Target>,
+        right: bool,
+        front: Option<u64>,
+        state: &mut State,
+    ) {
+        state.switcher_asked = false;
+        let Some(front) = front else {
+            self.press = None;
+            state.dirty = true;
+            crate::platform::status("click before Lounge was on screen: ignored");
+            return;
+        };
+        match target {
+            Some(target) if state.moving.is_none() => {
+                if matches!(state.overlay, Some(Overlay::SystemKeyboard)) {
+                    state.finish_text_input();
+                }
+                // Pointer-down must not normalize scroll and move the clicked control.
+                state.pointer_focus(target);
+                self.press = None;
+                if right {
+                    state.options();
+                } else {
+                    self.press = Some(Press {
+                        target: state.focus.clone(),
+                        start: crate::clock::now(),
+                        held: false,
+                        pointer: true,
+                        front,
+                    });
+                }
+            }
+            _ => self.press = None,
+        }
+    }
+
+    /// The left button came up over `target`; `outside_modal`: the pointer is
+    /// outside an open alert or menu, which a click there dismisses.
+    pub(crate) fn pointer_up(
+        &mut self,
+        target: Option<Target>,
+        outside_modal: bool,
+        front: Option<u64>,
+        state: &mut State,
+    ) -> Vec<Effect> {
+        let Some(front) = front else {
+            self.press = None;
+            return vec![];
+        };
+        match self.press.take() {
+            Some(held)
+                if held.pointer
+                    && !held.held
+                    && held.front == front
+                    && target.as_ref() == Some(&held.target)
+                    && held.target == state.focus =>
+            {
+                let pending = state.activate();
+                note_launches(&pending, &held.describe("pointer click"));
+                pending
+            }
+            None if outside_modal => state.back(),
+            _ => vec![],
+        }
+    }
+
+    /// Called every loop pass: a press still down after `HOLD` becomes a hold
+    /// (the menu, Move, or OK for a row). Only within its stretch on screen.
+    pub(crate) fn hold_due(&mut self, front: Option<u64>, state: &mut State) -> Vec<Effect> {
+        let Some(held) = &mut self.press else {
+            return vec![];
+        };
+        if front != Some(held.front) {
+            self.press = None;
+            return vec![];
+        }
+        if held.held || crate::clock::since(held.start) < HOLD {
+            return vec![];
+        }
+        held.held = true;
+        let cause = held.describe("OK held");
+        state.pressed = None;
+        let pending = state.hold();
+        note_launches(&pending, &cause);
+        pending
+    }
+
+    /// After each event: a press whose target lost focus is over, and the
+    /// pressed look follows the press.
+    pub(crate) fn settle(&mut self, state: &mut State) {
+        if self
+            .press
+            .as_ref()
+            .is_some_and(|press| !press.held && press.target != state.focus)
+        {
+            self.press = None;
+        }
+        let pressed = self
+            .press
+            .as_ref()
+            .filter(|press| !press.held)
+            .map(|press| press.target.clone());
+        if state.pressed != pressed {
+            state.pressed = pressed;
+            state.dirty = true;
+        }
+    }
 }
+
+impl Press {
+    /// What a launch from this press is put down to in the status log.
+    fn describe(&self, how: &str) -> String {
+        format!(
+            "{how} on {:?}, down {} ms",
+            self.target,
+            crate::clock::since(self.start).as_millis()
+        )
+    }
+}
+
+/// How long OK (or a click) stays down before it is a hold.
+pub(crate) const HOLD: Duration = Duration::from_millis(500);
 
 /// Records what made Lounge open an app, so an app opening unasked can be traced to its cause.
 pub(crate) fn note_launches(effects: &[crate::state::Effect], cause: &str) {
@@ -210,3 +393,7 @@ pub(crate) fn note_launches(effects: &[crate::state::Effect], cause: &str) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "input-tests.rs"]
+mod tests;

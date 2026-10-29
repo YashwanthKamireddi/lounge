@@ -74,8 +74,13 @@ impl Replies {
                 }
             }
             // A late reply (the bus was slow and the owner has since
-            // opened an app) must not open the switcher behind it.
-            Response::Running(ids) if visible && state.overlay.is_none() => {
+            // pressed something else, or opened an app) must not open the
+            // switcher over what they moved on to.
+            Response::Running(ids)
+                if visible
+                    && std::mem::take(&mut state.switcher_asked)
+                    && state.overlay.is_none() =>
+            {
                 state.open_switcher(platform::opened_only(ids, platform.webos))
             }
             Response::Running(_) => {}
