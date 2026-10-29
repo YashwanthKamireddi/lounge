@@ -267,6 +267,10 @@ fn run() -> Result<(), String> {
         }
         eprintln!("Lounge webOS surface: {surface_id}");
         sdl2::hint::set("SDL_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
+        // A long Back on the Magic Remote sends the separate Exit key. Unclaimed, the
+        // compositor handles it by closing the app in front, which is Lounge itself: Home
+        // then started cold, its place lost. Claimed, it reaches Lounge as Back.
+        sdl2::hint::set("SDL_WEBOS_ACCESS_POLICY_KEYS_EXIT", "true");
         // SDL-webOS answers tvpower's screen saver requests with
         // `ack: !suspend_screensaver`, and SDL suspends the screen saver
         // unless this allows it: LG's screen saver never started while Lounge
