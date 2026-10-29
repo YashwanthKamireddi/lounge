@@ -33,17 +33,18 @@ frame.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/readme/apps.jpg" alt="The app grid with Live TV, Settings, Search and HDMI inputs"></td>
-    <td width="50%"><img src="docs/readme/switcher.jpg" alt="The app switcher: open apps as large cards"></td>
+    <td width="50%"><img src="docs/readme/apps.jpg" alt="Home with the Inputs panel open under the Search and Inputs buttons"></td>
+    <td width="50%"><img src="docs/readme/switcher.jpg" alt="The app switcher: open apps as large cards, with what OK, Up and Back do"></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app shows Move and Hide as glass pills against it"></td>
-    <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings in the Light appearance"></td>
+    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app shows Move, Hide and Uninstall as glass pills under it"></td>
+    <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings › General in the Light appearance"></td>
   </tr>
 </table>
 
-Glass dock and grid · app switcher · hold OK to move, hide or uninstall · Light, Dark or Automatic ·
-nine wallpapers · Top Shelf art · search · weather · HDMI inputs as tiles.
+Glass dock and grid · Search and Inputs above the dock (Up reaches them) · app switcher · hold OK
+to move, hide or uninstall · Light, Dark or Automatic · nine wallpapers · cover art · weather ·
+focus outline and larger names for anyone who needs them.
 
 ## Install
 
@@ -68,7 +69,7 @@ If it ever fails to start three times in a minute, it hands Home back to LG by i
 - **Profile picture:** copy JPEG or PNG files into
   `/media/developer/io.github.yashwanthkamireddi.lounge/avatars/` (owned by that folder's user)
   and pick one in Settings › General.
-- **App cards and Top Shelf art:** `assets/tiles/<app id>.png` and `assets/heroes/<app id>.jpg`;
+- **App cards and cover art:** `assets/tiles/<app id>.png` and `assets/heroes/<app id>.jpg`;
   files of the same name in `local/tiles/` or `local/heroes/` override them in your own build.
 
 ## Build

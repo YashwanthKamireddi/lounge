@@ -66,8 +66,8 @@ impl State {
         self.preferences.favorites = Some(order);
         self.moving = Some(id.into());
         self.moving_since = (!self.preferences.reduced_motion).then(crate::clock::now);
-        // How Move works is said beside the app in hand (view::overlays::move_hint): a banner
-        // covered the dock's last tiles, where apps are moved to.
+        // No hint: the app in hand lifts and the others make way, as on tvOS; a banner covered
+        // the dock's last tiles and a capsule chasing the app read as clutter.
         self.focus = Target::App(id.into());
         self.dirty = true;
     }

@@ -1,7 +1,7 @@
 //! What floats over the pages: the status pill, hint footer, context menu,
 //! search keyboard and notifications.
 use super::{
-    Assets, FACE_HEIGHT, LABEL_GAP, Scene,
+    Assets, Scene,
     glass::home_backdrop,
     shared::{PLATTER, c, detail_style, row_style, text},
     tile::tile,
@@ -685,66 +685,6 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
                 false,
             );
         }
-    }
-}
-
-/// Move's instructions on a small glass capsule in the app in hand's name line (above it on the
-/// bottom row), so they never cover a place the app can go and follow it as it moves.
-pub(super) fn move_hint(out: &mut Scene, state: &State, assets: &Assets) {
-    let Some(id) = &state.moving else {
-        return;
-    };
-    let Some(tile) = out
-        .controls
-        .iter()
-        .find(|control| control.target == Target::App(id.clone()))
-        .map(|control| control.rect)
-    else {
-        return;
-    };
-    let notice = i18n::t("moveHint");
-    // The bar buttons' glass and type: a capsule as tall as the time pill.
-    let k = PILL_SCALE;
-    let style = text(25. * k, 600, 0.);
-    let height = PILL_HEIGHT;
-    let width = assets.width(notice, style) + 56. * k;
-    let (cx, _) = tile.center();
-    // Centred on the name line, which sits LABEL_GAP under the face; the lifted face reaches
-    // ~10 px further, and the next row starts well below the line. On the bottom row it goes
-    // above the app instead.
-    let below = tile.y + FACE_HEIGHT + LABEL_GAP - 6.;
-    let y = if below + height <= 1040. {
-        below
-    } else {
-        tile.y - LABEL_GAP - height - 18.
-    };
-    let rect = Rect::new(
-        (cx - width / 2.).clamp(40., 1880. - width),
-        y,
-        width,
-        height,
-    );
-    let start = out.draw.len();
-    out.shadow(rect, height / 2., 48., 6., 0.3);
-    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
-    out.glass_over(
-        home_backdrop(state, assets),
-        rect,
-        height / 2.,
-        c(PLATTER, 0.34),
-    );
-    out.draw.push(Draw::Soft(None));
-    out.rim(rect, height / 2., 0.55, 0.06);
-    out.text(
-        notice,
-        Rect::new(rect.x, rect.y + (height - 30. * k) / 2., width, 30. * k),
-        style,
-        WHITE,
-        true,
-    );
-    if !state.preferences.reduced_motion {
-        let shown = state.move_raise().clamp(0., 1.);
-        out.fade(start, shown, 1.);
     }
 }
 
