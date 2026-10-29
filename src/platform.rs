@@ -195,10 +195,14 @@ pub fn watch_opened() -> Result<(), String> {
         move |reply| {
             if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
                 status(&format!("foreground events ended: {reply}"));
+                FRONTS.lock().map(|mut fronts| fronts.live = false).ok();
                 resubscribe("foreground events", watch_opened);
                 return;
             }
             if let Some(front) = reply.get("appId").and_then(Value::as_str) {
+                if let Ok(mut fronts) = FRONTS.lock() {
+                    fronts.came_to_front(front, std::time::Instant::now());
+                }
                 note_opened(front);
             }
         },
@@ -295,10 +299,13 @@ pub fn watch_launches(home: Wake) -> Result<(), String> {
                 resubscribe("launch events", move || watch_launches(home.clone()));
                 return;
             }
-            if reply.get("event").and_then(Value::as_str) == Some("launch")
-                && reply.get("appId").and_then(Value::as_str) == Some(own_id())
-            {
-                home();
+            let app = reply.get("appId").and_then(Value::as_str).unwrap_or("");
+            match reply.get("event").and_then(Value::as_str) {
+                Some("launch") if app == own_id() => home(),
+                // It ended (closed inside, or let go for memory): LG's
+                // preloader may start it again unseen, and that is not open.
+                Some("stop" | "close") => forget_opened(app),
+                _ => {}
             }
         },
     )
@@ -343,6 +350,10 @@ pub enum Response {
 
 pub struct Platform {
     sender: mpsc::Sender<Request>,
+    /// Launches and closes, in the order asked, on their own thread: never
+    /// behind the worker's slower requests (Home's status read takes seconds
+    /// on a busy TV) or behind each other's replies on the UI thread.
+    apps: mpsc::Sender<Request>,
     pub receiver: mpsc::Receiver<Response>,
     pub webos: bool,
     /// Open apps as webOS last pushed them (None until the first event, or
@@ -356,6 +367,7 @@ impl Platform {
     pub fn new(webos: bool, fixture: Option<PathBuf>) -> Self {
         let (sender, requests) = mpsc::channel();
         let (responses, receiver) = mpsc::channel();
+        let responses_for_apps = responses.clone();
         // The preview's own removals: its sample apps stay gone on refresh.
         let removed = std::sync::Arc::new(std::sync::Mutex::new(HashSet::<String>::new()));
         thread::spawn(move || {
@@ -409,16 +421,6 @@ impl Platform {
                                     .to_vec()
                             })
                     }),
-                    Request::Close(id) => {
-                        let result = if !webos {
-                            Ok(())
-                        } else if !valid_app_id(&id) {
-                            Err("Invalid application identifier".into())
-                        } else {
-                            elevated_close(&id)
-                        };
-                        Response::Closed(id, result)
-                    }
                     // Removal waits for webOS to finish (seconds), on its own
                     // thread: a launch or close meanwhile never queues behind it.
                     Request::Uninstall(id) => {
@@ -443,37 +445,18 @@ impl Platform {
                     } else {
                         Err("Home is set on the TV".into())
                     }),
-                    // A launch never queues behind a slower request (closing
-                    // an app through elevated exec, reading settings): it
-                    // goes to the bus at once on its own thread.
-                    Request::Launch(id) => {
-                        let responses = responses.clone();
-                        thread::spawn(move || {
-                            let result = if !webos {
-                                Ok(())
-                            } else if crate::scroll_preview::is_placeholder(&id) {
-                                Err("Scroll preview cards cannot be launched".into())
-                            } else if !valid_app_id(&id) {
-                                Err("Invalid application identifier".into())
-                            } else {
-                                call(
-                                    "luna://com.webos.applicationManager/launch",
-                                    json!({"id": id}),
-                                )
-                                .map(|_| ())
-                            };
-                            let _ = responses.send(Response::Launched(result));
-                        });
-                        continue;
-                    }
+                    // `send` routes these to the apps thread.
+                    Request::Launch(_) | Request::Close(_) => continue,
                 };
                 if responses.send(response).is_err() {
                     break;
                 }
             }
         });
+        let apps = apps_thread(webos, responses_for_apps);
         Self {
             sender,
+            apps,
             receiver,
             webos,
             running: std::sync::Arc::default(),
@@ -481,7 +464,152 @@ impl Platform {
     }
 
     pub fn send(&self, request: Request) {
-        let _ = self.sender.send(request);
+        let _ = match request {
+            Request::Launch(_) | Request::Close(_) => self.apps.send(request),
+            request => self.sender.send(request),
+        };
+    }
+}
+
+/// Launches and closes, one at a time in the order asked (a close then a
+/// launch of the same app never cross), each on this thread's own bus
+/// connection.
+fn apps_thread(webos: bool, responses: mpsc::Sender<Response>) -> mpsc::Sender<Request> {
+    let (sender, requests) = mpsc::channel::<Request>();
+    thread::spawn(move || {
+        while let Ok(request) = requests.recv() {
+            let response = match request {
+                Request::Launch(id) => Response::Launched(if !webos {
+                    Ok(())
+                } else if crate::scroll_preview::is_placeholder(&id) {
+                    Err("Scroll preview cards cannot be launched".into())
+                } else if !valid_app_id(&id) {
+                    Err("Invalid application identifier".into())
+                } else {
+                    launch(&id)
+                }),
+                Request::Close(id) => {
+                    let result = if !webos {
+                        Ok(())
+                    } else if !valid_app_id(&id) {
+                        Err("Invalid application identifier".into())
+                    } else {
+                        close(&id)
+                    };
+                    Response::Closed(id, result)
+                }
+                _ => continue,
+            };
+            if responses.send(response).is_err() {
+                break;
+            }
+        }
+    });
+    sender
+}
+
+/// Opens `id`. One whose last launch never reached the screen (a web app
+/// whose page never loaded, on a slow network: webOS keeps it, and opening
+/// it again only signals that dead page) is closed first and starts afresh.
+fn launch(id: &str) -> Result<(), String> {
+    let stalled = FRONTS
+        .lock()
+        .map(|mut fronts| fronts.launching(id, std::time::Instant::now()))
+        .unwrap_or(false);
+    if stalled {
+        status(&format!(
+            "launch {id}: its last launch never showed; starting it afresh"
+        ));
+        if let Err(error) = close(id) {
+            status(&format!(
+                "launch {id}: closing the stalled app failed: {error}"
+            ));
+        }
+    }
+    call(
+        "luna://com.webos.applicationManager/launch",
+        json!({"id": id}),
+    )
+    .map(|_| ())
+}
+
+/// Ends `id`: WebAppMgr's `killApp` first (`closeByAppId` only sends a web
+/// app's page to the background), then the application manager's close for
+/// what it does not know (native apps). As Home, Lounge's own role reaches
+/// both; otherwise, or if refused, through the elevated helper.
+fn close(id: &str) -> Result<(), String> {
+    let closed = if is_home()
+        && (call(
+            "luna://com.palm.webappmanager/killApp",
+            json!({"appId": id}),
+        )
+        .is_ok()
+            || call(
+                "luna://com.webos.applicationManager/closeByAppId",
+                json!({"id": id}),
+            )
+            .is_ok())
+    {
+        Ok(())
+    } else {
+        elevated_close(id)
+    };
+    if closed.is_ok() {
+        forget_opened(id);
+    }
+    closed
+}
+
+/// When each app last came to the front, from the foreground events, and
+/// when Lounge last launched each: together they tell an app that was
+/// launched yet never shown.
+#[derive(Default)]
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
+pub struct Fronts {
+    /// The foreground events are on (until then nothing is known).
+    pub live: bool,
+    fronted: std::collections::BTreeMap<String, std::time::Instant>,
+    launched: std::collections::BTreeMap<String, std::time::Instant>,
+}
+
+static FRONTS: std::sync::Mutex<Fronts> = std::sync::Mutex::new(Fronts {
+    live: false,
+    fronted: std::collections::BTreeMap::new(),
+    launched: std::collections::BTreeMap::new(),
+});
+
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
+impl Fronts {
+    pub fn came_to_front(&mut self, id: &str, at: std::time::Instant) {
+        // Launches made while the events were off cannot be judged.
+        if !self.live {
+            self.launched.clear();
+        }
+        self.live = true;
+        self.fronted.insert(id.to_owned(), at);
+    }
+
+    /// `id` is being launched at `at`: true when its previous launch never
+    /// reached the front. Only a known answer counts: with the foreground
+    /// events off, or for LG's overlay apps (which never take the front),
+    /// nothing is ever stalled.
+    pub fn launching(&mut self, id: &str, at: std::time::Instant) -> bool {
+        if !self.live {
+            return false;
+        }
+        let previous = self.launched.insert(id.to_owned(), at);
+        !OVERLAY_APPS.iter().any(|(app, _)| *app == id)
+            && previous.is_some_and(|launched| {
+                self.fronted
+                    .get(id)
+                    .is_none_or(|fronted| *fronted < launched)
+            })
     }
 }
 
@@ -540,6 +668,10 @@ static APPENDED: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
 /// Records `line` (also on stderr).
 pub fn status(line: &str) {
     eprintln!("Lounge {line}");
+    // Tests leave the TV's log file alone.
+    if cfg!(test) {
+        return;
+    }
     use std::io::Write;
     let mut appended = APPENDED
         .lock()
@@ -834,18 +966,40 @@ fn command_reply(envelope: &Value) -> Result<Value, String> {
 /// /tmp is memory, so the list starts empty at every boot and outlives a
 /// restart of Lounge itself.
 const OPENED: &str = "/tmp/lounge-opened";
+/// The foreground, life-event and apps threads all change that list.
+static OPENED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 fn note_opened(id: &str) {
     if id.is_empty() || id == APP_ID || id == HOME_ID || !valid_app_id(id) {
         return;
     }
+    let _list = OPENED_LOCK.lock();
     let known = std::fs::read_to_string(OPENED).unwrap_or_default();
     if known.lines().any(|line| line == id) {
         return;
     }
     use std::io::Write;
     let _ = shared_file(OPENED, true).and_then(|mut file| writeln!(file, "{id}"));
+}
+
+/// `id` ended (closed in the switcher, or by webOS): until someone opens it
+/// again it is not open, whatever LG's preloader starts behind the scenes.
+fn forget_opened(id: &str) {
+    let _list = OPENED_LOCK.lock();
+    let Ok(known) = std::fs::read_to_string(OPENED) else {
+        return;
+    };
+    if !known.lines().any(|line| line == id) {
+        return;
+    }
+    let kept: String = known
+        .lines()
+        .filter(|line| *line != id)
+        .map(|line| format!("{line}\n"))
+        .collect();
+    use std::io::Write;
+    let _ = shared_file(OPENED, false).and_then(|mut file| file.write_all(kept.as_bytes()));
 }
 
 /// The open apps the switcher shows: on the TV only those someone opened.
@@ -921,7 +1075,7 @@ fn root_command_within(command: &str, timeout: std::time::Duration) -> Result<Va
     // SAFETY: geteuid has no preconditions.
     #[cfg(all(feature = "webos", unix))]
     if unsafe { libc::geteuid() } == 0 {
-        return run_as_root(command);
+        return run_as_root(command, timeout);
     }
     #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
     let response = crate::luna::call_within(
@@ -938,9 +1092,11 @@ fn root_command_within(command: &str, timeout: std::time::Duration) -> Result<Va
 }
 
 /// Output goes to files, never a pipe, and the command leads its own process group: giving
-/// Home back to LG stops this process, and the command must outlive it to finish.
+/// Home back to LG stops this process, and the command must outlive it to finish. The
+/// firmware's `timeout` bounds it as the bus bounds an elevated call: a command that never
+/// ends (a service that never answers) must not hold the worker, and what waits on it, forever.
 #[cfg(all(feature = "webos", unix))]
-fn run_as_root(command: &str) -> Result<Value, String> {
+fn run_as_root(command: &str, timeout: std::time::Duration) -> Result<Value, String> {
     use std::os::unix::process::CommandExt;
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let stem = format!(
@@ -950,7 +1106,18 @@ fn run_as_root(command: &str) -> Result<Value, String> {
     );
     let (out, err) = (format!("{stem}.out"), format!("{stem}.err"));
     let file = |path: &str| std::fs::File::create(path).map_err(|e| format!("{path}: {e}"));
-    let finished = std::process::Command::new("/bin/sh")
+    const TIMEOUT: &str = "/usr/bin/timeout";
+    let mut shell = if std::path::Path::new(TIMEOUT).exists() {
+        let mut bounded = std::process::Command::new(TIMEOUT);
+        bounded
+            .args(["-s", "KILL"])
+            .arg(timeout.as_secs().max(1).to_string())
+            .arg("/bin/sh");
+        bounded
+    } else {
+        std::process::Command::new("/bin/sh")
+    };
+    let finished = shell
         .arg("-c")
         .arg(command)
         .stdin(std::process::Stdio::null())

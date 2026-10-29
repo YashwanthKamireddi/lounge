@@ -337,6 +337,9 @@ pub struct State {
     pub hour_24: bool,
     /// Effects a TV reply asked for, run by the loop after replies.
     pub queued: Vec<Effect>,
+    /// Back asked webOS which apps are open and nothing has been pressed
+    /// since: only then does the answer open the switcher.
+    pub switcher_asked: bool,
 }
 
 /// tvOS-style app switcher over Home: open apps as large cards.
@@ -454,6 +457,7 @@ impl State {
             snapshots_wanted: None,
             hour_24: false,
             queued: Vec::new(),
+            switcher_asked: false,
         }
     }
 
@@ -608,6 +612,25 @@ impl State {
             .is_some_and(|(_, start)| crate::clock::since(start).as_secs_f32() > NOTICE_SECONDS)
         {
             self.notice = None;
+            self.dirty = true;
+        }
+        // The pointer can rest on a notice; once it is gone, focus goes back
+        // where the remote can carry on from (in the switcher, the card in
+        // view; on the home, the tile it last held), shown as the remote's.
+        if self.focus == Target::DismissNotice && self.notice.is_none() {
+            let apps = self.apps();
+            self.focus = match &self.switcher {
+                Some(switcher) if switcher.dismissed.is_none() && !switcher.apps.is_empty() => {
+                    Target::Switch(
+                        (switcher.shown.round().max(0.) as usize).min(switcher.apps.len() - 1),
+                    )
+                }
+                _ if self.page == Page::Apps && !apps.is_empty() => {
+                    Target::App(apps[self.focus_slot.min(apps.len() - 1)].id.clone())
+                }
+                _ => self.first_content(),
+            };
+            self.pointer = false;
             self.dirty = true;
         }
         self.rotate_avatar();
@@ -878,26 +901,50 @@ impl State {
         if self.page == Page::Home {
             self.scroll_favorites(0.);
         }
-        if let Target::App(id) = &self.focus
+        self.focus = self.reconciled(self.focus.clone());
+        // What the switcher, a menu or an alert puts focus back on when it
+        // closes follows the same apps (an app can go while one is open).
+        if let Some(switcher) = &self.switcher {
+            let restore = self.reconciled(switcher.restore.clone());
+            if let Some(switcher) = &mut self.switcher {
+                switcher.restore = restore;
+            }
+        }
+        if let Some(Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. }) =
+            &self.overlay
+        {
+            let reconciled = self.reconciled(restore.clone());
+            if let Some(Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. }) =
+                &mut self.overlay
+            {
+                *restore = reconciled;
+            }
+        }
+    }
+
+    /// `target`, or what takes its place if its app or input is gone.
+    fn reconciled(&self, target: Target) -> Target {
+        if let Target::App(id) = &target
             && !self.apps().iter().any(|app| &app.id == id)
         {
             // The tile that now has its place, as when an app is hidden;
             // the top only if the grid is empty.
             let apps = self.apps();
-            self.focus = apps
+            return apps
                 .get(self.focus_slot.min(apps.len().saturating_sub(1)))
                 .map(|app| Target::App(app.id.clone()))
                 .unwrap_or_else(|| self.first_content());
         }
-        if let Target::Input(id) = &self.focus
+        if let Target::Input(id) = &target
             && !self
                 .inventory
                 .inputs
                 .iter()
                 .any(|input| &input.id == id && self.preferences.input_visible(input))
         {
-            self.focus = self.first_content();
+            return self.first_content();
         }
+        target
     }
 
     pub fn first_content(&self) -> Target {

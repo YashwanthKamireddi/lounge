@@ -2011,3 +2011,93 @@ fn a_launch_webos_has_not_answered_yet_never_swallows_a_later_press() {
     assert!(!state.launch_busy());
     assert_eq!(state.activate(), vec![Effect::Launch("netflix".into())]);
 }
+
+#[test]
+fn an_app_whose_last_launch_never_showed_starts_afresh() {
+    use crate::platform::Fronts;
+    use std::time::{Duration, Instant};
+    let start = Instant::now();
+    let at = |ms| start + Duration::from_millis(ms);
+    let mut fronts = Fronts::default();
+    // Until the foreground events are on, nothing is known: never a restart.
+    assert!(!fronts.launching("youtube.leanback.v4", at(0)));
+    assert!(!fronts.launching("youtube.leanback.v4", at(10)));
+    fronts.came_to_front("com.webos.app.home", at(20));
+    // Opened, shown, opened again: a plain relaunch (it resumes).
+    assert!(!fronts.launching("netflix", at(100)));
+    fronts.came_to_front("netflix", at(900));
+    assert!(!fronts.launching("netflix", at(5000)));
+    // YouTube on a slow network: launched, its page never came up, and Home
+    // was pressed over the splash. The next press restarts it.
+    assert!(!fronts.launching("youtube.leanback.v4", at(6000)));
+    fronts.came_to_front("com.webos.app.home", at(30_000));
+    assert!(fronts.launching("youtube.leanback.v4", at(31_000)));
+    // That fresh start showed: the press after it resumes again.
+    fronts.came_to_front("youtube.leanback.v4", at(33_000));
+    assert!(!fronts.launching("youtube.leanback.v4", at(40_000)));
+    // LG's overlays never take the front; they are never "stalled".
+    assert!(!fronts.launching("com.palm.app.settings", at(41_000)));
+    assert!(!fronts.launching("com.palm.app.settings", at(42_000)));
+    // The events stopping again makes everything unknown once more.
+    fronts.live = false;
+    assert!(!fronts.launching("hotstar", at(43_000)));
+    assert!(!fronts.launching("hotstar", at(44_000)));
+}
+
+#[test]
+fn a_late_answer_to_back_opens_no_switcher_over_what_came_after() {
+    use crate::platform::{Platform, Response};
+    use crate::replies::Replies;
+    let platform = Platform::new(false, None);
+    let assets = test_assets();
+    let mut replies = Replies::new(false);
+    let mut remote = crate::input::Remote::new();
+    let mut state = ready();
+    let open = vec!["netflix".to_owned(), "youtube.leanback.v4".to_owned()];
+    // Back with webOS's open apps not yet known: asked, then answered.
+    state.switcher_asked = true;
+    replies.apply(
+        Response::Running(open.clone()),
+        &mut state,
+        &platform,
+        &assets,
+        true,
+        0,
+    );
+    assert!(state.switcher.is_some(), "the answer to Back opens it");
+    state.switcher = None;
+    state.focus = state.first_content();
+    // Asked, but the owner pressed on before the busy TV answered.
+    state.switcher_asked = true;
+    let controls = controls(&state);
+    remote.key_down(
+        sdl2::keyboard::Keycode::Right,
+        false,
+        false,
+        Some(0),
+        &mut state,
+        &controls,
+    );
+    replies.apply(
+        Response::Running(open.clone()),
+        &mut state,
+        &platform,
+        &assets,
+        true,
+        0,
+    );
+    assert!(
+        state.switcher.is_none(),
+        "a late answer opened the switcher"
+    );
+    // An answer nobody asked for (a second reply) opens nothing either.
+    replies.apply(
+        Response::Running(open),
+        &mut state,
+        &platform,
+        &assets,
+        true,
+        0,
+    );
+    assert!(state.switcher.is_none());
+}

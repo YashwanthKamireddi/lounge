@@ -27,7 +27,10 @@ pub(crate) fn effects(
                 let cached = platform.running.lock().ok().and_then(|cache| cache.clone());
                 match cached {
                     Some(ids) => state.open_switcher(platform::opened_only(ids, platform.webos)),
-                    None => platform.send(Request::Running),
+                    None => {
+                        state.switcher_asked = true;
+                        platform.send(Request::Running);
+                    }
                 }
             }
             Effect::Close(id) => platform.send(Request::Close(id)),
@@ -39,23 +42,26 @@ pub(crate) fn effects(
                     state.notify(i18n::t("scrollTestOnly"));
                     continue;
                 }
+                // A second press while the first launch is on its way is the
+                // same press twice: nothing more is asked or recorded.
+                if state.launch_busy() {
+                    continue;
+                }
                 state.note_launch(&id);
-                if !state.launch_busy() {
-                    // webOS plays its own native launch transition; Lounge adds
-                    // nothing over it (a second animation read as a flicker).
-                    if platform.webos {
-                        state.launching = true;
-                        state.launch_started = Some(crate::clock::now());
-                        platform.send(Request::Launch(id));
-                    } else {
-                        let title = state
-                            .inventory
-                            .apps
-                            .iter()
-                            .find(|a| a.id == id)
-                            .map_or(id.as_str(), |app| app.title.as_str());
-                        state.notify(i18n::format("desktopPreview", &[("app", title)]));
-                    }
+                // webOS plays its own native launch transition; Lounge adds
+                // nothing over it (a second animation read as a flicker).
+                if platform.webos {
+                    state.launching = true;
+                    state.launch_started = Some(crate::clock::now());
+                    platform.send(Request::Launch(id));
+                } else {
+                    let title = state
+                        .inventory
+                        .apps
+                        .iter()
+                        .find(|a| a.id == id)
+                        .map_or(id.as_str(), |app| app.title.as_str());
+                    state.notify(i18n::format("desktopPreview", &[("app", title)]));
                 }
                 // The recents list is written in the background, after the
                 // launch request is on its way.
