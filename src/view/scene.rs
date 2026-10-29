@@ -99,16 +99,8 @@ impl Scene {
         self.draw
             .extend([Draw::Clip(None), Draw::EdgeFade(None), Draw::Soft(None)]);
     }
+    /// Moves everything drawn from `from`; its clips stay put (a page scrolling under them).
     pub(super) fn translate(&mut self, from: usize, dx: f32, dy: f32) {
-        self.shift(from, dx, dy, false);
-    }
-    /// As `translate`, also moving the clips drawn from `from`: for a piece
-    /// that owns its clips (the context menu masks its words to its
-    /// highlight). A page's clips stay put when it scrolls.
-    pub(super) fn translate_with_clips(&mut self, from: usize, dx: f32, dy: f32) {
-        self.shift(from, dx, dy, true);
-    }
-    fn shift(&mut self, from: usize, dx: f32, dy: f32, clips: bool) {
         if dx == 0. && dy == 0. {
             return;
         }
@@ -126,12 +118,54 @@ impl Scene {
                     rect.x += dx;
                     rect.y += dy;
                 }
-                Draw::Clip(Some(rect)) if clips => {
-                    rect.x += dx;
-                    rect.y += dy;
-                }
                 // Full-screen opaque backdrops neither move nor fade with content.
                 Draw::Clip(_) | Draw::EdgeFade(_) | Draw::Soft(_) | Draw::Dissolve(..) => {}
+            }
+        }
+    }
+    /// Scales everything drawn from `from` by `factor` about (`cx`, `cy`), corners, borders and
+    /// shadows with it, and its own clips; text keeps its layout and is drawn scaled
+    /// (`TextStyle::scale`), so a piece can shrink into the place it came from in one motion.
+    pub(super) fn scale_about(&mut self, from: usize, cx: f32, cy: f32, factor: f32) {
+        if (factor - 1.).abs() < f32::EPSILON {
+            return;
+        }
+        let place = |rect: &mut Rect| {
+            *rect = Rect::new(
+                cx + (rect.x - cx) * factor,
+                cy + (rect.y - cy) * factor,
+                rect.w * factor,
+                rect.h * factor,
+            );
+        };
+        for draw in &mut self.draw[from..] {
+            match draw {
+                Draw::Shape(rect, radius, width, _)
+                | Draw::GradientRing(rect, radius, width, ..) => {
+                    place(rect);
+                    *radius *= factor;
+                    *width *= factor;
+                }
+                Draw::Shadow(rect, radius, blur, _) => {
+                    place(rect);
+                    *radius *= factor;
+                    *blur *= factor;
+                }
+                Draw::RoundedGradient(rect, radius, ..)
+                | Draw::Image(_, rect, radius, _)
+                | Draw::TintedImage(_, rect, radius, ..)
+                | Draw::Glass(_, rect, radius, ..) => {
+                    place(rect);
+                    *radius *= factor;
+                }
+                // Laid out in its own box, drawn scaled about the box's top left.
+                Draw::Text(_, rect, style, ..) => {
+                    rect.x = cx + (rect.x - cx) * factor;
+                    rect.y = cy + (rect.y - cy) * factor;
+                    style.scale *= factor;
+                }
+                Draw::AppImage(_, rect, _) | Draw::Clip(Some(rect)) => place(rect),
+                Draw::Clip(None) | Draw::EdgeFade(_) | Draw::Soft(_) | Draw::Dissolve(..) => {}
             }
         }
     }

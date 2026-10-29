@@ -445,9 +445,9 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             ),
         }
     }
-    // Closing: the context menu sinks back toward its tile as it fades, the
-    // way it rose. It eases out, as the opening does: an ease-in ended at
-    // full speed and the menu stopped dead on its last frame.
+    // Closing: the context menu shrinks back into its tile as it fades, the
+    // reverse of how it rose. It eases out, as the opening does: an ease-in
+    // ended at full speed and the menu stopped dead on its last frame.
     if state.overlay.is_none()
         && let Some((id, closed)) = &state.options_closed
     {
@@ -465,7 +465,11 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         options(&mut out, state, assets, id, anchor);
         out.controls.truncate(controls);
         out.modal = None;
-        out.translate_with_clips(start, 0., 14. * gone);
+        // tvOS: the menu shrinks back into the app it came from, fading as it goes.
+        if let Some(tile) = anchor {
+            let (cx, cy) = tile.center();
+            out.scale_about(start, cx, cy, 1. - 0.18 * gone);
+        }
         out.fade(start, 1. - gone, 1.);
     }
     if let Some(
@@ -504,8 +508,10 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             Overlay::SystemKeyboard => {}
         }
         if opening.is_some() {
-            if matches!(overlay, Overlay::Options { .. }) {
-                out.translate_with_clips(panel, 0., 14. * (1. - eased));
+            // tvOS: the menu grows out of the app it acts on.
+            if let (Overlay::Options { .. }, Some(tile)) = (overlay, anchor) {
+                let (cx, cy) = tile.center();
+                out.scale_about(panel, cx, cy, 0.82 + 0.18 * eased);
             }
             out.fade(panel, eased, 1.);
         }
