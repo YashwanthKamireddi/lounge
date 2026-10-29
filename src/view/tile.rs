@@ -100,7 +100,8 @@ pub(super) fn tile(
     if state.pressed.as_ref() == Some(&Target::App(app.id.clone())) {
         out.fade(start, 1., 0.85);
     }
-    if let Some([r, g, b, _]) = names {
+    // The app in hand has Move's instructions where its name goes (overlays::move_hint).
+    if let Some([r, g, b, _]) = names.filter(|_| state.moving.as_ref() != Some(&app.id)) {
         out.text(
             fit_caption(assets, &app.title, caption_style(focused), base.w - 8.),
             Rect::new(

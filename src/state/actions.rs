@@ -25,15 +25,13 @@ impl State {
         }
     }
 
-    /// Holding OK on an app starts Move at once, as on tvOS (or, in a
-    /// menu or Move, opens nothing new); on anything else it is OK.
+    /// Holding OK on an app opens its menu: Move (focused, so Move is hold then OK), Hide and
+    /// Uninstall. The LG remote has no Menu key, so a hold that went straight to Move left Hide
+    /// and Uninstall unreachable. In a menu or Move it opens nothing new; on anything else a
+    /// hold is OK.
     pub fn hold(&mut self) -> Vec<Effect> {
-        if let Target::App(id) = self.focus.clone() {
-            if self.page == Page::Apps && self.overlay.is_none() && self.moving.is_none() {
-                self.start_move(&id);
-            } else {
-                self.options();
-            }
+        if matches!(self.focus, Target::App(_)) {
+            self.options();
             return vec![];
         }
         // Anywhere else a slow press is still a press: a Settings row, a
@@ -68,8 +66,8 @@ impl State {
         self.preferences.favorites = Some(order);
         self.moving = Some(id.into());
         self.moving_since = (!self.preferences.reduced_motion).then(crate::clock::now);
-        // Say how Move works, once, in the banner.
-        self.notify(i18n::t("moveHint"));
+        // How Move works is said beside the app in hand (view::overlays::move_hint): a banner
+        // covered the dock's last tiles, where apps are moved to.
         self.focus = Target::App(id.into());
         self.dirty = true;
     }

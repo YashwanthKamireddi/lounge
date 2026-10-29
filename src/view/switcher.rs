@@ -1,6 +1,11 @@
 //! The app switcher.
-use super::{Assets, Scene, shared::tab_style, tile::tile_face};
+use super::{
+    Assets, Scene,
+    shared::{c, tab_style, text},
+    tile::tile_face,
+};
 use crate::{
+    i18n,
     model::App,
     renderer::{Draw, WHITE},
     state::{Rect, State, Target},
@@ -130,6 +135,19 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
         if switcher.dismissed.is_none() {
             out.control(Target::Switch(index), rect, false);
         }
+    }
+    // What the remote does here, said once under the cards in the switcher's quiet ink: nobody
+    // finds "Up closes an app" on their own.
+    if !switcher.apps.is_empty() {
+        let start = out.draw.len();
+        out.text(
+            i18n::t("switcherHint"),
+            Rect::new(360., top + h + 96., 1200., 34.),
+            text(24., 500, 0.),
+            c(0xffffff, 0.62),
+            true,
+        );
+        out.fade(start, appear, 1.);
     }
     // Up closes an app: its window lifts away and fades, as on tvOS.
     for (id, start, offset) in &switcher.closing {

@@ -113,11 +113,11 @@
   "scrollTestOnly": "Test card for scrolling; no app to launch.",
   "noOpenApps": "No apps are open",
   "appCloseError": "That app couldn't be closed",
-  "topShelfArt": "Top Shelf Art",
+  "topShelfArt": "Show cover art",
   "topResults": "Top Results",
   "moveHint": "Move with the arrows. Press OK when done.",
   "aboutSettings": "Choose how Lounge looks, what the weather shows, and which inputs appear.",
-  "aboutInterface": "App names, the clock, appearance, motion and Top Shelf art.",
+  "aboutInterface": "App names, the clock, appearance, motion and cover art.",
   "aboutInterfaceNoArt": "App names, the clock, appearance and motion.",
   "tvHome": "Lounge as Home",
   "tvHomeLounge": "Lounge is now the TV's Home",
@@ -125,10 +125,12 @@
   "tvHomeError": "Couldn't change Home. Is the Homebrew Channel elevated?",
   "aboutBackground": "The picture behind your apps. Settings, menus and the app switcher take on its colour.",
   "aboutWeather": "Where the weather beside the clock comes from.",
-  "aboutInputs": "Which HDMI and TV inputs appear in Lounge, and what they are called.",
+  "aboutInputs": "Which HDMI and TV inputs appear in Lounge.",
   "appearance": "Appearance",
   "appearanceLight": "Light",
   "appearanceDark": "Dark",
   "appearanceAuto": "Automatic",
-  "appearanceAutoDetail": "Light by day, dark from 7 PM to 6 AM"
+  "appearanceAutoDetail": "Light by day, dark from 7 PM to 6 AM",
+  "aboutHidden": "Hidden from Home. Select one to bring it back.",
+  "switcherHint": "OK opens  ·  Up closes  ·  Back returns to Home"
 }

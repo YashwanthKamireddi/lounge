@@ -26,7 +26,7 @@ use crate::{
 };
 use glass::{shelf_art, shelf_dissolve};
 use home::{home, library};
-use overlays::{footer, header, keyboard, options, toast};
+use overlays::{footer, header, keyboard, move_hint, options, toast};
 use settings::settings;
 use shared::{c, detail_style};
 use std::{
@@ -517,6 +517,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         }
     }
     switcher(&mut out, state, assets);
+    move_hint(&mut out, state, assets);
     if let Some((notice, _)) = &state.notice {
         toast(&mut out, state, assets, notice);
     }

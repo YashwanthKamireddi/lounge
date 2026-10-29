@@ -171,9 +171,11 @@ fn weather_settings(out: &mut Scene, state: &State, assets: &Assets) {
         .weather_location
         .as_ref()
         .map(|place| place.name.as_str());
-    let style = text(18.4, 450, 0.).leading(1.4);
+    // The place reads as every other row's value: same size, same ink.
+    let style = row_style();
+    let line = 32.;
     let city_lines = city.map_or(1, |city| assets.lines(city, style, 450.));
-    let height = (34. + city_lines as f32 * 25.76).max(72.);
+    let height = (34. + city_lines as f32 * line).max(72.);
     let rect = Rect::new(LIST_X, 264.8 - s, LIST_W, height);
     row(
         out,
@@ -196,15 +198,15 @@ fn weather_settings(out: &mut Scene, state: &State, assets: &Assets) {
             city,
             Rect::new(
                 rect.x + rect.w - 508.6,
-                rect.y + (height - city_lines as f32 * 25.76) / 2.,
+                rect.y + (height - city_lines as f32 * line) / 2.,
                 450.,
-                city_lines as f32 * 25.76,
+                city_lines as f32 * line,
             ),
             style.right(),
             if state.focus == Target::WeatherLocation {
                 c(0x444444, 1.)
             } else {
-                out.theme.ink(0.73)
+                out.theme.ink(0.6)
             },
             false,
         );
@@ -397,10 +399,22 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
     // tvOS Settings: one list at a time on the right. At the top level it
     // lists the sections; inside one, that section's rows.
     let root = matches!(state.focus, Target::Sidebar(_));
-    let title = if root {
-        i18n::t("settings")
-    } else {
-        i18n::t(SECTIONS[state.section.min(SECTIONS.len() - 1)].0)
+    // A page opened from a row is titled with that row's name, as on tvOS.
+    let title = match (&state.subpage, root) {
+        (_, true) => i18n::t("settings"),
+        (Some(Subpage::Clock), _) => i18n::t("clockFormat"),
+        (Some(Subpage::Appearance), _) => i18n::t("appearance"),
+        (Some(Subpage::Hidden), _) => i18n::t("hiddenApps"),
+        (Some(Subpage::Avatar), _) => i18n::t("profilePicture"),
+        (Some(Subpage::WeatherLocation), _) => i18n::t("location"),
+        (Some(Subpage::Temperature), _) => i18n::t("temperature"),
+        (Some(Subpage::Input(id)), _) => state
+            .inventory
+            .inputs
+            .iter()
+            .find(|input| &input.id == id)
+            .map_or(i18n::t("inputs"), |input| input.port.as_str()),
+        (None, false) => i18n::t(SECTIONS[state.section.min(SECTIONS.len() - 1)].0),
     };
     // tvOS push: the page being left slides away and fades as the new one
     // slides in from the side it comes from and fades up, together, so no
@@ -534,6 +548,7 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
         return;
     }
     let (about, glyph) = match section {
+        Some(0) if state.subpage == Some(Subpage::Hidden) => ("aboutHidden", "gear"),
         None => ("aboutSettings", "tv-bold"),
         Some(section) => [
             (
@@ -876,40 +891,26 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 );
                 below += 84.;
             }
-            row(
-                out,
-                state,
-                assets,
-                Row {
-                    target: Target::Setting(3),
-                    rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
-                    title: if state.loading {
-                        i18n::t("refreshNotice")
-                    } else {
-                        i18n::t("refreshApps")
+            // No refresh row: installs, removals and plugged-in devices update the grid by
+            // themselves (platform::watch_apps, watch_inputs). As the TV's Home there is no Quit
+            // either: it left the screen empty until Home was pressed again.
+            if !crate::platform::is_home() {
+                row(
+                    out,
+                    state,
+                    assets,
+                    Row {
+                        target: Target::Setting(5),
+                        rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
+                        title: i18n::t("quitApp"),
+                        icon: Some("power"),
+                        value: None,
+                        description: None,
+                        selected: false,
+                        chevron: false,
                     },
-                    icon: Some("refresh"),
-                    value: None,
-                    description: None,
-                    selected: false,
-                    chevron: false,
-                },
-            );
-            row(
-                out,
-                state,
-                assets,
-                Row {
-                    target: Target::Setting(5),
-                    rect: Rect::new(LIST_X, 684.8 + below - s, LIST_W, 72.),
-                    title: i18n::t("quitApp"),
-                    icon: Some("power"),
-                    value: None,
-                    description: None,
-                    selected: false,
-                    chevron: false,
-                },
-            );
+                );
+            }
         }
         1 => {
             for (index, (id, _title)) in BACKGROUNDS.iter().enumerate() {
@@ -986,7 +987,8 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     },
                 );
             }
-            let mut y = 164.8 + state.inventory.inputs.len() as f32 * 116. + 16. - s;
+            // No refresh row: plugging a device in or out updates the list by itself
+            // (platform::watch_inputs).
             if state.inventory.inputs.is_empty() {
                 out.text(
                     i18n::t("noInputs"),
@@ -995,27 +997,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     out.theme.ink(0.72),
                     false,
                 );
-                y += 36.;
             }
-            row(
-                out,
-                state,
-                assets,
-                Row {
-                    target: Target::Setting(3),
-                    rect: Rect::new(LIST_X, y, LIST_W, 72.),
-                    title: if state.loading {
-                        i18n::t("refreshNotice")
-                    } else {
-                        i18n::t("refreshInputs")
-                    },
-                    icon: Some("refresh"),
-                    value: None,
-                    description: None,
-                    selected: false,
-                    chevron: false,
-                },
-            );
         }
     }
 }

@@ -108,8 +108,10 @@ fn reorder_persists_order_and_keeps_selected_identity() {
     let mut state = ready();
     state.open(1);
     state.focus = Target::App("netflix".into());
-    // Holding OK on an app starts Move at once, as on tvOS.
+    // Holding OK on an app opens its menu, Move first.
     state.hold();
+    assert_eq!(state.focus, Target::Option(0));
+    state.activate();
     assert_eq!(state.moving.as_deref(), Some("netflix"));
     // Arrows write nothing to disk; the order is saved once Move ends.
     assert!(
@@ -275,10 +277,11 @@ fn an_hdmi_input_moves_like_an_app_and_a_new_one_lands_after_search() {
     let before = at(&state, hdmi);
     state.focus = Target::App(hdmi.into());
     state.hold();
+    state.activate();
     assert_eq!(
         state.moving.as_deref(),
         Some(hdmi),
-        "holding OK on an input starts Move"
+        "Move from the menu works on an input"
     );
     state.direction(Direction::Right, &[]);
     assert_eq!(
@@ -490,6 +493,7 @@ fn home_key_closes_settings_and_keeps_focus_on_return() {
     // Home pressed mid-Move ends Move.
     state.focus = Target::App("netflix".into());
     state.hold();
+    state.activate();
     assert!(state.moving.is_some());
     state.home_key(true);
     assert!(state.moving.is_none());
@@ -1427,6 +1431,7 @@ fn number_keys_follow_the_grid_and_never_open_lounge_tiles() {
     state.focus = Target::App(first);
     state.hold();
     state.activate();
+    state.activate();
     let launchable: Vec<String> = order(&state)
         .into_iter()
         .filter(|id| id != SETTINGS_TILE && id != SEARCH_TILE)
@@ -1445,6 +1450,7 @@ fn a_hidden_app_keeps_its_place_through_a_move() {
     state.preferences.hidden.push(hidden.clone());
     state.focus = Target::App(before[0].clone());
     state.hold();
+    state.activate();
     state.direction(Direction::Right, &[]);
     state.activate();
     state.preferences.hidden.clear();
@@ -1514,6 +1520,7 @@ fn holding_ok_on_full_screen_top_shelf_lowers_it_first() {
     state.direction(Direction::Up, &controls(&state));
     assert!(state.expanded);
     state.hold();
+    state.activate();
     assert!(state.moving.is_some());
     assert!(!state.expanded, "Move is on the visible grid");
 }
@@ -1524,6 +1531,7 @@ fn a_device_plugged_in_during_move_waits_at_the_end() {
     let first = order(&state)[0].clone();
     state.focus = Target::App(first.clone());
     state.hold();
+    state.activate();
     state.inventory.inputs[2].connected = Some(true);
     state.refresh_tiles();
     assert_eq!(

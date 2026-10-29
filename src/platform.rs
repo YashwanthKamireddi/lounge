@@ -344,6 +344,67 @@ pub fn watch_apps(changed: Wake) -> Result<(), String> {
     )
 }
 
+/// Calls `changed` when a device is plugged into or out of an input, so its tile comes and goes
+/// at once (a manual refresh was the only way before). Only the set of connected inputs
+/// counts: the stream also reports signal and selection changes, which change no tile.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn watch_inputs(changed: Wake) -> Result<(), String> {
+    let last = std::sync::Arc::new(std::sync::Mutex::new(None::<Vec<(String, bool)>>));
+    crate::luna::subscribe(
+        "luna://com.webos.service.eim/getAllInputStatus",
+        &json!({"subscribe": true}),
+        move |reply| {
+            if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
+                status(&format!("input events ended: {reply}"));
+                let changed = changed.clone();
+                resubscribe("input events", move || watch_inputs(changed.clone()));
+                return;
+            }
+            let Some(connected) = connected_inputs(&reply) else {
+                return;
+            };
+            let Ok(mut last) = last.lock() else {
+                return;
+            };
+            // The first reply is the state Lounge has already read.
+            if last
+                .replace(connected.clone())
+                .is_some_and(|before| before != connected)
+            {
+                changed();
+            }
+        },
+    )
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn watch_inputs(_changed: Wake) -> Result<(), String> {
+    Err("Input events need an ARM webOS build".into())
+}
+
+/// Each input's id and whether a device is plugged in, from a getAllInputStatus reply.
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
+fn connected_inputs(reply: &Value) -> Option<Vec<(String, bool)>> {
+    let devices = reply.get("devices")?.as_array()?;
+    Some(
+        devices
+            .iter()
+            .filter_map(|device| {
+                Some((
+                    device.get("id")?.as_str()?.to_owned(),
+                    device
+                        .get("connected")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                ))
+            })
+            .collect(),
+    )
+}
+
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
 pub fn watch_apps(_changed: Wake) -> Result<(), String> {
     Err("App list events need an ARM webOS build".into())
@@ -1365,6 +1426,23 @@ fn title(value: Option<&str>, fallback: &str) -> String {
     }
 }
 
+/// An app's name as Lounge shows it: the brand's name when the installed app is that brand
+/// under a longer title (Homebrew's "YouTube AdFree" wears YouTube's tile), so the tile, its
+/// label, search and the switcher all say the same thing.
+fn shown_title(id: &str, value: Option<&str>) -> String {
+    let title = title(value, id);
+    match crate::branding::for_app(id) {
+        Some(brand)
+            if title.len() > brand.title.len()
+                && title.starts_with(brand.title)
+                && title.as_bytes()[brand.title.len()] == b' ' =>
+        {
+            brand.title.to_owned()
+        }
+        _ => title,
+    }
+}
+
 pub fn normalize_apps(raw: &Value) -> Result<Vec<App>, String> {
     let entries = raw
         .as_array()
@@ -1402,7 +1480,10 @@ pub fn normalize_apps(raw: &Value) -> Result<Vec<App>, String> {
         {
             continue;
         }
-        let mut app = App::new(id, &title(entry.get("title").and_then(Value::as_str), id));
+        let mut app = App::new(
+            id,
+            &shown_title(id, entry.get("title").and_then(Value::as_str)),
+        );
         app.icon = Some(app_artwork::Source::new(id, entry));
         app.removable = crate::uninstall::removable(entry);
         apps.push(app);
@@ -1541,6 +1622,45 @@ pub fn elevated(command: &str, field: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod status_tests {
     use super::*;
+
+    #[test]
+    fn only_plugging_a_device_in_or_out_changes_the_inputs() {
+        let reply = |hdmi2: bool, signal: bool| {
+            json!({"devices": [
+                {"id": "HDMI_1", "connected": false, "hdmiSignalExist": false},
+                {"id": "HDMI_2", "connected": hdmi2, "hdmiSignalExist": signal},
+            ]})
+        };
+        let plugged = connected_inputs(&reply(true, false));
+        assert_eq!(
+            plugged,
+            connected_inputs(&reply(true, true)),
+            "a signal change is not a plug"
+        );
+        assert_ne!(plugged, connected_inputs(&reply(false, false)));
+        assert_eq!(connected_inputs(&json!({"returnValue": true})), None);
+    }
+
+    #[test]
+    fn a_branded_app_keeps_its_brand_name_under_a_longer_title() {
+        assert_eq!(
+            shown_title("youtube.leanback.v4", Some("YouTube AdFree")),
+            "YouTube"
+        );
+        assert_eq!(
+            shown_title("youtube.leanback.v4", Some("YouTube")),
+            "YouTube"
+        );
+        // Only a whole-word extension of the brand's name, and only for that brand's app.
+        assert_eq!(
+            shown_title("youtube.leanback.v4", Some("YouTubeX")),
+            "YouTubeX"
+        );
+        assert_eq!(
+            shown_title("com.example.app", Some("YouTube AdFree")),
+            "YouTube AdFree"
+        );
+    }
 
     #[test]
     fn only_a_grid_app_in_front_hides_home() {

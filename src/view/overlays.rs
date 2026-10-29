@@ -1,7 +1,7 @@
 //! What floats over the pages: the status pill, hint footer, context menu,
 //! search keyboard and notifications.
 use super::{
-    Assets, Scene,
+    Assets, FACE_HEIGHT, LABEL_GAP, Scene,
     glass::home_backdrop,
     shared::{PLATTER, c, detail_style, row_style, text},
     tile::tile,
@@ -463,6 +463,64 @@ pub(super) fn keyboard(out: &mut Scene, state: &State, assets: &Assets) {
                 false,
             );
         }
+    }
+}
+
+/// Move's instructions on a small glass capsule in the app in hand's name line (above it on the
+/// bottom row), so they never cover a place the app can go and follow it as it moves.
+pub(super) fn move_hint(out: &mut Scene, state: &State, assets: &Assets) {
+    let Some(id) = &state.moving else {
+        return;
+    };
+    let Some(tile) = out
+        .controls
+        .iter()
+        .find(|control| control.target == Target::App(id.clone()))
+        .map(|control| control.rect)
+    else {
+        return;
+    };
+    let notice = i18n::t("moveHint");
+    let style = text(22., 500, 0.);
+    let width = assets.width(notice, style) + 48.;
+    let height = 44.;
+    let (cx, _) = tile.center();
+    // Centred on the name line, which sits LABEL_GAP under the face; the lifted face reaches
+    // ~10 px further, and the next row starts well below the line.
+    let below = tile.y + FACE_HEIGHT + LABEL_GAP;
+    let y = if below + height <= 1040. {
+        below
+    } else {
+        tile.y - LABEL_GAP - height - 18.
+    };
+    let rect = Rect::new(
+        (cx - width / 2.).clamp(40., 1880. - width),
+        y,
+        width,
+        height,
+    );
+    let start = out.draw.len();
+    out.shadow(rect, height / 2., 24., 6., 0.28);
+    out.draw.push(Draw::Soft(Some(SOFT_EDGE)));
+    out.glass(
+        assets,
+        state.wallpaper(),
+        rect,
+        height / 2.,
+        out.theme.veil(0.6),
+    );
+    out.draw.push(Draw::Soft(None));
+    out.rim(rect, height / 2., 0.5, 0.06);
+    out.text(
+        notice,
+        Rect::new(rect.x + 24., rect.y + (height - 28.) / 2., width - 48., 28.),
+        style,
+        out.theme.ink(1.),
+        false,
+    );
+    if !state.preferences.reduced_motion {
+        let shown = (state.move_raise()).clamp(0., 1.);
+        out.fade(start, shown, 1.);
     }
 }
 

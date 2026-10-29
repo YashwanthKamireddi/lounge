@@ -422,7 +422,8 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
-    // webOS changed its list of apps (an install, update or removal): read it again now.
+    // webOS changed its list of apps (an install, update or removal) or a device was plugged
+    // into an input: read the inventory again now.
     let apps_sender = sdl.event()?.event_sender();
     let apps_changed: platform::Wake = std::sync::Arc::new(move || {
         let _ = apps_sender.push_event(Event::User {
@@ -458,6 +459,7 @@ fn run() -> Result<(), String> {
     // events whenever they start.
     if webos {
         let running = platform.running.clone();
+        let inputs_changed = apps_changed.clone();
         std::thread::spawn(move || {
             if let Some((lifecycle_type, sender)) = lifecycle_sender {
                 let registered = platform::register_home(move |event| {
@@ -489,6 +491,10 @@ fn run() -> Result<(), String> {
             match platform::watch_apps(apps_changed) {
                 Ok(()) => platform::status("app list events: on"),
                 Err(error) => platform::status(&format!("app list events: {error}")),
+            }
+            match platform::watch_inputs(inputs_changed) {
+                Ok(()) => platform::status("input events: on"),
+                Err(error) => platform::status(&format!("input events: {error}")),
             }
             match platform::watch_running(running) {
                 Ok(()) => platform::status("running events: on"),

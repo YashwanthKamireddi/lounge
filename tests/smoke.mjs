@@ -68,10 +68,11 @@ try {
   assert.ok(hidden.preferences.hidden.includes('com.webos.app.livetv'));
   assert.deepEqual(hidden.focus, { App: 'lounge.settings' });
   // Reload from disk and show Live TV again from Settings › General › Hidden apps,
-  // two rows up from the end: rows above it (Top Shelf art) depend on local art.
+  // one row up from the end (Quit app, on the desktop): rows above it (cover art) depend on
+  // local art.
   const restored = await scenario(
     'restored',
-    'settings,wait,right,down,down,down,down,down,down,down,down,up,up,enter,enter',
+    'settings,wait,right,down,down,down,down,down,down,down,down,up,enter,enter',
   );
   assert.deepEqual(restored.preferences.hidden, []);
   const searched = await scenario('search', 'apps,type:YouTube');
@@ -90,7 +91,7 @@ try {
   }
   const settings = await scenario('settings', 'settings,down,enter,down,enter');
   assert.equal(settings.preferences.background, 'forest');
-  const saved = await scenario('saved', 'hold,right,back');
+  const saved = await scenario('saved', 'hold,enter,right,back');
   assert.equal(saved.preferences.background, 'forest');
   assert.deepEqual(saved.preferences.favorites.slice(0, 2), ['youtube.leanback.v4', 'netflix']);
   const clock = await scenario('clock', 'settings,click:1300:200,click:1300:284');
