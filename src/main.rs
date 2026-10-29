@@ -1356,8 +1356,10 @@ impl Shell {
     fn app_covers(&self) -> bool {
         !self.presence.raising()
             && platform::front_app().is_some_and(|front| {
-                !platform::OVERLAY_APPS.iter().any(|(app, _)| *app == front)
-                    && self.state.inventory.apps.iter().any(|app| app.id == front)
+                platform::covers_home(
+                    &front,
+                    self.state.inventory.apps.iter().map(|app| app.id.as_str()),
+                )
             })
     }
 

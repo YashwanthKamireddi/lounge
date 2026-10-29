@@ -685,6 +685,15 @@ pub fn front_app() -> Option<String> {
         .filter(|front| !front.is_empty())
 }
 
+/// Whether `front` hides Home: an app from the grid (`apps`), not one of LG's overlays, which
+/// sit over Home (Settings, Search), nor Home itself.
+pub fn covers_home<'a>(front: &str, mut apps: impl Iterator<Item = &'a str>) -> bool {
+    front != HOME_ID
+        && front != APP_ID
+        && !OVERLAY_APPS.iter().any(|(app, _)| *app == front)
+        && apps.any(|app| app == front)
+}
+
 static FRONTS: std::sync::Mutex<Fronts> = std::sync::Mutex::new(Fronts {
     live: false,
     fronted: std::collections::BTreeMap::new(),
@@ -1532,6 +1541,19 @@ pub fn elevated(command: &str, field: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod status_tests {
     use super::*;
+
+    #[test]
+    fn only_a_grid_app_in_front_hides_home() {
+        let apps = || ["hotstar", "netflix", "com.palm.app.settings"].into_iter();
+        assert!(covers_home("hotstar", apps()));
+        // LG's overlays sit over Home, even when the grid lists them.
+        assert!(!covers_home("com.palm.app.settings", apps()));
+        assert!(!covers_home("com.webos.app.voice", apps()));
+        // System panels and ad containers are not in the grid.
+        assert!(!covers_home("com.webos.app.adcontainer", apps()));
+        assert!(!covers_home(HOME_ID, apps()));
+        assert!(!covers_home(APP_ID, apps()));
+    }
 
     #[test]
     fn a_process_start_time_reads_from_proc() {
