@@ -62,6 +62,8 @@ use time::OffsetDateTime;
 const INVENTORY_FRESH: Duration = Duration::from_secs(30);
 /// The code of the wake-up that says webOS's list of apps changed.
 const APPS_CHANGED: i32 = 1;
+/// Another app took the front (see `platform::watch_opened`).
+const APP_IN_FRONT: i32 = 2;
 fn main() {
     debug::debug_log();
     // stderr goes nowhere on the TV: how a run ends is kept in the status log.
@@ -430,6 +432,17 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
+    let front_sender = sdl.event()?.event_sender();
+    let app_in_front: platform::Wake = std::sync::Arc::new(move || {
+        let _ = front_sender.push_event(Event::User {
+            timestamp: 0,
+            window_id: 0,
+            type_: home_type,
+            code: APP_IN_FRONT,
+            data1: std::ptr::null_mut(),
+            data2: std::ptr::null_mut(),
+        });
+    });
     if webos && platform::is_home() {
         // SAFETY: as above.
         let lifecycle_type = unsafe { sdl.event()?.register_event()? };
@@ -456,7 +469,7 @@ fn run() -> Result<(), String> {
         }
     }
     if webos {
-        match platform::watch_opened() {
+        match platform::watch_opened(app_in_front) {
             Ok(()) => platform::status("foreground events (opened apps): on"),
             Err(error) => platform::status(&format!("foreground events: {error}")),
         }
@@ -844,8 +857,17 @@ impl Shell {
                     self.state.dirty = true;
                 }
             }
+            Event::User { type_, code, .. } if type_ == self.home_type && code == APP_IN_FRONT => {
+                if self.app_covers() {
+                    self.leave_for_update();
+                }
+            }
             Event::User { type_, code, .. } if type_ == self.home_type && code == APPS_CHANGED => {
-                if !self.state.loading {
+                // Lounge's own update, installed with an app in front.
+                if self.app_covers() {
+                    self.leave_for_update();
+                }
+                if self.running && !self.state.loading {
                     self.last_refresh = Instant::now();
                     pending.push(Effect::Refresh);
                 }
@@ -875,24 +897,7 @@ impl Shell {
                 WindowEvent::Hidden | WindowEvent::Minimized => {
                     self.presence.hide();
                     save_order(&mut self.state, &self.writer);
-                    // Resident as Home, an update only takes effect on a restart. Behind the
-                    // app Lounge mounts the new version and exits, and the next Home press
-                    // starts it. Restarting in place instead brought the new window over the
-                    // app, and the old LS2 connection, kept across exec, held Home's service
-                    // name so the lifecycle registration failed (seen 2026-10-29).
-                    if platform::is_home() && platform::executable_replaced() {
-                        match platform::refresh_home_mount() {
-                            Ok(()) => {
-                                platform::status(
-                                    "home: a package update replaced Lounge; it starts on the next Home press",
-                                );
-                                self.running = false;
-                            }
-                            Err(error) => platform::status(&format!(
-                                "home: renewing the mount failed: {error}"
-                            )),
-                        }
-                    }
+                    self.leave_for_update();
                     release_memory(&mut self.renderer, &mut self.preload);
                     self.remote.press = None;
                     if matches!(self.state.overlay, Some(Overlay::SystemKeyboard)) {
@@ -1308,6 +1313,36 @@ impl Shell {
             100
         };
         self.queued_event = sdl_events::wait(&mut self.events, timeout, self.webos);
+    }
+
+    /// Resident as Home, an update only takes effect on a restart. Behind an app Lounge mounts
+    /// the new version and exits, and the next Home press starts it. Restarting in place
+    /// instead brought the new window over the app, and the old LS2 connection, kept across
+    /// exec, held Home's service name so the lifecycle registration failed (seen 2026-10-29).
+    fn leave_for_update(&mut self) {
+        if !self.running || !platform::is_home() || !platform::executable_replaced() {
+            return;
+        }
+        match platform::refresh_home_mount() {
+            Ok(()) => {
+                platform::status(
+                    "home: a package update replaced Lounge; it starts on the next Home press",
+                );
+                self.running = false;
+            }
+            Err(error) => platform::status(&format!("home: renewing the mount failed: {error}")),
+        }
+    }
+
+    /// An app from the grid is in front, so Lounge is behind it. LG's overlays (Settings,
+    /// Search, system panels and ad containers) sit over Lounge instead: it stays. So does a
+    /// Lounge being brought back, which webOS may still report behind the app for a moment.
+    fn app_covers(&self) -> bool {
+        !self.presence.raising()
+            && platform::front_app().is_some_and(|front| {
+                !platform::OVERLAY_APPS.iter().any(|(app, _)| *app == front)
+                    && self.state.inventory.apps.iter().any(|app| app.id == front)
+            })
     }
 
     /// Saves, stops text input and writes a scripted run's reports.

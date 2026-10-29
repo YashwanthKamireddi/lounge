@@ -185,10 +185,10 @@ pub fn register_home(_lifecycle: impl Fn(Lifecycle) + Send + 'static) -> Result<
     Err("Lifecycle registration needs an ARM webOS build".into())
 }
 
-/// Every app someone brings to the front, for the switcher (see `opened_only`). Push-based:
-/// no polling.
+/// Every app someone brings to the front, for the switcher (see `opened_only`), and `front`
+/// called when something other than Lounge takes it. Push-based: no polling.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
-pub fn watch_opened() -> Result<(), String> {
+pub fn watch_opened(front: Wake) -> Result<(), String> {
     crate::luna::subscribe(
         "luna://com.webos.applicationManager/getForegroundAppInfo",
         &json!({"subscribe": true}),
@@ -196,21 +196,28 @@ pub fn watch_opened() -> Result<(), String> {
             if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
                 status(&format!("foreground events ended: {reply}"));
                 FRONTS.lock().map(|mut fronts| fronts.live = false).ok();
-                resubscribe("foreground events", watch_opened);
+                let front = front.clone();
+                resubscribe("foreground events", move || watch_opened(front.clone()));
                 return;
             }
-            if let Some(front) = reply.get("appId").and_then(Value::as_str) {
+            if let Some(id) = reply.get("appId").and_then(Value::as_str) {
                 if let Ok(mut fronts) = FRONTS.lock() {
-                    fronts.came_to_front(front, std::time::Instant::now());
+                    fronts.came_to_front(id, std::time::Instant::now());
                 }
-                note_opened(front);
+                if let Ok(mut latest) = FRONT.lock() {
+                    id.clone_into(&mut latest);
+                }
+                note_opened(id);
+                if !id.is_empty() && id != APP_ID && id != HOME_ID {
+                    front();
+                }
             }
         },
     )
 }
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
-pub fn watch_opened() -> Result<(), String> {
+pub fn watch_opened(_front: Wake) -> Result<(), String> {
     Err("Foreground events need an ARM webOS build".into())
 }
 
@@ -664,6 +671,18 @@ pub struct Fronts {
     pub live: bool,
     fronted: std::collections::BTreeMap<String, std::time::Instant>,
     launched: std::collections::BTreeMap<String, std::time::Instant>,
+}
+
+/// The app webOS last reported in front ("" before the first report, or with nothing in front).
+static FRONT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// The app webOS last reported in front, if any.
+pub fn front_app() -> Option<String> {
+    FRONT
+        .lock()
+        .ok()
+        .map(|front| front.clone())
+        .filter(|front| !front.is_empty())
 }
 
 static FRONTS: std::sync::Mutex<Fronts> = std::sync::Mutex::new(Fronts {
