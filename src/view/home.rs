@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     i18n,
-    renderer::{Color, Draw, TextStyle, WHITE},
+    renderer::{Color, Draw, GlassBlend, TextStyle, WHITE},
     state::{
         APPS_COLUMNS, DOCK_GAP, DOCK_TOP, GRID_GAP, GRID_LEFT, GRID_SCROLL, GRID_STEP,
         HOME_TILE_PITCH, HOME_TILE_WIDTH, ROW_PITCH, Rect, SHELF_HINT, State, Target,
@@ -410,7 +410,7 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     // so it costs no layer of its own: a quarter of the screen less to
     // paint on every scrolling frame.
     let (top, bottom) = out.theme.lens();
-    let glass = |out: &mut Scene, path: String, shade: [f32; 3], alpha: f32| {
+    let glass = |out: &mut Scene, path: String, shade: [f32; 3], alpha: f32, blend| {
         let lit = |light: Color| {
             [
                 light[0] * shade[0],
@@ -425,28 +425,30 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
             DOCK_RADIUS,
             lit(top),
             lit(bottom),
+            blend,
         ));
     };
-    if spread < 1. {
-        if let Some((previous, t)) = shelf_dissolve(state) {
-            let (_, previous) = shelf_art(state, assets, previous);
-            glass(out, previous.clone(), [1.; 3], 1.);
-            if previous != backdrop {
-                glass(out, backdrop, [1.; 3], t);
-            }
-        } else {
-            glass(out, backdrop, [1.; 3], 1.);
-        }
-    }
     // Over the grid the platter blurs the grid's backdrop, blending in with
-    // the drawn scroll exactly as the screen behind it does.
-    if spread > 0. {
-        glass(
-            out,
-            assets.path(format!("wallpapers/{}-glass.png", state.wallpaper())),
-            [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02],
-            spread,
-        );
+    // the drawn scroll exactly as the screen behind it does: one pane mixing
+    // both backdrops, not the grid's glass laid over the dock's.
+    let grid = (spread > 0.).then(|| GlassBlend {
+        to: assets.path(format!("wallpapers/{}-glass.png", state.wallpaper())),
+        mix: spread,
+        shade: [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02],
+    });
+    match shelf_dissolve(state) {
+        // Top Shelf art dissolving while the grid rises (rare): layered.
+        Some((previous, t)) if spread < 1. => {
+            let (_, previous) = shelf_art(state, assets, previous);
+            glass(out, previous.clone(), [1.; 3], 1., None);
+            if previous != backdrop {
+                glass(out, backdrop, [1.; 3], t, None);
+            }
+            if let Some(grid) = grid {
+                glass(out, grid.to, grid.shade, spread, None);
+            }
+        }
+        _ => glass(out, backdrop, [1.; 3], 1., grid),
     }
     // One thin specular rim (no flat outline).
     out.rim(platter, DOCK_RADIUS, 0.5, 0.06);

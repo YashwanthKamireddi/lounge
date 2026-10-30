@@ -45,6 +45,7 @@ pub(super) fn switcher(out: &mut Scene, state: &State, assets: &Assets) {
                 0.,
                 shade,
                 shade,
+                None,
             ));
         }
     }

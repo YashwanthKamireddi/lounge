@@ -192,7 +192,7 @@ impl Scene {
     pub(super) fn glass_over(&mut self, backdrop: String, rect: Rect, radius: f32, veil: Color) {
         let (top, bottom) = self.theme.lens();
         self.draw
-            .push(Draw::Glass(backdrop, rect, radius, top, bottom));
+            .push(Draw::Glass(backdrop, rect, radius, top, bottom, None));
         if veil[3] > 0. {
             self.shape(rect, radius, veil);
         }
@@ -280,7 +280,7 @@ impl Scene {
                 | Draw::Text(_, _, _, color, _)
                 | Draw::TintedImage(_, _, _, _, color)
                 | Draw::AppImage(_, _, color) => apply(color),
-                Draw::Glass(_, _, _, top, bottom) => {
+                Draw::Glass(_, _, _, top, bottom, _) => {
                     apply(top);
                     apply(bottom);
                 }

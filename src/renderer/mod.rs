@@ -99,7 +99,8 @@ pub enum Draw {
     /// A full-screen backdrop texture sampled at `rect`'s own screen position,
     /// tinted from the first colour at the top to the second at the bottom
     /// (a tint above 1 lights the glass in the same pass, no sheen layer).
-    Glass(String, Rect, f32, Color, Color),
+    /// A blend cross-fades it to a second backdrop in that same pass.
+    Glass(String, Rect, f32, Color, Color, Option<GlassBlend>),
     AppImage(Arc<crate::app_artwork::Artwork>, Rect, Color),
     /// Two full-screen images mixed in one pass (see Backdrop).
     Dissolve(Backdrop),
@@ -111,6 +112,15 @@ pub enum Draw {
     /// (the pill, menus, avatars) steps visibly with a 1 px edge; text and
     /// tiles keep the crisp one.
     Soft(Option<f32>),
+}
+
+/// The second backdrop a glass pane cross-fades to, `mix` of the way, in
+/// `shade` (times the pane's own tint).
+#[derive(Clone, Debug, PartialEq)]
+pub struct GlassBlend {
+    pub to: String,
+    pub mix: f32,
+    pub shade: [f32; 3],
 }
 
 /// A full-screen picture pass: two images, each in its own tint, mixed
@@ -235,6 +245,15 @@ enum BatchKind {
         scale: f32,
         tint: Color,
     },
+    /// Glass over two backdrops mixed in one pass (glass.frag, GLASS_MIX).
+    GlassMix {
+        from: GLuint,
+        to: GLuint,
+        start: usize,
+        count: usize,
+        amount: f32,
+        shade: [f32; 3],
+    },
     Dissolve {
         from: GLuint,
         to: GLuint,
@@ -271,7 +290,14 @@ struct Uniforms {
 }
 impl Uniforms {
     fn of(program: GLuint) -> Self {
-        let at = |name: &std::ffi::CStr| unsafe { gl::GetUniformLocation(program, name.as_ptr()) };
+        // Program 0 (an optional program that failed to link) has none.
+        let at = |name: &std::ffi::CStr| {
+            if program == 0 {
+                -1
+            } else {
+                unsafe { gl::GetUniformLocation(program, name.as_ptr()) }
+            }
+        };
         Self {
             aa: at(c"u_aa"),
             texture: at(c"u_texture"),
@@ -297,6 +323,10 @@ pub struct Renderer {
     /// Liquid Glass: the paint layout, lensing its backdrop (glass.frag).
     glass_program: GLuint,
     glass_uniforms: Uniforms,
+    /// The same glass over two backdrops, and its u_texture2/u_mix/u_shade2.
+    glass_mix_program: GLuint,
+    glass_mix_uniforms: Uniforms,
+    glass_mix_extra: [GLint; 3],
     vector_uniforms: Uniforms,
     text_uniforms: Uniforms,
     vector_program: GLuint,
@@ -415,6 +445,19 @@ impl Renderer {
                 return Err(error);
             }
         };
+        let glass_mix_program = match cache.link(
+            &(vertex_prefix.clone() + include_str!("shaders/paint.vert")),
+            &(fragment_prefix.clone() + "#define GLASS_MIX\n" + include_str!("shaders/glass.frag")),
+            &[c"a_position", c"a_uv", c"a_color", c"a_shape", c"a_params"],
+        ) {
+            Ok(glass) => glass,
+            // Optional: without it, glass over two backdrops is drawn as two
+            // layers (the old way), never a Home that fails to start.
+            Err(error) => {
+                eprintln!("Lounge glass mix shader unavailable, drawing layers: {error}");
+                0
+            }
+        };
         let vector_program = match cache.link(
             &(vertex_prefix.clone() + include_str!("shaders/vector.vert")),
             &(fragment_prefix.clone() + include_str!("shaders/vector.frag")),
@@ -425,6 +468,7 @@ impl Renderer {
                 unsafe {
                     gl::DeleteProgram(program);
                     gl::DeleteProgram(glass_program);
+                    gl::DeleteProgram(glass_mix_program);
                 }
                 return Err(error);
             }
@@ -439,6 +483,7 @@ impl Renderer {
                 unsafe {
                     gl::DeleteProgram(program);
                     gl::DeleteProgram(glass_program);
+                    gl::DeleteProgram(glass_mix_program);
                     gl::DeleteProgram(vector_program);
                 }
                 return Err(error);
@@ -456,9 +501,15 @@ impl Renderer {
                 Ok(program) => program,
                 Err(error) => {
                     unsafe {
-                        for program in [program, glass_program, vector_program, text_program]
-                            .into_iter()
-                            .chain(dissolve_programs.into_iter().filter(|&p| p != 0))
+                        for program in [
+                            program,
+                            glass_program,
+                            glass_mix_program,
+                            vector_program,
+                            text_program,
+                        ]
+                        .into_iter()
+                        .chain(dissolve_programs.into_iter().filter(|&p| p != 0))
                         {
                             gl::DeleteProgram(program);
                         }
@@ -508,6 +559,15 @@ impl Renderer {
             paint_uniforms: Uniforms::of(program),
             glass_program,
             glass_uniforms: Uniforms::of(glass_program),
+            glass_mix_program,
+            glass_mix_uniforms: Uniforms::of(glass_mix_program),
+            glass_mix_extra: [c"u_texture2", c"u_mix", c"u_shade2"].map(|name| {
+                if glass_mix_program == 0 {
+                    -1
+                } else {
+                    unsafe { gl::GetUniformLocation(glass_mix_program, name.as_ptr()) }
+                }
+            }),
             dissolve_programs,
             dissolve_uniforms,
             vector_uniforms: Uniforms::of(vector_program),
@@ -786,28 +846,103 @@ impl Renderer {
         });
     }
 
-    fn glass(&mut self, path: &str, rect: Rect, radius: f32, tint: [Color; 2]) {
-        let frame = self.frame;
-        let astc = self.astc;
+    /// The backdrop texture at `path`, loaded on first use.
+    fn backdrop_texture(&mut self, path: &str) -> Option<GLuint> {
+        let (frame, astc) = (self.frame, self.astc);
         let entry = self
             .textures
             .entry(path.into())
             .or_insert_with(|| load_texture(astc, path));
         let Some(texture) = entry else {
             self.stats.missing_images += 1;
-            return;
+            return None;
         };
         texture.frame = frame;
-        let id = texture.id;
+        Some(texture.id)
+    }
+
+    fn glass(
+        &mut self,
+        path: &str,
+        rect: Rect,
+        radius: f32,
+        tint: [Color; 2],
+        blend: Option<&GlassBlend>,
+    ) {
+        let from = self.backdrop_texture(path);
+        let blend = blend
+            .filter(|blend| blend.mix > 0.)
+            .and_then(|blend| Some((self.backdrop_texture(&blend.to)?, blend)));
+        let (id, tint, mix) = match (from, blend) {
+            (Some(from), Some((to, blend))) if blend.mix < 1. => (from, tint, Some((to, blend))),
+            // Fully across (or the first unreadable): the second alone, in
+            // its shade.
+            (_, Some((to, blend))) => {
+                let shaded = tint.map(|c| {
+                    [
+                        c[0] * blend.shade[0],
+                        c[1] * blend.shade[1],
+                        c[2] * blend.shade[2],
+                        c[3],
+                    ]
+                });
+                (to, shaded, None)
+            }
+            (Some(from), None) => (from, tint, None),
+            (None, None) => return,
+        };
         let uv = [
             rect.x / 1920.,
             rect.y / 1080.,
             (rect.x + rect.w) / 1920.,
             (rect.y + rect.h) / 1080.,
         ];
+        let start = self.vertices.len() / 14;
         self.lens = true;
         self.gradient_quad(rect, uv, radius, 0., tint, id);
         self.lens = false;
+        let count = self.vertices.len() / 14 - start;
+        let Some((to, blend)) = mix.filter(|_| count > 0) else {
+            return;
+        };
+        if self.glass_mix_program == 0 {
+            // No mix shader: the second backdrop as its own layer over the first.
+            let shaded = tint.map(|c| {
+                [
+                    c[0] * blend.shade[0],
+                    c[1] * blend.shade[1],
+                    c[2] * blend.shade[2],
+                    c[3] * blend.mix,
+                ]
+            });
+            self.lens = true;
+            self.gradient_quad(rect, uv, radius, 0., shaded, to);
+            self.lens = false;
+            return;
+        }
+        // gradient_quad may have merged into an earlier glass batch: give
+        // these vertices a batch of their own (as `dissolve` does).
+        if let Some(batch) = self.batches.last_mut()
+            && let BatchKind::Paint { count: merged, .. } = &mut batch.kind
+            && *merged > count
+        {
+            *merged -= count;
+        } else {
+            self.batches.pop();
+        }
+        self.batches.push(Batch {
+            kind: BatchKind::GlassMix {
+                from: id,
+                to,
+                start,
+                count,
+                amount: blend.mix,
+                shade: blend.shade,
+            },
+            clip: self.clip,
+            fade: self.fade,
+            rank: self.rank,
+        });
     }
 
     fn vector_image(&mut self, path: &str, mut rect: Rect, contain: bool, tint: Color) {
@@ -1047,8 +1182,8 @@ impl Renderer {
                     self.image(path, *rect, *radius, *contain, *tint)
                 }
                 Draw::AppImage(image, rect, tint) => self.app_image(image, *rect, *tint),
-                Draw::Glass(path, rect, radius, top, bottom) => {
-                    self.glass(path, *rect, *radius, [*top, *bottom])
+                Draw::Glass(path, rect, radius, top, bottom, blend) => {
+                    self.glass(path, *rect, *radius, [*top, *bottom], blend.as_ref())
                 }
                 Draw::Dissolve(backdrop) => self.dissolve(backdrop),
                 Draw::Clip(clip) => self.clip = *clip,
@@ -1139,11 +1274,19 @@ impl Renderer {
             // stair-step on rims and tight curves, and 1.25 px into a blur.
             for (program, uniforms) in [
                 (self.glass_program, self.glass_uniforms),
+                (self.glass_mix_program, self.glass_mix_uniforms),
                 (self.program, self.paint_uniforms),
-            ] {
+            ]
+            .into_iter()
+            .filter(|&(program, _)| program != 0)
+            {
                 gl::UseProgram(program);
                 gl::Uniform1f(uniforms.aa, 1.0 / scale.max(0.01));
                 gl::Uniform1i(uniforms.texture, 0);
+            }
+            if self.glass_mix_program != 0 {
+                gl::UseProgram(self.glass_mix_program);
+                gl::Uniform1i(self.glass_mix_extra[0], 1);
             }
             gl::ActiveTexture(gl::TEXTURE0);
             // The paint-layout program bound (paint or glass), 0 for none.
@@ -1182,9 +1325,13 @@ impl Renderer {
                     for (program, uniforms) in [
                         (self.program, self.paint_uniforms),
                         (self.glass_program, self.glass_uniforms),
+                        (self.glass_mix_program, self.glass_mix_uniforms),
                         (self.vector_program, self.vector_uniforms),
                         (self.text_program, self.text_uniforms),
-                    ] {
+                    ]
+                    .into_iter()
+                    .filter(|&(program, _)| program != 0)
+                    {
                         gl::UseProgram(program);
                         gl::Uniform4f(uniforms.edge_fade, fade[0], fade[1], fade[2], fade[3]);
                     }
@@ -1237,6 +1384,27 @@ impl Renderer {
                             bound = program;
                         }
                         gl::BindTexture(gl::TEXTURE_2D, *texture);
+                        gl::DrawArrays(gl::TRIANGLES, *start as i32, *count as i32);
+                    }
+                    BatchKind::GlassMix {
+                        from,
+                        to,
+                        start,
+                        count,
+                        amount,
+                        shade,
+                    } => {
+                        if bound != self.glass_mix_program {
+                            self.bind_paint(self.glass_mix_program);
+                            bound = self.glass_mix_program;
+                        }
+                        let [_, mix, shade_uniform] = self.glass_mix_extra;
+                        gl::Uniform1f(mix, *amount);
+                        gl::Uniform3f(shade_uniform, shade[0], shade[1], shade[2]);
+                        gl::ActiveTexture(gl::TEXTURE1);
+                        gl::BindTexture(gl::TEXTURE_2D, *to);
+                        gl::ActiveTexture(gl::TEXTURE0);
+                        gl::BindTexture(gl::TEXTURE_2D, *from);
                         gl::DrawArrays(gl::TRIANGLES, *start as i32, *count as i32);
                     }
                     BatchKind::Dissolve {
@@ -1675,6 +1843,7 @@ impl Drop for Renderer {
             gl::DeleteBuffers(1, &self.buffer);
             gl::DeleteProgram(self.program);
             gl::DeleteProgram(self.glass_program);
+            gl::DeleteProgram(self.glass_mix_program);
             for program in self.dissolve_programs {
                 gl::DeleteProgram(program);
             }

@@ -70,7 +70,7 @@ impl Renderer {
                     Some((*rect, *radius))
                 }
                 // Glass at full strength is a solid picture of the backdrop.
-                Draw::Glass(_, rect, radius, top, bottom)
+                Draw::Glass(_, rect, radius, top, bottom, _)
                     if top[3] >= 0.999 && bottom[3] >= 0.999 =>
                 {
                     Some((*rect, *radius))

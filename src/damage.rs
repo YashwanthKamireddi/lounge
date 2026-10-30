@@ -115,8 +115,8 @@ fn same(a: &Draw, b: &Draw) -> bool {
         (TintedImage(p1, r1, a1, k1, c1), TintedImage(p2, r2, a2, k2, c2)) => {
             p1 == p2 && r1 == r2 && a1 == a2 && k1 == k2 && c1 == c2
         }
-        (Glass(p1, r1, a1, c1, d1), Glass(p2, r2, a2, c2, d2)) => {
-            p1 == p2 && r1 == r2 && a1 == a2 && c1 == c2 && d1 == d2
+        (Glass(p1, r1, a1, c1, d1, b1), Glass(p2, r2, a2, c2, d2, b2)) => {
+            p1 == p2 && r1 == r2 && a1 == a2 && c1 == c2 && d1 == d2 && b1 == b2
         }
         (AppImage(i1, r1, c1), AppImage(i2, r2, c2)) => {
             std::sync::Arc::ptr_eq(i1, i2) && r1 == r2 && c1 == c2

@@ -6,6 +6,20 @@ varying PAINT_PRECISION vec4 v_color;
 varying PAINT_PRECISION vec4 v_shape;
 varying PAINT_PRECISION vec2 v_params;
 varying PAINT_PRECISION float v_logical_y;
+#ifdef GLASS_MIX
+// Two backdrops cross-fading under one pane (the dock turning into the
+// grid's platter): one pass, not two stacked glass layers.
+uniform sampler2D u_texture2;
+uniform float u_mix;
+uniform vec3 u_shade2;
+#endif
+vec4 backdrop(vec2 uv) {
+#ifdef GLASS_MIX
+    return mix(texture2D(u_texture, uv), texture2D(u_texture2, uv) * vec4(u_shade2, 1.0), u_mix);
+#else
+    return texture2D(u_texture, uv);
+#endif
+}
 // Liquid Glass: the pre-blurred backdrop seen through a lens. Within a band
 // along the rim the glass bends light from just beyond its edge inward,
 // compressing it the nearer the rim (a thick lens edge), and concentrates
@@ -31,7 +45,7 @@ void main() {
     // Inside the band's inner edge the backdrop shows straight through:
     // most of every pane skips the lens maths.
     if (max(q.x, q.y) < radius - band - u_aa) {
-        gl_FragColor = texture2D(u_texture, v_uv) * v_color * vec4(1.0, 1.0, 1.0, edge_coverage());
+        gl_FragColor = backdrop(v_uv) * v_color * vec4(1.0, 1.0, 1.0, edge_coverage());
         return;
     }
     vec2 outside = max(q, vec2(0.0));
@@ -50,5 +64,5 @@ void main() {
         ? 1.0 - smoothstep(-soft, soft, d)
         : 1.0 - smoothstep(-u_aa, 0.0, d);
     vec3 light = v_color.rgb * (1.0 + 0.16 * bend);
-    gl_FragColor = texture2D(u_texture, uv) * vec4(light, v_color.a * alpha * edge_coverage());
+    gl_FragColor = backdrop(uv) * vec4(light, v_color.a * alpha * edge_coverage());
 }
