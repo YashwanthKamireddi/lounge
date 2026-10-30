@@ -161,8 +161,9 @@ impl FrameLog {
                 interval > 30. && interval < 1000. && state.animating() && self.was_animating;
             if slow || state.moving.is_some() {
                 let faults = crate::debug::major_faults();
-                eprintln!(
-                    "Lounge {} at {} ms: {interval:.1} ms (compose {:.1}, cpu {:.1}, build {:.1}, draws {}, uploads {}, page faults +{}) page {:?} overlay {}",
+                // Into the status file: on the TV stderr is /dev/null.
+                crate::platform::status(&format!(
+                    "{} at {} ms: {interval:.1} ms (compose {:.1}, cpu {:.1}, build {:.1}, draws {}, uploads {}, page faults +{}) page {:?} overlay {} fill {:.2}",
                     if slow { "slow frame" } else { "move frame" },
                     frame.uptime.as_millis(),
                     frame.compose_ms,
@@ -173,7 +174,8 @@ impl FrameLog {
                     faults.saturating_sub(self.last_faults),
                     state.page,
                     state.overlay.is_some(),
-                );
+                    stats.fill.values().sum::<f32>(),
+                ));
                 self.last_faults = faults;
             }
             self.last_presented = now;
