@@ -125,6 +125,29 @@ pub struct FrameLog {
     /// Texture uploads and glyph tessellations at the last profiled frame.
     last_counts: (usize, usize),
     last_drawable: Option<Size>,
+    /// Frame intervals (ms) of the animation under way, summarised when it ends.
+    intervals: Vec<f32>,
+}
+
+/// One animation's frame pacing, in a line: how evenly frames reached the 60 Hz panel.
+pub(crate) fn pacing_summary(intervals: &[f32]) -> String {
+    let count = intervals.len() as f32;
+    let mean = intervals.iter().sum::<f32>() / count;
+    let spread = (intervals.iter().map(|ms| (ms - mean).powi(2)).sum::<f32>() / count).sqrt();
+    let on_time = intervals
+        .iter()
+        .filter(|ms| (**ms - 16.7).abs() <= 2.)
+        .count();
+    let two = intervals
+        .iter()
+        .filter(|ms| (25.0..41.7).contains(*ms))
+        .count();
+    let more = intervals.iter().filter(|ms| **ms >= 41.7).count();
+    format!(
+        "pacing: {} frames, mean {mean:.1} ms, spread {spread:.1} ms, on time {:.0}%, 2 refreshes {two}, 3+ refreshes {more}",
+        intervals.len(),
+        100. * on_time as f32 / count
+    )
 }
 
 impl FrameLog {
@@ -137,6 +160,7 @@ impl FrameLog {
             last_faults: crate::debug::major_faults(),
             last_counts: (0, 0),
             last_drawable: None,
+            intervals: Vec::new(),
         }
     }
 
@@ -159,6 +183,15 @@ impl FrameLog {
             // stall from a paging one.
             let slow =
                 interval > 30. && interval < 1000. && state.animating() && self.was_animating;
+            if state.animating() && self.was_animating && interval < 1000. {
+                self.intervals.push(interval as f32);
+            }
+            if !state.animating() && !self.intervals.is_empty() {
+                if self.intervals.len() >= 10 {
+                    crate::platform::status(&pacing_summary(&self.intervals));
+                }
+                self.intervals.clear();
+            }
             if slow || state.moving.is_some() {
                 let faults = crate::debug::major_faults();
                 // Into the status file: on the TV stderr is /dev/null.

@@ -2250,3 +2250,14 @@ fn an_idle_screen_sleeps_until_its_next_timer() {
     ));
     assert_eq!(state.quiet_for(), None);
 }
+
+#[test]
+fn pacing_summary_counts_frames_by_refreshes() {
+    let mut frames = vec![16.7_f32; 18];
+    frames.push(33.4);
+    frames.push(50.1);
+    let line = crate::diagnostics::pacing_summary(&frames);
+    assert!(line.starts_with("pacing: 20 frames"), "{line}");
+    assert!(line.contains("on time 90%"), "{line}");
+    assert!(line.contains("2 refreshes 1, 3+ refreshes 1"), "{line}");
+}
