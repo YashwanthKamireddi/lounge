@@ -204,7 +204,10 @@ pub fn watch_opened(front: Wake) -> Result<(), String> {
                 if let Ok(mut fronts) = FRONTS.lock() {
                     fronts.came_to_front(id, std::time::Instant::now());
                 }
-                if let Ok(mut latest) = FRONT.lock() {
+                if let Ok(mut latest) = FRONT.lock()
+                    && *latest != id
+                {
+                    crate::history::note(&format!("front {id}"));
                     id.clone_into(&mut latest);
                 }
                 note_opened(id);
@@ -307,6 +310,15 @@ pub fn watch_launches(home: Wake) -> Result<(), String> {
                 return;
             }
             let app = reply.get("appId").and_then(Value::as_str).unwrap_or("");
+            let event = reply.get("event").and_then(Value::as_str).unwrap_or("");
+            if event != "splash" {
+                let reason = reply
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .map(|reason| format!(" ({reason})"))
+                    .unwrap_or_default();
+                crate::history::note(&format!("{event} {app}{reason}"));
+            }
             match reply.get("event").and_then(Value::as_str) {
                 Some("launch") if app == own_id() => home(),
                 // It ended (closed inside, or let go for memory): LG's
@@ -646,6 +658,7 @@ fn launch(id: &str) -> Result<(), String> {
             "launch {id}: closing the stale app failed: {error}"
         ));
     }
+    crate::history::note(&format!("Lounge opens {id}"));
     call(
         "luna://com.webos.applicationManager/launch",
         json!({"id": id}),
@@ -710,6 +723,7 @@ fn process_started(pid: u32) -> Option<std::time::Instant> {
 /// what it does not know (native apps). As Home, Lounge's own role reaches
 /// both; otherwise, or if refused, through the elevated helper.
 fn close(id: &str) -> Result<(), String> {
+    crate::history::note(&format!("Lounge closes {id}"));
     let closed = if is_home()
         && (call(
             "luna://com.palm.webappmanager/killApp",

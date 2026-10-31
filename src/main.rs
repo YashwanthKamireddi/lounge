@@ -8,6 +8,7 @@ mod debug;
 mod diagnostics;
 mod effects;
 mod font;
+mod history;
 mod i18n;
 mod input;
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
@@ -290,6 +291,8 @@ fn run() -> Result<(), String> {
     let local_offset = OffsetDateTime::now_local()
         .map(|now| now.offset())
         .unwrap_or(time::UtcOffset::UTC);
+    history::set_offset(local_offset);
+    history::note(&format!("Lounge started (pid {})", std::process::id()));
     let root = match options.assets.clone() {
         Some(root) => root,
         None if webos => platform::install_dir()?.join("assets"),
