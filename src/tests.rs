@@ -2280,3 +2280,14 @@ fn a_failed_home_change_names_its_cause() {
     );
     assert_eq!(home_block("timed out"), "tvHomeError");
 }
+
+#[test]
+fn a_missing_service_is_not_retried_for_ever() {
+    assert!(crate::platform::permanent(
+        "Unknown method \"getAllInputStatus\" for category \"/\""
+    ));
+    assert!(crate::platform::permanent(
+        "Service does not exist: com.webos.service.eim."
+    ));
+    assert!(!crate::platform::permanent("Timed out"));
+}

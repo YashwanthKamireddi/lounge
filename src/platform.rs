@@ -297,6 +297,15 @@ pub fn watch_opened(_front: Wake) -> Result<(), String> {
     Err("Foreground events need an ARM webOS build".into())
 }
 
+/// An error the bus gives for a service or method this TV does not have at all.
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
+pub(crate) fn permanent(error: &str) -> bool {
+    error.contains("Unknown method") || error.contains("Service does not exist")
+}
+
 /// Subscribes again after a stream ended (LG's service restarted, say), so
 /// Lounge never stops listening until a relaunch: after 3 s, then 10, then
 /// every 30 s until the bus takes it.
@@ -339,6 +348,13 @@ fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + 
                 Ok(()) => {
                     status(&format!("{what}: on again (attempt {})", attempt + 1));
                     crate::history::note(&format!("{what} on again"));
+                    return;
+                }
+                // A TV without this service or method (another webOS version) never gains
+                // it: asking every 30 s for ever would only cost the bus.
+                Err(error) if permanent(&error) => {
+                    status(&format!("{what}: {error}; not on this TV"));
+                    crate::history::note(&format!("{what}: not on this TV ({error})"));
                     return;
                 }
                 Err(error) => eprintln!("Lounge {what}: {error}; trying again"),
