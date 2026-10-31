@@ -238,10 +238,20 @@ pub fn watch_opened(front: Wake) -> Result<(), String> {
                 if let Ok(mut latest) = FRONT.lock()
                     && *latest != id
                 {
-                    crate::history::note(&if id.is_empty() {
+                    let line = if id.is_empty() {
                         "front: nothing".to_owned()
                     } else {
                         format!("front {id}")
+                    };
+                    // With which app had a video loaded at that moment: a screen saver or a
+                    // memory close landing on a video shows as such. Off this stream's thread.
+                    thread::spawn(move || {
+                        let video = video_apps();
+                        crate::history::note(&if video.is_empty() {
+                            line
+                        } else {
+                            format!("{line} (video loaded: {})", video.join(", "))
+                        });
                     });
                     id.clone_into(&mut latest);
                 }
@@ -252,6 +262,34 @@ pub fn watch_opened(front: Wake) -> Result<(), String> {
             }
         },
     )
+}
+
+/// The apps holding a video decoder (a loaded, playing or paused video), from webOS's media
+/// pipelines.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+fn video_apps() -> Vec<String> {
+    let Ok(reply) = call("luna://com.webos.media/getActivePipelines", json!({})) else {
+        return Vec::new();
+    };
+    let pipelines = reply
+        .as_array()
+        .or_else(|| reply.get("pipelines").and_then(Value::as_array))
+        .cloned()
+        .unwrap_or_default();
+    let mut apps: Vec<String> = pipelines
+        .iter()
+        .filter(|pipeline| {
+            pipeline
+                .get("resource")
+                .is_some_and(|r| r.to_string().contains("VDEC"))
+        })
+        .filter_map(|pipeline| pipeline.get("currentAppId").and_then(Value::as_str))
+        .filter(|app| !app.is_empty())
+        .map(str::to_owned)
+        .collect();
+    apps.sort();
+    apps.dedup();
+    apps
 }
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]

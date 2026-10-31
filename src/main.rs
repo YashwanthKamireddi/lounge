@@ -750,7 +750,9 @@ impl Shell {
             && !self.state.dirty
             && !self.state.animating()
         {
-            self.glyphs_warming = self.renderer.warm_glyphs(3);
+            // A few milliseconds a pass: as many glyphs as the CPU makes in that time, so a
+            // press waits at most that long, and the warming ends in far fewer wakes.
+            self.glyphs_warming = self.renderer.warm_glyphs(Duration::from_millis(4));
         }
         self.uploads_pending =
             self.preload

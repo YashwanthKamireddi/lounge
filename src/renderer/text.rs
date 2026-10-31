@@ -72,11 +72,12 @@ impl Renderer {
         Ok(&glyph.geometry)
     }
 
-    /// Prepare up to `budget` not-yet-cached glyphs of the printable ASCII
+    /// Prepare not-yet-cached glyphs of the printable ASCII, for up to `budget`,
     /// set in the faces the interface uses, so a screen opened for the first
     /// time never tessellates its text mid-frame. Returns whether any work
     /// remains. Meant for idle ticks only.
-    pub fn warm_glyphs(&mut self, budget: usize) -> bool {
+    pub fn warm_glyphs(&mut self, budget: std::time::Duration) -> bool {
+        let started = std::time::Instant::now();
         // Font ids are the weight, +1000 for display sizes (>= 32pt).
         const FACES: [u16; 6] = [400, 500, 600, 650, 1500, 1650];
         let mut done = 0;
@@ -88,7 +89,7 @@ impl Renderer {
                 if self.glyphs.contains_key(&(c, font)) {
                     continue;
                 }
-                if done == budget {
+                if done > 0 && started.elapsed() >= budget {
                     return true;
                 }
                 if let Ok(geometry) = self.fonts[&font].geometry(c) {
