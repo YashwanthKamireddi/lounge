@@ -491,34 +491,103 @@ fn load_local(
     mut read: impl FnMut(&Path, usize) -> Option<Vec<u8>>,
 ) -> Option<Artwork> {
     for directory in source.directories() {
-        let manifest = read(&directory.join("appinfo.json"), 64 * 1024)
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .filter(|value| value.get("id").and_then(Value::as_str) == Some(&source.id));
-        let manifest_icon = |key| {
-            manifest
-                .as_ref()
-                .and_then(|m| m.get(key))
-                .and_then(Value::as_str)
-        };
-        for icon in [
-            source.large_icon.as_deref(),
-            manifest_icon("largeIcon"),
-            source.icon.as_deref(),
-            manifest_icon("icon"),
-            Some("icon.png"),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if let Some(artwork) = icon_path(&directory, icon)
-                .and_then(|path| read(&path, MAX_FILE))
-                .and_then(|bytes| decode(&bytes))
-            {
+        for path in icon_candidates(source, &directory, &mut read) {
+            if let Some(artwork) = read(&path, MAX_FILE).and_then(|bytes| decode(&bytes)) {
                 return Some(artwork);
             }
         }
     }
     None
+}
+
+/// The icon files one installation directory offers, in preference order: the app list's
+/// large icon, the manifest's, then the regular ones and `icon.png`.
+fn icon_candidates(
+    source: &Source,
+    directory: &Path,
+    read: &mut impl FnMut(&Path, usize) -> Option<Vec<u8>>,
+) -> Vec<PathBuf> {
+    let manifest = read(&directory.join("appinfo.json"), 64 * 1024)
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .filter(|value| value.get("id").and_then(Value::as_str) == Some(&source.id));
+    let manifest_icon = |key| {
+        manifest
+            .as_ref()
+            .and_then(|m| m.get(key))
+            .and_then(Value::as_str)
+    };
+    [
+        source.large_icon.as_deref(),
+        manifest_icon("largeIcon"),
+        source.icon.as_deref(),
+        manifest_icon("icon"),
+        Some("icon.png"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|icon| icon_path(directory, icon))
+    .collect()
+}
+
+/// `lounge --read-app-icon SOURCE`, run as root through Homebrew Channel's exec when the
+/// jailed app cannot read another app's files: `{"returnValue":true,"icons":[HEX]}` with the
+/// first icon file that reads (or none). Only image files under the app roots are read, each
+/// once; `SOURCE` is a serialized `Source`, checked again here as it came over a command line.
+pub fn installed_icon(
+    request: &str,
+    mut read: impl FnMut(&Path, usize) -> Option<Vec<u8>>,
+) -> Result<Value, String> {
+    let request: Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
+    let id = request
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| valid_app_id(id))
+        .ok_or("Invalid application ID")?;
+    let field = |key| request.get(key).cloned().unwrap_or(Value::Null);
+    let source = Source::new(
+        id,
+        &serde_json::json!({
+            "folderPath": field("directory"),
+            "largeIcon": field("large_icon"),
+            "icon": field("icon"),
+        }),
+    );
+    let image = |path: &Path| {
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                ["png", "jpg", "jpeg", "webp"].contains(&extension.to_ascii_lowercase().as_str())
+            })
+    };
+    let mut seen = Vec::new();
+    for directory in source.directories() {
+        for path in icon_candidates(&source, &directory, &mut read) {
+            if !image(&path) || seen.contains(&path) {
+                continue;
+            }
+            seen.push(path.clone());
+            if let Some(bytes) = read(&path, MAX_FILE).filter(|bytes| !bytes.is_empty()) {
+                const DIGITS: &[u8; 16] = b"0123456789abcdef";
+                let hex: String = bytes
+                    .iter()
+                    .flat_map(|byte| {
+                        [
+                            DIGITS[usize::from(byte >> 4)],
+                            DIGITS[usize::from(byte & 15)],
+                        ]
+                    })
+                    .map(char::from)
+                    .collect();
+                return Ok(serde_json::json!({"returnValue": true, "icons": [hex]}));
+            }
+        }
+    }
+    Ok(serde_json::json!({"returnValue": true, "icons": []}))
+}
+
+/// The reader `installed_icon` uses on the TV.
+pub fn read_file(path: &Path, limit: usize) -> Option<Vec<u8>> {
+    read_bounded(path, limit)
 }
 
 struct Request {

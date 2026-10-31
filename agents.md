@@ -73,8 +73,8 @@ Match the current native design without on-screen weather credits; attribution r
 ## Assets
 
 SVG sources and fonts retain licenses in `assets/`. TV app artwork is resolved at runtime from
-inventory/installed manifests by `src/app_artwork.rs`, with an embedded Node 8-compatible elevated
-reader for jailed installations. Reads/decoding stay on its worker; GPU uploads stay on SDL.
+inventory/installed manifests by `src/app_artwork.rs`, with Lounge's own executable as the elevated
+reader for jailed installations (`lounge --read-app-icon`). Nothing on the TV runs Node.js. Reads/decoding stay on its worker; GPU uploads stay on SDL.
 Refresh invalidates cached results. No collected icon map or card-colour JSON is needed or shipped
 on TV. Existing `assets/app-icons*`, `assets/icon-colours.json` and `tools/collect-tv-icons.js`
 are desktop preview fixtures; updating them is optional, not a fix for a missing installed TV icon.

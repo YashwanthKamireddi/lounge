@@ -532,3 +532,173 @@ fn an_updated_icon_takes_its_apps_texture_key_with_a_new_source() {
     assert_eq!(old.key, new.key);
     assert_ne!(old.source, new.source);
 }
+
+const DEVELOPER: &str = "/media/developer/apps/usr/palm/applications/sample";
+
+/// `lounge --read-app-icon` against model files: the request is the serialized `Source` the
+/// jailed app sends; the reply is the hex of the first icon that reads.
+fn elevated_icon(request: Value, files: &[(String, Vec<u8>)]) -> (Vec<Vec<u8>>, Vec<PathBuf>) {
+    let files: HashMap<PathBuf, Vec<u8>> = files
+        .iter()
+        .map(|(path, bytes)| (PathBuf::from(path), bytes.clone()))
+        .collect();
+    let mut opened = Vec::new();
+    let reply = installed_icon(&request.to_string(), |path, limit| {
+        opened.push(path.to_owned());
+        files
+            .get(path)
+            .filter(|bytes| bytes.len() <= limit)
+            .cloned()
+    })
+    .unwrap();
+    assert_eq!(reply["returnValue"], true);
+    let icons = reply["icons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|hex| {
+            let hex = hex.as_str().unwrap();
+            (0..hex.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+                .collect()
+        })
+        .collect();
+    (icons, opened)
+}
+
+fn file(path: &str, bytes: &[u8]) -> (String, Vec<u8>) {
+    (path.to_owned(), bytes.to_vec())
+}
+
+fn manifest(value: Value) -> (String, Vec<u8>) {
+    file(
+        &format!("{DEVELOPER}/appinfo.json"),
+        value.to_string().as_bytes(),
+    )
+}
+
+#[test]
+fn the_elevated_reader_finds_manifest_artwork_and_answers_with_one_icon() {
+    let (icons, _) = elevated_icon(
+        json!({"id": "sample"}),
+        &[
+            manifest(
+                json!({"id": "sample", "largeIcon": "resources/hu/large.png", "icon": "regular.png"}),
+            ),
+            file(&format!("{DEVELOPER}/resources/hu/large.png"), b"large"),
+            file(&format!("{DEVELOPER}/regular.png"), b"regular"),
+        ],
+    );
+    assert_eq!(icons, [b"large".to_vec()]);
+    // The request is what the jailed app serializes.
+    let source = Source::new(
+        "sample",
+        &json!({"folderPath": DEVELOPER, "largeIcon": "x.png"}),
+    );
+    let request = serde_json::to_value(&source).unwrap();
+    assert_eq!(request["directory"], DEVELOPER);
+    assert_eq!(request["large_icon"], "x.png");
+}
+
+#[test]
+fn the_elevated_reader_prefers_the_live_installation_and_its_localized_icon() {
+    let installed = "/media/cryptofs/apps/usr/palm/applications/actual-directory";
+    let (icons, _) = elevated_icon(
+        json!({"id": "sample", "directory": installed,
+               "large_icon": format!("file://{installed}/localized.webp")}),
+        &[
+            file(&format!("{DEVELOPER}/icon.png"), b"old developer install"),
+            file(&format!("{installed}/localized.webp"), b"current"),
+        ],
+    );
+    assert_eq!(icons, [b"current".to_vec()]);
+}
+
+#[test]
+fn the_elevated_reader_falls_back_past_missing_unsupported_and_oversized_icons() {
+    for (name, bytes) in [
+        ("missing.png", None),
+        ("large.svg", Some(b"<svg/>".to_vec())),
+        ("large.png", Some(vec![0; MAX_FILE + 1])),
+        ("empty.png", Some(vec![])),
+    ] {
+        let mut files = vec![
+            manifest(json!({"id": "sample", "largeIcon": name, "icon": "regular.jpeg"})),
+            file(&format!("{DEVELOPER}/regular.jpeg"), b"regular"),
+        ];
+        if let Some(bytes) = bytes {
+            files.push(file(&format!("{DEVELOPER}/{name}"), &bytes));
+        }
+        let (icons, opened) = elevated_icon(json!({"id": "sample"}), &files);
+        assert_eq!(icons, [b"regular".to_vec()], "{name}");
+        // Only image files are ever opened as icons.
+        assert!(!opened.iter().any(|path| path.ends_with("large.svg")));
+    }
+    let (icons, _) = elevated_icon(
+        json!({"id": "sample"}),
+        &[file(&format!("{DEVELOPER}/icon.png"), b"default")],
+    );
+    assert_eq!(icons, [b"default".to_vec()]);
+}
+
+#[test]
+fn the_elevated_reader_opens_a_file_once_when_two_sources_name_it() {
+    let (icons, opened) = elevated_icon(
+        json!({"id": "sample", "large_icon": "missing.png", "icon": "missing.png"}),
+        &[
+            manifest(json!({"id": "sample", "largeIcon": "large.png", "icon": "regular.png"})),
+            file(&format!("{DEVELOPER}/regular.png"), &[1; 200 * 1024]),
+        ],
+    );
+    assert_eq!(icons.iter().map(Vec::len).collect::<Vec<_>>(), [200 * 1024]);
+    assert_eq!(
+        opened
+            .iter()
+            .filter(|path| path.ends_with("missing.png"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn the_elevated_reader_never_reads_outside_app_directories() {
+    for icon in [
+        "/etc/passwd.png",
+        "../../secret.png",
+        "https://example.com/icon.png",
+        "bad\0.png",
+    ] {
+        let (icons, opened) = elevated_icon(
+            json!({"id": "sample", "directory": "/etc", "large_icon": icon}),
+            &[
+                manifest(json!({"id": "another-app", "largeIcon": "wrong.png"})),
+                file(&format!("{DEVELOPER}/wrong.png"), b"wrong"),
+            ],
+        );
+        assert!(icons.is_empty());
+        assert!(
+            opened
+                .iter()
+                .all(|path| ROOTS.iter().any(|root| path.starts_with(root)))
+        );
+        assert!(!opened.iter().any(|path| path.ends_with("wrong.png")));
+    }
+    for id in ["sample; command", "", "../sample"] {
+        assert_eq!(
+            installed_icon(&json!({"id": id}).to_string(), |_, _| None).unwrap_err(),
+            "Invalid application ID"
+        );
+    }
+    assert!(installed_icon("not json", |_, _| None).is_err());
+}
+
+#[test]
+fn the_elevated_reader_treats_shell_punctuation_as_a_literal_file_name() {
+    let name = "it's; $(not-a-command).png";
+    let (icons, _) = elevated_icon(
+        json!({"id": "sample", "icon": name}),
+        &[file(&format!("{DEVELOPER}/{name}"), b"literal file")],
+    );
+    assert_eq!(icons, [b"literal file".to_vec()]);
+}

@@ -142,7 +142,8 @@ sampled card colour. Missing, corrupt or unsupported artwork uses the existing g
 
 Discovery, bounded file reads, decoding and colour sampling run on a dedicated worker. If the
 jailed app cannot read an asset directly, the native process calls Homebrew Channel's elevated
-`exec` service with the embedded Node 8-compatible `tv/read-app-icon.cjs` reader. It returns bounded
+`exec` service, which runs Lounge's own executable as the reader (`lounge --read-app-icon SOURCE`,
+`app_artwork::installed_icon`; the TV's Node.js costs 4-5 s of CPU to start). It returns bounded
 image bytes without writing collected files or changing filesystem permissions. PNG, JPEG and WebP
 are supported; runtime SVG parsing is not required. Source files are limited to 512 KiB and
 2048×2048 pixels; decoded icons are at most 256×256 with a 16 MiB/256-entry CPU cache. GPU uploads
@@ -259,8 +260,11 @@ failures preserve the last valid inputs. No failed inventory read substitutes de
 
 ### Lounge as Home
 
-Settings › General › Lounge as Home runs `tv/home.sh` (root, flock-guarded) and its ES5 logic
-`tv/home.cjs`, both built into the executable and copied to `/var/lib/lounge` when they change.
+Settings › General › Lounge as Home runs `tv/home.sh` (root, flock-guarded), built into the
+executable and copied to `/var/lib/lounge` when it changes. The script runs the installed
+package's own executable for the work (`lounge --home enable|disable|status|apply|boot`,
+`src/home-mount.rs`), found through the saved `appDir` or the install directories, never beside
+`$0` (the boot hook is a symlink). No command starts the TV's Node.js.
 `enable` bind-mounts the installed `lounge` over LG's `/usr/bin/com.webos.app.home`, removes
 LG's CRIU image of its Home (`/tmp/checkpoint` and the copy in `/mnt/lg/cmn_data/checkpoint` sam
 restores from), writes the
@@ -275,7 +279,9 @@ copying it from `cmn_data` if `/tmp` has none; CRIU refuses it with Lounge mount
 usr/bin/com.webos.app.home has bad size") and sam then deletes both copies, but the failed
 restore leaves the process ids low: the Lounge sam starts next took pid 1992, which the input
 apps' image needs, and their next restore failed ("Pid 1993 do not match expected 1992"). LG's
-Home writes the image again whenever it starts fresh (after `disable`, or at a cold boot). `tests/home.test.mjs` runs the logic against a model TV in a vm sandbox.
+Home writes the image again whenever it starts fresh (after `disable`, or at a cold boot). The
+Rust tests in `src/home-mount-tests.rs` run the logic against a model TV; `tests/home-script.test.mjs`
+runs the real `tv/home.sh` through the hook symlink with stub commands.
 
 As Home, Lounge runs as root, unjailed, at LG's path. `platform::is_home` reads that path;
 `platform::install_dir` finds the package by the mounted file's inode, so assets and
@@ -289,7 +295,11 @@ normal launch of the app while the marker exists opens Home instead. sam's backg
 Home (boot, preload) exit when something else is in front. Three starts in a minute without a
 presented frame plus five seconds alive restore LG Home (`crash_guard`).
 
-Give Home back to LG by hand: `sh /var/lib/lounge/home.sh disable`.
+Give Home back to LG by hand: `sh /var/lib/lounge/home.sh disable`. That never depends on
+Lounge's executable: when it is missing, crashes, hangs past 60 s or answers anything but
+success, the script itself disables the settings, removes the marker and Lounge's hook,
+unmounts Lounge's mount (detaching a busy one), stops what runs as LG Home's executable and
+reopens Home where Home was in front. It never touches a foreign mount.
 
 ## Switcher, quitting, uninstalling and the clock
 
@@ -332,7 +342,7 @@ launch is logged with its cause in `/tmp/lounge-status`.
 Lounge (and Luma's IDs), LG Home, Homebrew Channel, inputs, Lounge's own tiles or preview cards.
 The 7.6 TV marks Lounge and Homebrew Channel removable, so the protected list matters. A glass
 alert asks first, focus on Cancel; Back is Cancel. Confirming hides the tile at once and runs
-`tv/uninstall-app.cjs` (from upstream PR #110) through `exec` with a 20 s budget: one
+`lounge --uninstall-app ID` (`uninstall::remove`, after upstream PR #110) through `exec` with a 20 s budget: one
 `com.webos.appInstallService/remove` subscription, success only at status 31. A lost reply is
 checked against up to three complete `listApps` reads, never by removing again. Refused, the tile
 comes back with a banner; removed, the app leaves favourites, hidden and recent lists and the

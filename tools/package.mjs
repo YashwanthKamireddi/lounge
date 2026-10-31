@@ -88,7 +88,7 @@ await fs.copyFile(
   path.join(out, 'assets/app-icon-large.png'),
   path.join(stage, 'app-icon-large.png'),
 );
-// The Home scripts (tv/home.sh, tv/home.cjs) are built into the executable, which copies them
+// The Home script (tv/home.sh) is built into the executable, which copies it
 // to /var/lib/lounge only when Lounge is switched on as Home: the package itself installs no
 // boot hook and mounts nothing.
 await fs.copyFile(path.join(root, 'license'), path.join(stage, 'LICENSE'));

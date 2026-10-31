@@ -1481,7 +1481,7 @@ fn focus_goes_to_the_tile_that_takes_a_vanished_tiles_place() {
     assert_eq!(state.focus, Target::App(order(&state)[7].clone()));
 }
 
-// Lounge as the TV's Home (tv/home.cjs mounts its executable over LG Home's).
+// Lounge as the TV's Home (`lounge --home` mounts its executable over LG Home's).
 
 #[test]
 fn only_lg_home_executable_path_makes_lounge_the_home() {
@@ -1742,9 +1742,84 @@ fn only_apps_the_owner_installed_can_be_uninstalled() {
         Ok(false)
     );
     assert!(crate::uninstall::confirms_removal(&json!([{"title": "?"}]), "netflix").is_err());
+    // Lounge's own executable removes it, from this package or where the TV installs Lounge.
     let command = crate::uninstall::command("netflix").unwrap();
-    assert!(command.starts_with("/usr/bin/node -e '") && command.ends_with(" 'netflix'"));
-    assert!(command.contains("com.webos.appInstallService/remove"));
+    assert!(command.contains("exec \"$d/lounge\" --uninstall-app 'netflix'"));
+    for directory in crate::platform::install_directories() {
+        assert!(command.contains(&format!("'{}'", directory.display())));
+    }
+    assert!(!command.contains("node"));
+}
+
+#[test]
+fn an_app_removal_succeeds_only_at_its_completion_status() {
+    use crate::uninstall::Removal;
+    // Acceptance, pretty printed and split anywhere, is not completion.
+    let mut removal = Removal::new("netflix");
+    let stream = "preamble {\n  \"returnValue\": true,\n  \"subscribed\": true\n}\n\
+                  {\"id\":\"netflix\",\"statusValue\":30,\"note\":\"a } in a string\"}\
+                  {\"id\":\"netflix\",\"statusValue\":31,\"details\":{\"packageId\":\"netflix\"}}";
+    let mut outcome = None;
+    for chunk in stream.as_bytes().chunks(7) {
+        outcome = removal.output(chunk, true);
+        if outcome.is_some() {
+            break;
+        }
+    }
+    assert_eq!(outcome, Some(Ok(())));
+    let reply = removal.reply(&Ok(()));
+    assert_eq!(reply["returnValue"], true);
+    assert_eq!(reply["replies"].as_array().unwrap().len(), 3);
+    assert!(reply.get("errorText").is_none());
+    for (stream, error) in [
+        (r#"{"returnValue":false,"errorText":"Refused"}"#, "Refused"),
+        (r#"{"statusValue":25,"details":{"reason":"Busy"}}"#, "Busy"),
+        (
+            r#"{"id":"plex","statusValue":31}"#,
+            "App removal identity mismatch",
+        ),
+        (
+            r#"{"id":"netflix","statusValue":31,"details":{"packageId":"plex"}}"#,
+            "App removal identity mismatch",
+        ),
+        (r#"{"id": nope}"#, "Invalid app removal reply"),
+    ] {
+        let outcome = Removal::new("netflix").output(stream.as_bytes(), true);
+        assert!(outcome.unwrap().unwrap_err().starts_with(error), "{stream}");
+    }
+    // Endless output, on either pipe, ends it.
+    let mut noisy = Removal::new("netflix");
+    assert_eq!(noisy.output(&[b' '; 60 * 1024], false), None);
+    assert!(noisy.output(&[b' '; 8 * 1024], true).unwrap().is_err());
+    let failed = Removal::new("netflix").reply(&Err("Refused".into()));
+    assert_eq!(failed["errorText"], "Refused");
+    assert_eq!(failed["id"], "netflix");
+}
+
+#[test]
+fn the_home_script_runs_lounge_and_never_node() {
+    let script = include_str!("../tv/home.sh");
+    assert!(!script.contains("node") && !script.contains(".cjs"));
+    assert!(script.contains("exec \"$HELPER\" --home \"$COMMAND\""));
+    assert!(script.contains("exec \"$APP_DIR/lounge\" --home boot"));
+    // The script looks for Lounge where the TV installs it.
+    for directory in crate::platform::install_directories() {
+        assert!(script.contains(&directory.display().to_string()));
+    }
+    // The heredoc that copies it to the TV must end where it should.
+    assert!(!script.lines().any(|line| line == "LOUNGE_EOF"));
+    let command = crate::platform::home_command(None);
+    assert!(command.contains("rm -f /tmp/lounge-home.sh.new /var/lib/lounge/home.cjs"));
+    assert!(command.ends_with("/bin/sh /var/lib/lounge/home.sh status; exit 0"));
+    assert!(crate::platform::home_command(Some(false)).contains("home.sh disable"));
+}
+
+#[test]
+fn helper_commands_are_only_the_three_flags() {
+    let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(crate::helper::run(&args(&[])), None);
+    assert_eq!(crate::helper::run(&args(&["--fullscreen"])), None);
+    assert_eq!(crate::helper::run(&args(&[r#"{"event":"launch"}"#])), None);
 }
 
 /// Opens the context menu on `id` in the grid.
