@@ -167,6 +167,8 @@ pub struct Preferences {
     pub focus_outline: bool,
     /// App names under the tiles a size larger.
     pub large_names: bool,
+    /// Lounge has asked, once, whether to become the TV's Home (see `Overlay::OfferHome`).
+    pub home_offered: bool,
     #[serde(deserialize_with = "lenient_modes")]
     pub input_modes: BTreeMap<String, InputMode>,
     #[serde(deserialize_with = "crate::weather::deserialize_enabled")]
@@ -217,6 +219,7 @@ impl Default for Preferences {
             reduced_motion: false,
             focus_outline: false,
             large_names: false,
+            home_offered: false,
             input_modes: BTreeMap::new(),
             show_weather: true,
             weather_location: None,

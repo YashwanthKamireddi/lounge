@@ -334,6 +334,19 @@ impl State {
                 self.panel_started = (!self.preferences.reduced_motion).then(crate::clock::now);
                 return vec![];
             }
+            Target::Alert(index) if matches!(self.overlay, Some(Overlay::OfferHome { .. })) => {
+                let Some(Overlay::OfferHome { restore }) = self.overlay.take() else {
+                    return vec![];
+                };
+                self.panel_started = None;
+                self.focus = restore;
+                self.dirty = true;
+                if index == 0 && !self.tv_home_busy {
+                    self.tv_home_busy = true;
+                    return vec![Effect::TvHome(Some(true))];
+                }
+                return vec![];
+            }
             Target::Alert(0) => {
                 let Some(Overlay::Uninstall { id, restore }) = self.overlay.take() else {
                     return vec![];
@@ -539,7 +552,9 @@ impl State {
                 self.inputs_closed = Some(crate::clock::now());
             }
             self.focus = match overlay {
-                Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. } => restore,
+                Overlay::Options { restore, .. }
+                | Overlay::Uninstall { restore, .. }
+                | Overlay::OfferHome { restore } => restore,
                 Overlay::Inputs => Target::InputsButton,
                 Overlay::InputName(id) => {
                     // Back from the names returns to the input's row, the panel still open.

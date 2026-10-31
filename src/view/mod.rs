@@ -500,6 +500,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         overlay @ (Overlay::Options { .. }
         | Overlay::Keyboard
         | Overlay::Uninstall { .. }
+        | Overlay::OfferHome { .. }
         | Overlay::Inputs
         | Overlay::InputName(_)),
     ) = &state.overlay
@@ -539,6 +540,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
                 out.search = Some(panel..out.draw.len());
             }
             Overlay::Uninstall { id, .. } => alert::uninstall(&mut out, state, assets, id),
+            Overlay::OfferHome { .. } => alert::offer_home(&mut out, state, assets),
             Overlay::Inputs | Overlay::InputName(_) => inputs_panel(&mut out, state, assets),
             Overlay::SystemKeyboard => {}
         }

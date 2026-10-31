@@ -42,6 +42,21 @@ pub(super) fn uninstall(out: &mut Scene, state: &State, assets: &Assets, id: &st
     );
 }
 
+/// Asked once on a TV that can have it: "Make Lounge your TV's Home?", what that means and
+/// that it can be undone, then Make Home over Not Now.
+pub(super) fn offer_home(out: &mut Scene, state: &State, assets: &Assets) {
+    let buttons = [i18n::t("offerHomeYes"), i18n::t("notNow")];
+    alert(
+        out,
+        state,
+        assets,
+        i18n::t("offerHomeTitle"),
+        i18n::t("offerHomeMessage"),
+        &buttons,
+        None,
+    );
+}
+
 /// An alert: `title` (at most two lines), `message`, then `buttons` top to
 /// bottom; `destructive` is the index drawn in red.
 fn alert(

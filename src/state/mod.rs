@@ -159,6 +159,11 @@ pub enum Overlay {
         id: String,
         restore: Target,
     },
+    /// Asked once, on a TV that can have it: make Lounge the TV's Home? Make Home over Not Now,
+    /// Make Home focused. Back is Not Now; Settings can change it later.
+    OfferHome {
+        restore: Target,
+    },
     /// The sources under the Inputs button: Live TV and every input not switched Off.
     Inputs,
     /// The Inputs panel naming one input (by app id): the port's name, then LG's names.
@@ -1013,12 +1018,18 @@ impl State {
                 switcher.restore = restore;
             }
         }
-        if let Some(Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. }) =
-            &self.overlay
+        if let Some(
+            Overlay::Options { restore, .. }
+            | Overlay::Uninstall { restore, .. }
+            | Overlay::OfferHome { restore },
+        ) = &self.overlay
         {
             let reconciled = self.reconciled(restore.clone());
-            if let Some(Overlay::Options { restore, .. } | Overlay::Uninstall { restore, .. }) =
-                &mut self.overlay
+            if let Some(
+                Overlay::Options { restore, .. }
+                | Overlay::Uninstall { restore, .. }
+                | Overlay::OfferHome { restore },
+            ) = &mut self.overlay
             {
                 *restore = reconciled;
             }
