@@ -14,12 +14,13 @@ mod installation;
 pub const APP_ID: &str = "io.github.yashwanthkamireddi.lounge";
 pub const HOME_ID: &str = "com.webos.app.home";
 /// LG's Home executable. With Lounge as the TV's Home, Lounge's executable is mounted over it
-/// (`tv/home.cjs`), so webOS starts Lounge with LG Home's manifest, window type and LS2 role.
+/// (`lounge --home`, see `home_mount`), so webOS starts Lounge with LG Home's manifest, window
+/// type and LS2 role.
 pub const LG_HOME_EXE: &str = "/usr/bin/com.webos.app.home";
-/// The root-owned copies of `tv/home.sh` and `tv/home.cjs`, also run by the boot hook.
+/// The root-owned copy of `tv/home.sh`, also run by the boot hook.
 const HOME_SCRIPT: &str = "/var/lib/lounge/home.sh";
-/// Written while Lounge is the TV's Home (`tv/home.cjs`); /var/run is shared with the app's jail.
-const HOME_MARKER: &str = "/var/run/lounge-home";
+/// Written while Lounge is the TV's Home; /var/run is shared with the app's jail.
+const HOME_MARKER: &str = crate::home_mount::MARKER;
 
 /// This process's executable path, without the mark the kernel adds once the file was
 /// replaced (a package update under a running Home).
@@ -59,6 +60,36 @@ pub fn own_id() -> &'static str {
 /// or, as Home, the package whose executable is mounted in LG's place.
 pub fn install_dir() -> Result<PathBuf, String> {
     installation().map(|found| found.directory)
+}
+
+/// Where the TV installs Lounge, in the order the Home commands look.
+pub fn install_directories() -> impl Iterator<Item = PathBuf> {
+    installation::directories()
+}
+
+/// A fixed shell command that runs Lounge's own executable as a root helper
+/// (`lounge FLAG ARGUMENT`, see `helper`), which prints a Luna-style reply. This package's
+/// executable comes first, then wherever the TV installs Lounge: what the elevated shell sees
+/// need not be the jailed app's path. Starting it takes milliseconds, where the TV's Node.js
+/// took seconds of CPU.
+pub fn helper_command(flag: &str, argument: &str) -> String {
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    let mut directories: Vec<PathBuf> = install_dir().into_iter().collect();
+    for directory in install_directories() {
+        if !directories.contains(&directory) {
+            directories.push(directory);
+        }
+    }
+    let directories: Vec<String> = directories
+        .iter()
+        .map(|directory| quote(&directory.to_string_lossy()))
+        .collect();
+    format!(
+        "for d in {}; do [ -x \"$d/lounge\" ] && exec \"$d/lounge\" {flag} {}; done; \
+         echo '{{\"returnValue\":false,\"errorText\":\"Lounge is not installed\"}}'",
+        directories.join(" "),
+        quote(argument)
+    )
 }
 
 /// This running executable's file was replaced since it started (a package update).
@@ -992,10 +1023,9 @@ pub fn read_app_icons(source: &app_artwork::Source) -> Result<Vec<Vec<u8>>, Stri
         return Err("Installed artwork is only read on TV builds".into());
     }
     // Fast path: the app list already names the icon file. One elevated
-    // `od` dump of it answers in milliseconds, where starting node on this
-    // TV takes seconds (and can time out under load). Paths are validated
-    // in Rust and limited to plain filename characters before they reach
-    // the shell.
+    // `od` dump of it answers without starting another program. Paths are
+    // validated in Rust and limited to plain filename characters before they
+    // reach the shell.
     let plain = |path: &str| {
         !path.is_empty()
             && path
@@ -1030,11 +1060,10 @@ pub fn read_app_icons(source: &app_artwork::Source) -> Result<Vec<Vec<u8>>, Stri
             return Ok(vec![bytes]);
         }
     }
-    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
-    let command = format!(
-        "/usr/bin/node -e {} {}",
-        quote(include_str!("../tv/read-app-icon.cjs")),
-        quote(&serde_json::to_string(source).map_err(|e| e.to_string())?)
+    // Otherwise Lounge's own executable reads the manifests too (`app_artwork::installed_icon`).
+    let command = helper_command(
+        "--read-app-icon",
+        &serde_json::to_string(source).map_err(|e| e.to_string())?,
     );
     let envelope = root_command(&command)?;
     let icons = inventory_payload(&envelope, "icons")?;
@@ -1333,30 +1362,17 @@ fn run_as_root(command: &str, timeout: std::time::Duration) -> Result<Value, Str
     }))
 }
 
-/// Settings › General › Lounge as Home. `tv/home.sh` and `tv/home.cjs` are copied to
-/// /var/lib/lounge (where the boot hook runs them) whenever they changed, then run as root.
-/// The answer is what the TV reports: Lounge's executable mounted in LG Home's place and the
-/// boot hook in place.
+/// Settings › General › Lounge as Home. `tv/home.sh` is copied to /var/lib/lounge (where the
+/// boot hook runs it) whenever it changed, then run as root; it runs this package's executable
+/// (`lounge --home`) for the work. The answer is what the TV reports: Lounge's executable
+/// mounted in LG Home's place and the boot hook in place.
 fn tv_home(set: Option<bool>) -> Result<bool, String> {
-    const SCRIPT: &str = include_str!("../tv/home.sh");
-    const LOGIC: &str = include_str!("../tv/home.cjs");
+    let command = home_command(set);
     let mode = match set {
         Some(true) => "enable",
         Some(false) => "disable",
         None => "status",
     };
-    let command = format!(
-        "if [ \"$(id -u)\" != 0 ]; then echo '{{\"returnValue\":false,\"errorText\":\"Homebrew Channel needs root access\"}}'; exit 0; fi\n\
-         umask 022; mkdir -p /var/lib/lounge || exit 0\n\
-         cat > /tmp/lounge-home.sh.new <<'LOUNGE_EOF'\n{SCRIPT}LOUNGE_EOF\n\
-         cat > /tmp/lounge-home.cjs.new <<'LOUNGE_EOF'\n{LOGIC}LOUNGE_EOF\n\
-         for f in home.sh home.cjs; do\n\
-           cmp -s /tmp/lounge-$f.new /var/lib/lounge/$f || {{ cp /tmp/lounge-$f.new /var/lib/lounge/$f.new && mv /var/lib/lounge/$f.new /var/lib/lounge/$f; }}\n\
-           rm -f /tmp/lounge-$f.new\n\
-         done\n\
-         chmod 755 /var/lib/lounge/home.sh\n\
-         /bin/sh {HOME_SCRIPT} {mode}; exit 0"
-    );
     // Enabling stops LG's Home and waits for Lounge to come up as Home.
     let envelope = root_command_within(&command, std::time::Duration::from_secs(90))?;
     let reply = command_reply(&envelope);
@@ -1377,6 +1393,26 @@ fn tv_home(set: Option<bool>) -> Result<bool, String> {
         status(&format!("tv home ({mode}): {error}"));
     }
     result
+}
+
+/// The root command behind `tv_home`. The Node.js logic an earlier Lounge copied beside the
+/// script (`home.cjs`) is removed: nothing runs it any more.
+pub fn home_command(set: Option<bool>) -> String {
+    const SCRIPT: &str = include_str!("../tv/home.sh");
+    let mode = match set {
+        Some(true) => "enable",
+        Some(false) => "disable",
+        None => "status",
+    };
+    format!(
+        "if [ \"$(id -u)\" != 0 ]; then echo '{{\"returnValue\":false,\"errorText\":\"Homebrew Channel needs root access\"}}'; exit 0; fi\n\
+         umask 022; mkdir -p /var/lib/lounge || exit 0\n\
+         cat > /tmp/lounge-home.sh.new <<'LOUNGE_EOF'\n{SCRIPT}LOUNGE_EOF\n\
+         cmp -s /tmp/lounge-home.sh.new /var/lib/lounge/home.sh || {{ cp /tmp/lounge-home.sh.new /var/lib/lounge/home.sh.new && mv /var/lib/lounge/home.sh.new /var/lib/lounge/home.sh; }}\n\
+         rm -f /tmp/lounge-home.sh.new /var/lib/lounge/home.cjs\n\
+         chmod 755 /var/lib/lounge/home.sh\n\
+         /bin/sh {HOME_SCRIPT} {mode}; exit 0"
+    )
 }
 
 fn elevated_close(id: &str) -> Result<(), String> {

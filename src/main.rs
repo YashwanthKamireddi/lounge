@@ -8,6 +8,9 @@ mod debug;
 mod diagnostics;
 mod effects;
 mod font;
+mod helper;
+#[path = "home-mount.rs"]
+mod home_mount;
 mod i18n;
 mod input;
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
@@ -65,6 +68,12 @@ const APPS_CHANGED: i32 = 1;
 /// Another app took the front (see `platform::watch_opened`).
 const APP_IN_FRONT: i32 = 2;
 fn main() {
+    // Run as root by tv/home.sh or Homebrew Channel's exec: one command, no window, nothing
+    // written to the status log.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = helper::run(&args) {
+        std::process::exit(code);
+    }
     debug::debug_log();
     // stderr goes nowhere on the TV: how a run ends is kept in the status log.
     let default_hook = std::panic::take_hook();
