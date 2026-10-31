@@ -5,6 +5,8 @@ import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
 
 const root = path.resolve(import.meta.dirname, '..');
+// See the budget checks in `scenario`.
+const BUDGET = { fill: 3.25, artworkBytes: 64_000_000, textBytes: 8_000_000 };
 const out = path.join(root, '.build');
 await fs.mkdir(out, { recursive: true });
 const run = (command, args) => {
@@ -47,6 +49,22 @@ try {
     assert.equal(render.capture.font_antialiasing, 'vector grayscale coverage');
     assert.equal(render.capture.missing_glyphs, 0);
     assert.equal(render.capture.missing_images, 0);
+    // Performance budgets, set just above what each figure is today: a change that paints more
+    // of the screen per frame, or holds more image or text memory, fails here and has to earn
+    // the raise. Fill (screens painted per frame) is what bounds the TV's one-core GPU.
+    const peakFill = Object.values(render.capture.peak_fill ?? {}).reduce((a, b) => a + b, 0);
+    assert.ok(
+      peakFill <= BUDGET.fill,
+      `${name}: peak fill ${peakFill.toFixed(2)} screens is over the ${BUDGET.fill} budget`,
+    );
+    assert.ok(
+      render.capture.artwork_bytes <= BUDGET.artworkBytes,
+      `${name}: ${render.capture.artwork_bytes} bytes of artwork is over the budget`,
+    );
+    assert.ok(
+      render.capture.text_geometry_bytes <= BUDGET.textBytes,
+      `${name}: ${render.capture.text_geometry_bytes} bytes of text geometry is over the budget`,
+    );
     state.render = render;
     assert.equal(state.error, null);
     const stats = await sharp(screenshot).stats();
