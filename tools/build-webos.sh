@@ -17,10 +17,11 @@ node "$ROOT/tools/webos-runtime.mjs"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_LINKER="$CC"
 # The target's soft-float *calling convention* is required by webOS, but its
 # default software FP codegen is not: hardware FP is used while retaining the
-# gnueabi ABI. Code is tuned for this TV's CPU (MT5889: four Cortex-A73 cores,
-# NEON); WEBOS_CPU=cortex-a9 builds the portable package, NEON off, that runs
-# on any webOS TV.
-WEBOS_CPU="${WEBOS_CPU:-cortex-a73}"
+# gnueabi ABI. The default is the baseline every webOS 5+ TV meets: their SoCs are all ARMv8
+# cores (Cortex-A53, A55, A73) in 32-bit mode with NEON, so a Cortex-A53 build runs on each of
+# them. Tuning for one TV's core (WEBOS_CPU=cortex-a73) may emit instructions an older one
+# lacks: as the TV's Home, a crash at start. WEBOS_CPU=cortex-a9 (NEON off) reaches pre-ARMv8 TVs.
+WEBOS_CPU="${WEBOS_CPU:-cortex-a53}"
 if [ "$WEBOS_CPU" = cortex-a9 ]; then WEBOS_NEON=-neon; else WEBOS_NEON=+neon; fi
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_RUSTFLAGS="${CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABI_RUSTFLAGS:-} -C target-cpu=$WEBOS_CPU -C target-feature=$WEBOS_NEON,-soft-float -C link-arg=--sysroot=$SYSROOT -C link-arg=-Wl,-rpath,\$ORIGIN/lib"
 # As the TV's Home the executable runs mounted at /usr/bin, where $ORIGIN/lib does not exist
