@@ -746,6 +746,48 @@ impl State {
                     }))
     }
 
+    /// How long the screen can stay as it is, with nothing animating, before one of the timers
+    /// here changes it: a notice fading out or ending, the Top Shelf settling or its hint
+    /// ending, the profile picture turning, a slow launch being announced. The event loop
+    /// sleeps that long (or until an event comes) instead of polling. Only timers still ahead
+    /// count: one already due is handled on this pass.
+    pub fn quiet_for(&self) -> Option<Duration> {
+        let mut soonest: Option<Duration> = None;
+        let mut due = |since: &Instant, after: Duration| {
+            let left = after.saturating_sub(crate::clock::since(since));
+            if !left.is_zero() {
+                soonest = Some(soonest.map_or(left, |soonest| soonest.min(left)));
+            }
+        };
+        let seconds = Duration::from_secs_f32;
+        if let Some((_, start)) = &self.notice {
+            if !self.preferences.reduced_motion {
+                due(start, seconds(NOTICE_SECONDS - 0.25));
+            }
+            due(start, seconds(NOTICE_SECONDS));
+        }
+        if let Some((_, since)) = &self.shelf_pending {
+            due(since, seconds(SHELF_REST));
+        }
+        if let Some(since) = &self.shelf_since
+            && self.preferences.top_shelf_art
+            && !self.preferences.reduced_motion
+        {
+            due(since, seconds(SHELF_HINT));
+        }
+        if self.preferences.avatar.as_deref() == Some(AVATAR_ROTATE) && self.avatars.len() > 1 {
+            due(&self.avatar_since, seconds(AVATAR_SECONDS));
+        }
+        if let Some((_, at, said)) = &self.launch_waiting {
+            match said {
+                0 => due(at, LAUNCH_SAY_OPENING),
+                1 => due(at, LAUNCH_SAY_SLOW),
+                _ => {}
+            }
+        }
+        soonest
+    }
+
     pub fn open(&mut self, index: usize) {
         self.weather.cancel_search();
         // One tvOS-style home (the app grid) plus Settings; no tab bar.

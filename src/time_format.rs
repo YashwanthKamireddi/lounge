@@ -186,6 +186,10 @@ pub fn watch_time() {
             }
             if let Some(valid) = parse_valid(&reply) {
                 let was = TIME.swap(if valid { 1 } else { 2 }, Ordering::Relaxed);
+                // The clock appears (or hides) at once, not at the loop's next timer.
+                if was != if valid { 1 } else { 2 } {
+                    crate::wake::now();
+                }
                 if valid && was == 2 {
                     *SET_AT
                         .lock()

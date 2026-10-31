@@ -70,12 +70,14 @@ pub fn command(id: &str) -> Result<String, String> {
 }
 
 /// Output beyond this (stdout and stderr together) ends a removal as failed.
+#[cfg_attr(not(feature = "webos"), allow(dead_code))]
 const OUTPUT_LIMIT: usize = 64 * 1024;
 
 /// Watches luna-send's stream of replies to one removal. It prints a series
 /// of objects, optionally pretty printed: braces are counted outside strings
 /// rather than taking the first acceptance for completion. Success is the
 /// completion status (31).
+#[cfg_attr(not(feature = "webos"), allow(dead_code))]
 pub struct Removal {
     id: String,
     buffer: Vec<u8>,
@@ -83,6 +85,7 @@ pub struct Removal {
     replies: Vec<Value>,
 }
 
+#[cfg_attr(not(feature = "webos"), allow(dead_code))]
 impl Removal {
     pub fn new(id: &str) -> Self {
         Self {

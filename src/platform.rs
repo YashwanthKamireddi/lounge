@@ -238,7 +238,11 @@ pub fn watch_opened(front: Wake) -> Result<(), String> {
                 if let Ok(mut latest) = FRONT.lock()
                     && *latest != id
                 {
-                    crate::history::note(&format!("front {id}"));
+                    crate::history::note(&if id.is_empty() {
+                        "front: nothing".to_owned()
+                    } else {
+                        format!("front {id}")
+                    });
                     id.clone_into(&mut latest);
                 }
                 note_opened(id);
@@ -342,7 +346,7 @@ pub fn watch_launches(home: Wake) -> Result<(), String> {
             }
             let app = reply.get("appId").and_then(Value::as_str).unwrap_or("");
             let event = reply.get("event").and_then(Value::as_str).unwrap_or("");
-            if event != "splash" {
+            if !event.is_empty() && event != "splash" {
                 let reason = reply
                     .get("reason")
                     .and_then(Value::as_str)
@@ -540,7 +544,8 @@ impl Platform {
                             {
                                 inventory.apps.retain(|app| !removed.contains(&app.id));
                             }
-                            let _ = responses.send(Response::Inventory(inventory));
+                            let _ =
+                                crate::wake::sent(responses.send(Response::Inventory(inventory)));
                             let profile = if webos {
                                 read_profile().unwrap_or_else(|error| {
                                     eprintln!("Lounge profile: {error}");
@@ -549,7 +554,7 @@ impl Platform {
                             } else {
                                 crate::model::Profile::from_fields("Lounge", Some("#7360E7"))
                             };
-                            let _ = responses.send(Response::Profile(profile));
+                            let _ = crate::wake::sent(responses.send(Response::Profile(profile)));
                         });
                         continue;
                     }
@@ -582,7 +587,9 @@ impl Platform {
                                     }
                                 })
                             };
-                            let _ = responses.send(Response::Uninstalled(id, result));
+                            let _ = crate::wake::sent(
+                                responses.send(Response::Uninstalled(id, result)),
+                            );
                         });
                         continue;
                     }
@@ -603,7 +610,7 @@ impl Platform {
                     // `send` routes these to the apps thread.
                     Request::Launch(_) | Request::Close(_) => continue,
                 };
-                if responses.send(response).is_err() {
+                if crate::wake::sent(responses.send(response)).is_err() {
                     break;
                 }
             }
@@ -655,7 +662,7 @@ fn apps_thread(webos: bool, responses: mpsc::Sender<Response>) -> mpsc::Sender<R
                 }
                 _ => continue,
             };
-            if responses.send(response).is_err() {
+            if crate::wake::sent(responses.send(response)).is_err() {
                 break;
             }
         }

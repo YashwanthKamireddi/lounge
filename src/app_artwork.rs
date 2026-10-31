@@ -533,6 +533,7 @@ fn icon_candidates(
 /// jailed app cannot read another app's files: `{"returnValue":true,"icons":[HEX]}` with the
 /// first icon file that reads (or none). Only image files under the app roots are read, each
 /// once; `SOURCE` is a serialized `Source`, checked again here as it came over a command line.
+#[cfg_attr(not(feature = "webos"), allow(dead_code))]
 pub fn installed_icon(
     request: &str,
     mut read: impl FnMut(&Path, usize) -> Option<Vec<u8>>,
@@ -586,6 +587,7 @@ pub fn installed_icon(
 }
 
 /// The reader `installed_icon` uses on the TV.
+#[cfg_attr(not(feature = "webos"), allow(dead_code))]
 pub fn read_file(path: &Path, limit: usize) -> Option<Vec<u8>> {
     read_bounded(path, limit)
 }
@@ -710,7 +712,7 @@ impl Service {
                         image.source = source_hash(&request.source);
                         Arc::new(image)
                     });
-                    if responses.send(Reply { request, image }).is_err() {
+                    if crate::wake::sent(responses.send(Reply { request, image })).is_err() {
                         break;
                     }
                 }
@@ -770,6 +772,17 @@ impl Service {
         cache
             .entries
             .retain(|_, entry| matches!(entry.image, Some(Some(_))));
+    }
+
+    /// When the next failed read is due to be tried again: the event loop wakes for it.
+    pub fn next_retry(&self) -> Option<std::time::Instant> {
+        self.cache
+            .borrow()
+            .entries
+            .values()
+            .filter(|entry| matches!(entry.image, Some(None)))
+            .filter_map(|entry| entry.retry_at)
+            .min()
     }
 
     pub fn poll(&self) -> bool {

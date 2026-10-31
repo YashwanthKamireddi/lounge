@@ -232,7 +232,7 @@ impl Service {
                         _ => continue,
                     };
                     if worker.generation.load(Ordering::SeqCst) == id
-                        && sender.send(response).is_err()
+                        && crate::wake::sent(sender.send(response)).is_err()
                     {
                         break;
                     }

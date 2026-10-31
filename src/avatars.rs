@@ -76,7 +76,7 @@ pub fn load_in_background(directory: PathBuf) -> std::sync::mpsc::Receiver<Vec<P
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         crate::background_priority();
-        let _ = sender.send(load(&directory));
+        let _ = crate::wake::sent(sender.send(load(&directory)));
     });
     receiver
 }

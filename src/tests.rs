@@ -2232,3 +2232,21 @@ fn holding_ok_on_an_input_names_it_as_lg_does_and_back_returns_to_it() {
         vec![Effect::Launch(crate::model::LIVE_TV.into())]
     );
 }
+
+#[test]
+fn an_idle_screen_sleeps_until_its_next_timer() {
+    let mut state = State::new(Preferences::default());
+    // Nothing on a timer: the loop waits for input or the clock alone.
+    assert_eq!(state.quiet_for(), None);
+    // A notice: woken for its fade-out, before it ends.
+    state.notify("Saved");
+    let quiet = state.quiet_for().expect("a notice has a timer");
+    let fade = std::time::Duration::from_secs_f32(crate::state::NOTICE_SECONDS - 0.25);
+    assert!(quiet <= fade && quiet > fade - std::time::Duration::from_millis(500));
+    // A notice already past its end is the current pass's work, never a zero wait.
+    state.notice = Some((
+        "Old".into(),
+        crate::clock::now() - std::time::Duration::from_secs(60),
+    ));
+    assert_eq!(state.quiet_for(), None);
+}

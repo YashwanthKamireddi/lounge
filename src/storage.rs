@@ -260,7 +260,7 @@ impl Writer {
                     preferences = newer;
                 }
                 if let Err(error) = save(&path, &preferences) {
-                    let _ = failures.send(error);
+                    let _ = crate::wake::sent(failures.send(error));
                 }
             }
         });

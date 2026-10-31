@@ -10,6 +10,8 @@ mod effects;
 mod font;
 mod helper;
 mod history;
+// Runs only on the TV, from `helper`.
+#[cfg_attr(not(feature = "webos"), allow(dead_code))]
 #[path = "home-mount.rs"]
 mod home_mount;
 mod i18n;
@@ -35,6 +37,7 @@ mod time_format;
 mod uninstall;
 mod vector;
 mod view;
+mod wake;
 mod weather;
 #[path = "weather-service.rs"]
 mod weather_service;
@@ -68,6 +71,8 @@ const INVENTORY_FRESH: Duration = Duration::from_secs(30);
 const APPS_CHANGED: i32 = 1;
 /// Another app took the front (see `platform::watch_opened`).
 const APP_IN_FRONT: i32 = 2;
+/// A worker has a result waiting (see `wake`).
+const WORK_DONE: i32 = 3;
 fn main() {
     // Run as root by tv/home.sh or Homebrew Channel's exec: one command, no window, nothing
     // written to the status log.
@@ -458,6 +463,17 @@ fn run() -> Result<(), String> {
             data2: std::ptr::null_mut(),
         });
     });
+    let work_sender = sdl.event()?.event_sender();
+    wake::set(move || {
+        let _ = work_sender.push_event(Event::User {
+            timestamp: 0,
+            window_id: 0,
+            type_: home_type,
+            code: WORK_DONE,
+            data1: std::ptr::null_mut(),
+            data2: std::ptr::null_mut(),
+        });
+    });
     let lifecycle_sender = if webos && platform::is_home() {
         // SAFETY: as above.
         let lifecycle_type = unsafe { sdl.event()?.register_event()? };
@@ -580,6 +596,7 @@ fn run() -> Result<(), String> {
         partial,
         rewarm,
         glyphs_warming,
+        uploads_pending: false,
         last_refresh,
         running,
         queued_event,
@@ -630,6 +647,8 @@ struct Shell {
     partial: damage::Partial,
     rewarm: bool,
     glyphs_warming: bool,
+    /// Decoded images still waiting to go up to the GPU (see `Preload::pump`).
+    uploads_pending: bool,
     last_refresh: Instant,
     running: bool,
     queued_event: Option<Event>,
@@ -683,6 +702,8 @@ impl Shell {
     /// Background results, the clock, uploads, TV-service replies and
     /// timers, ahead of input; returns the time this pass is drawn for.
     fn tick(&mut self) -> OffsetDateTime {
+        // Every queue is read below: a result sent from here on wakes the loop again.
+        wake::taken();
         // A save that failed in the background is reported as before.
         while let Ok(error) = self.writer.errors.try_recv() {
             eprintln!("{error}");
@@ -731,8 +752,9 @@ impl Shell {
         {
             self.glyphs_warming = self.renderer.warm_glyphs(3);
         }
-        self.preload
-            .pump(&mut self.renderer, self.state.animating(), in_front);
+        self.uploads_pending =
+            self.preload
+                .pump(&mut self.renderer, self.state.animating(), in_front);
         preload::wallpaper(
             &mut self.preload,
             &mut self.state,
@@ -902,6 +924,8 @@ impl Shell {
                     pending.push(Effect::Refresh);
                 }
             }
+            // Only a wake: `tick` read the results this pass. Never the Home key's arm below.
+            Event::User { type_, code, .. } if type_ == self.home_type && code == WORK_DONE => {}
             Event::User { type_, .. } if type_ == self.home_type => {
                 // The launch that brings Lounge back from an app lands just
                 // after its window shows: only a launch well after that is
@@ -1335,23 +1359,65 @@ impl Shell {
         Ok(())
     }
 
-    /// Block until input instead of polling at frame rate on idle screens.
-    /// VSync paces animation; holds and scripted checks need short timed wakes.
+    /// Sleeps until something can change the screen: input, a worker's result (`wake`), or the
+    /// next timer. Nothing polls: an idle Home, and Lounge behind an app, take no CPU at all
+    /// between events. VSync paces animation; holds and scripted checks need short timed wakes.
     fn wait(&mut self) {
         let timeout = if self.record.is_some() {
             0
         } else if !self.presence.visible {
-            // Hidden behind an app: push events need no polling, so sleep long,
-            // except while being raised (see `wake`): then answer webOS fast.
-            if self.presence.raising() { 16 } else { 2000 }
+            // Behind an app: only events and timers, except while being raised (see `wake`):
+            // then answer webOS fast.
+            if self.presence.raising() {
+                16
+            } else {
+                self.until_due(false)
+            }
         } else if self.state.animating() || self.options.profile_frames.is_some() {
             0
         } else if self.remote.press.is_some() || self.options.frames.is_some() {
             8
-        } else {
+        } else if self.uploads_pending
+            || self.glyphs_warming
+            // SDL sends no event when LG's on-screen keyboard is dismissed (see `tick`).
+            || (self.text_active && matches!(self.state.overlay, Some(Overlay::SystemKeyboard)))
+        {
+            // Background work fed a little per pass, or a state only polling can see.
             100
+        } else {
+            self.until_due(true)
         };
         self.queued_event = sdl_events::wait(&mut self.events, timeout, self.webos);
+    }
+
+    /// Milliseconds until the soonest timer: the clock's next minute (on screen), the crash
+    /// guard's all-clear, an inventory retry, a failed icon read's retry, and the state's own
+    /// (`State::quiet_for`). A long cap only bounds a timer missed here.
+    fn until_due(&self, on_screen: bool) -> u32 {
+        const CAP: Duration = Duration::from_secs(60);
+        let now = Instant::now();
+        let after = |at: Instant| at.saturating_duration_since(now);
+        let mut soonest = CAP;
+        let mut due = |left: Duration| soonest = soonest.min(left);
+        if on_screen {
+            let second = OffsetDateTime::now_utc().unix_timestamp().rem_euclid(60) as u64;
+            // Just past the minute, so the new minute is what is drawn.
+            due(Duration::from_secs(60 - second) + Duration::from_millis(20));
+            if let Some(quiet) = self.state.quiet_for() {
+                due(quiet);
+            }
+            if let Some(retry) = self.assets.artwork.next_retry() {
+                due(after(retry));
+            }
+        }
+        if let Some(at) = self.healthy_at {
+            due(after(at));
+        }
+        if let Some(at) = self.replies.inventory_retry {
+            due(after(at));
+        }
+        // A timer just due runs on the next pass; never a busy loop of zero waits.
+        soonest.as_millis().clamp(1, CAP.as_millis()) as u32
     }
 
     /// Resident as Home, an update only takes effect on a restart. Behind an app Lounge mounts

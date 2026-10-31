@@ -142,7 +142,7 @@ impl Service {
                         Some((_, path)) => read(webos, &id, path, known.as_deref()),
                         None => Found::Gone,
                     };
-                    if sender.send((id, found)).is_err() {
+                    if crate::wake::sent(sender.send((id, found))).is_err() {
                         return;
                     }
                 }

@@ -120,10 +120,12 @@ impl Preload {
     /// again on return (see `resume`). Uploaded then, it stayed on the GPU for
     /// the whole app session: an adopted texture counts as drawn in the last
     /// frame, which `trim` keeps.
-    pub fn pump(&mut self, renderer: &mut renderer::Renderer, busy: bool, in_front: bool) {
+    /// Uploads a few decoded images; true when more may be waiting (the budget ran out, or
+    /// large ones are held while something moves), so the loop comes back for them soon.
+    pub fn pump(&mut self, renderer: &mut renderer::Renderer, busy: bool, in_front: bool) -> bool {
         if !in_front {
             self.behind();
-            return;
+            return false;
         }
         self.paused.store(false, Ordering::Relaxed);
         let mut budget = if busy { 1 } else { 4 };
@@ -138,6 +140,7 @@ impl Preload {
             }
             budget -= 1;
         }
+        budget == 0 || !self.held.is_empty()
     }
 
     /// The next image to upload, if any may go up now.
@@ -227,7 +230,7 @@ fn decode(
             Request::Wake => continue,
         };
         if paused.load(Ordering::Relaxed) {
-            if sender.send((path, None)).is_err() {
+            if crate::wake::sent(sender.send((path, None))).is_err() {
                 return;
             }
             continue;
@@ -270,10 +273,10 @@ fn deliver(
 ) -> bool {
     if paused.load(Ordering::Relaxed) {
         recent.remove(&path);
-        return sender.send((path, None)).is_ok();
+        return crate::wake::sent(sender.send((path, None))).is_ok();
     }
     match load(&path) {
-        Some(loaded) => sender.send((path, Some(loaded))).is_ok(),
+        Some(loaded) => crate::wake::sent(sender.send((path, Some(loaded)))).is_ok(),
         // Unreadable: nothing to send, and not asked for again.
         None => true,
     }
