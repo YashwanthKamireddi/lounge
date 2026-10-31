@@ -136,7 +136,12 @@ impl Preload {
             match loaded {
                 Preloaded::Image(image) => renderer.adopt(path, image),
                 Preloaded::Compressed(image) => renderer.adopt_compressed(path, &image),
-                Preloaded::Vector(bytes) => renderer.adopt_vector(path, &bytes),
+                // Read and parsed on the worker already: what is left is a small buffer, so a
+                // mesh never waits behind pictures for a frame's budget.
+                Preloaded::Vector(bytes) => {
+                    renderer.adopt_vector(path, &bytes);
+                    continue;
+                }
             }
             budget -= 1;
         }
@@ -299,6 +304,13 @@ fn load(path: &str, astc: bool) -> Option<Preloaded> {
 /// Decodes every home image ahead of need, wallpaper first, so no icon pops
 /// in late and no slide stalls on a decode.
 pub fn request_home(preload: &mut Preload, state: &State, assets: &Assets) {
+    // Interface glyphs first (menus, Settings, the bar): small, and drawn on every page. Queued
+    // behind the pictures, one reached a frame before its turn and was read from disk there.
+    if let Ok(entries) = std::fs::read_dir(assets.path("ui-icons")) {
+        for entry in entries.flatten() {
+            preload.request(entry.path().to_string_lossy().into_owned());
+        }
+    }
     for path in wallpaper_pictures(assets, &state.preferences.background) {
         preload.request(path);
     }
@@ -325,12 +337,6 @@ pub fn request_home(preload: &mut Preload, state: &State, assets: &Assets) {
     }
     for (id, _) in model::BACKGROUNDS {
         preload.request(assets.path(format!("thumbnails/{id}.jpg")));
-    }
-    // Interface glyphs (menus, Settings).
-    if let Ok(entries) = std::fs::read_dir(assets.path("ui-icons")) {
-        for entry in entries.flatten() {
-            preload.request(entry.path().to_string_lossy().into_owned());
-        }
     }
 }
 
@@ -460,13 +466,17 @@ pub fn prefetch(
     {
         let _ = assets.artwork.get(source);
     }
-    // Brand cards for apps without their own tile art.
+    // Brand cards for apps without their own tile art, and every known brand's logo: logos
+    // also draw where tile art does not (search, the switcher), and a logo first met mid-scroll
+    // was read from disk on the drawing thread.
     for app in &state.inventory.apps {
-        if !assets.tiles.contains_key(&app.id) && app.brand != "generic" {
-            for name in [
-                format!("surfaces/{}.png", app.brand),
-                format!("logos/{}.lvec", app.brand),
-            ] {
+        if app.brand != "generic" {
+            let surface = (!assets.tiles.contains_key(&app.id))
+                .then(|| format!("surfaces/{}.png", app.brand));
+            for name in surface
+                .into_iter()
+                .chain([format!("logos/{}.lvec", app.brand)])
+            {
                 let path = assets.path(name);
                 // Logos are meshes the renderer never frees: `request` reads
                 // each once.
