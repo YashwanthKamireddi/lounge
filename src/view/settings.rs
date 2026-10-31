@@ -785,6 +785,8 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     "tv",
                     if state.tv_home_busy {
                         "…"
+                    } else if state.tv_home_blocked.is_some() {
+                        i18n::t("stateUnavailable")
                     } else if state.tv_home == Some(true) {
                         i18n::t("stateOn")
                     } else {
@@ -809,7 +811,9 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
             // the switch would change nothing, so it is not offered.
             .filter(|(index, ..)| *index != 6 || !state.heroes.is_empty())
             // Home is set on the TV, once it has said which it is.
-            .filter(|(index, ..)| *index != 10 || state.tv_home.is_some())
+            .filter(|(index, ..)| {
+                *index != 10 || state.tv_home.is_some() || state.tv_home_blocked.is_some()
+            })
             .enumerate()
             {
                 shown += 1;

@@ -225,6 +225,10 @@ impl State {
                             self.dirty = true;
                             return vec![Effect::TvHome(Some(!on))];
                         }
+                        // Not possible on this TV: say why, every time it is asked.
+                        if let Some(block) = self.tv_home_blocked {
+                            self.notify(i18n::t(block));
+                        }
                         return vec![];
                     }
                     8 => {

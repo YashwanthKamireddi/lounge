@@ -92,11 +92,15 @@ impl Replies {
                             state.notify(i18n::t(if on { "tvHomeLounge" } else { "tvHomeLg" }));
                         }
                         state.tv_home = Some(on);
+                        state.tv_home_blocked = None;
                     }
                     Err(error) => {
                         eprintln!("Lounge as Home: {error}");
+                        let block = state::home_block(&error);
                         if asked {
-                            state.notify(i18n::t("tvHomeError"));
+                            state.notify(i18n::t(block));
+                        } else if state.tv_home.is_none() {
+                            state.tv_home_blocked = Some(block);
                         }
                     }
                 }

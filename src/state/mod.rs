@@ -232,6 +232,9 @@ pub struct State {
     pub tv_home: Option<bool>,
     /// A change of Home is on its way to the TV.
     pub tv_home_busy: bool,
+    /// Why this TV cannot have Lounge as its Home (a message key), when it said so: the row
+    /// stays, saying why, instead of disappearing.
+    pub tv_home_blocked: Option<&'static str>,
     /// Where the focused tile sits in the grid, so focus can go to the tile
     /// that takes its place if it disappears.
     pub focus_slot: usize,
@@ -379,6 +382,21 @@ pub const INVENTORY_RETRY_DELAY: Duration = Duration::from_secs(2);
 pub const APPEARANCES: [Appearance; 3] = [Appearance::Light, Appearance::Dark, Appearance::Auto];
 /// The avatar preference that shows every picture in turn.
 pub const AVATAR_ROTATE: &str = "rotate";
+
+/// What a failed Home change means for the person at the TV, as a message key: each cause has
+/// its own remedy, and a TV Lounge cannot stand in for is told so plainly.
+pub fn home_block(error: &str) -> &'static str {
+    let error = error.to_ascii_lowercase();
+    if error.contains("root") {
+        "tvHomeNeedsRoot"
+    } else if error.contains("another integration") || error.contains("foreign") {
+        "tvHomeOther"
+    } else if error.contains("stand in for") || error.contains("not supported") {
+        "tvHomeUnsupported"
+    } else {
+        "tvHomeError"
+    }
+}
 /// Seconds each rotating picture shows, and its crossfade.
 pub const AVATAR_SECONDS: f32 = 20.;
 pub const AVATAR_FADE: f32 = 0.6;
@@ -419,6 +437,7 @@ impl State {
             avatars: Vec::new(),
             tv_home: None,
             tv_home_busy: false,
+            tv_home_blocked: None,
             focus_slot: 0,
             avatar_index: 0,
             avatar_since: crate::clock::now(),
