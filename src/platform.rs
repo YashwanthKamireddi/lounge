@@ -286,6 +286,9 @@ fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + 
         *count += 1;
         [3, 10, 30, 300][(*count as usize - 1).min(3)]
     });
+    // Kept with the app history: while a stream is off, Lounge's view of the TV (what is in
+    // front, which apps run) is stale, which can explain what it did meanwhile.
+    crate::history::note(&format!("{what} ended; retrying in {first} s"));
     thread::spawn(move || {
         for (attempt, wait) in [first]
             .into_iter()
@@ -297,6 +300,7 @@ fn resubscribe(what: &'static str, subscribe: impl Fn() -> Result<(), String> + 
             match subscribe() {
                 Ok(()) => {
                     status(&format!("{what}: on again (attempt {})", attempt + 1));
+                    crate::history::note(&format!("{what} on again"));
                     return;
                 }
                 Err(error) => eprintln!("Lounge {what}: {error}; trying again"),
