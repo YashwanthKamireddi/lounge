@@ -11,7 +11,7 @@ use crate::{
     renderer::{Color, Draw, GlassBlend, TextStyle, WHITE},
     state::{
         APPS_COLUMNS, DOCK_GAP, DOCK_TOP, GRID_GAP, GRID_LEFT, GRID_SCROLL, GRID_STEP,
-        HOME_TILE_PITCH, HOME_TILE_WIDTH, ROW_PITCH, Rect, SHELF_HINT, State, Target,
+        HOME_TILE_PITCH, HOME_TILE_WIDTH, Rect, SHELF_HINT, State, Target, row_offset,
     },
     weather,
 };
@@ -452,14 +452,13 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     }
     // One thin specular rim (no flat outline).
     out.rim(platter, DOCK_RADIUS, 0.5, 0.06);
+    let above = state.rows_above(apps.len());
     let slot = |index: usize| {
         let (row, column) = (index / APPS_COLUMNS, index % APPS_COLUMNS);
-        let y = if row == 0 {
-            dock_y
-        } else {
-            dock_y + gap + (row - 1) as f32 * ROW_PITCH
-        };
-        (GRID_LEFT + column as f32 * GRID_STEP, y)
+        (
+            GRID_LEFT + column as f32 * GRID_STEP,
+            dock_y + row_offset(row, above, gap),
+        )
     };
     // Move mode: a reorder glides every displaced tile (dock and grid alike)
     // from its old slot to its new one, easing out, as tvOS rearranges.
@@ -547,7 +546,9 @@ fn shelf_chevron(out: &mut Scene, state: &State, assets: &Assets, dock_y: f32) {
         .iter()
         .take(APPS_COLUMNS)
         .any(|app| &app.id == id);
-    if !in_dock || !state.has_art(id) || state.expanded {
+    // Rows above the dock take Up, and its place: no full screen to offer.
+    if !in_dock || !state.has_art(id) || state.expanded || state.rows_above(state.apps().len()) > 0
+    {
         return;
     }
     let alpha = (1. - state.shown_scroll.abs() / 60.).clamp(0., 1.);

@@ -116,7 +116,7 @@
   "topShelfArt": "Show cover art",
   "topResults": "Top Results",
   "aboutSettings": "Choose how Lounge looks and what the weather shows.",
-  "aboutInterface": "App names, the clock, appearance, motion, focus and cover art.",
+  "aboutInterface": "App names, the clock, appearance, motion, focus, rows above the dock and cover art.",
   "aboutInterfaceNoArt": "App names, the clock, appearance, motion and focus.",
   "tvHome": "Lounge as Home",
   "tvHomeLounge": "Lounge is now the TV's Home",
@@ -143,5 +143,8 @@
   "appOpening": "Opening {app}…",
   "appSlow": "{app} is taking a while to open. Check the internet connection, or press Home and try again.",
   "focusOutline": "Focus outline",
-  "largeNames": "Larger app names"
+  "largeNames": "Larger app names",
+  "rowsAboveDock": "Rows above dock",
+  "rowsOne": "1 row",
+  "rowsTwo": "2 rows"
 }

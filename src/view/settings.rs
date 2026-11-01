@@ -8,8 +8,8 @@ use crate::{
     model::{Appearance, BACKGROUNDS},
     renderer::Draw,
     state::{
-        APPEARANCES, AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target,
-        WEATHER_SECTION,
+        APPEARANCES, AVATAR_ROTATE, MAX_ROWS_ABOVE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage,
+        Target, WEATHER_SECTION,
     },
     weather::Unit,
 };
@@ -776,6 +776,17 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                         i18n::t("stateOn")
                     } else {
                         i18n::t("stateOff")
+                    },
+                    false,
+                ),
+                (
+                    13,
+                    "rowsAboveDock",
+                    "grid",
+                    match state.preferences.rows_above_dock.min(MAX_ROWS_ABOVE) {
+                        0 => i18n::t("stateOff"),
+                        1 => i18n::t("rowsOne"),
+                        _ => i18n::t("rowsTwo"),
                     },
                     false,
                 ),

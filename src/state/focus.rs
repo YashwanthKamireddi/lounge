@@ -188,18 +188,20 @@ impl State {
             && let Some(index) = self.apps().iter().position(|app| &app.id == id)
         {
             let row = index / APPS_COLUMNS;
+            // Rows above the dock show with it, unscrolled.
+            let above = self.rows_above(self.apps().len());
             if row > 0 {
                 self.expanded = false;
             }
             self.scroll = if row == 0 && self.expanded {
                 -SHELF_DROP
-            } else if row == 0 {
-                if previous > 0. {
+            } else if row <= above {
+                if row == 0 && previous > 0. {
                     self.shelf_since = Some(crate::clock::now());
                 }
                 0.
             } else {
-                let y = 90. + GRID_GAP + (row - 1) as f32 * ROW_PITCH;
+                let y = 90. + GRID_GAP + (row - above - 1) as f32 * ROW_PITCH;
                 let extra = (self.scroll - GRID_SCROLL)
                     .max(0.)
                     .clamp((y + 210. - 1030.).max(0.), (y - 90.).max(0.));

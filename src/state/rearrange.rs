@@ -3,17 +3,23 @@ use super::*;
 
 impl State {
     /// Where home slot `index` sits relative to the first, in pixels: the dock
-    /// is row 0, the grid's rows follow it (their gap opens as the grid rises).
+    /// is row 0, any rows above it come next, then the grid's rows (their gap
+    /// opens as the grid rises).
     pub fn slot_position(&self, index: usize) -> (f32, f32) {
         let (row, column) = (index / APPS_COLUMNS, index % APPS_COLUMNS);
         let spread = (self.shown_scroll / GRID_SCROLL).clamp(0., 1.);
         let gap = DOCK_GAP + (GRID_GAP - DOCK_GAP) * spread;
-        let y = if row == 0 {
-            0.
-        } else {
-            gap + (row - 1) as f32 * ROW_PITCH
-        };
-        (column as f32 * GRID_STEP, y)
+        let above = self.rows_above(self.apps().len());
+        (column as f32 * GRID_STEP, row_offset(row, above, gap))
+    }
+
+    /// How many of the rows after the dock's are drawn above it, for `count` apps: what
+    /// Settings asks for, as far as there are apps to fill them.
+    pub fn rows_above(&self, count: usize) -> usize {
+        self.preferences
+            .rows_above_dock
+            .min(MAX_ROWS_ABOVE)
+            .min(count.saturating_sub(1) / APPS_COLUMNS)
     }
 
     /// After apps leave the grid (hidden, uninstalled), the ones behind them glide into the gap
@@ -88,4 +94,40 @@ impl State {
         let t = (crate::clock::since(at).as_secs_f32() * 1000. / REARRANGE_MS).min(1.);
         1. - (1. - t).powi(3)
     }
+}
+
+/// Where row `row` sits relative to the dock, with `above` rows over it: rows 1 to `above`
+/// stack upward from the dock, top to bottom in order; the grid's rows follow `gap` below it.
+pub fn row_offset(row: usize, above: usize, gap: f32) -> f32 {
+    if row == 0 {
+        0.
+    } else if row <= above {
+        -((above - row + 1) as f32) * ROW_PITCH
+    } else {
+        gap + (row - above - 1) as f32 * ROW_PITCH
+    }
+}
+
+/// The slot one row up or down from `index` as the rows are drawn (those above the dock, the
+/// dock, then the grid), in the same column or the last app; None past the top or bottom.
+pub fn vertical_neighbour(index: usize, count: usize, above: usize, up: bool) -> Option<usize> {
+    let (row, column) = (index / APPS_COLUMNS, index % APPS_COLUMNS);
+    let rows = count.div_ceil(APPS_COLUMNS);
+    // Rows by where they are drawn, top first, and back.
+    let drawn = |row: usize| match row {
+        0 => above,
+        row if row <= above => row - 1,
+        row => row,
+    };
+    let row_at = |position: usize| match position {
+        position if position < above => position + 1,
+        position if position == above => 0,
+        position => position,
+    };
+    let position = if up {
+        drawn(row).checked_sub(1)?
+    } else {
+        drawn(row) + 1
+    };
+    (position < rows).then(|| (row_at(position) * APPS_COLUMNS + column).min(count - 1))
 }

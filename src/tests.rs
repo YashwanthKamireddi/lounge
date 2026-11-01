@@ -1460,6 +1460,63 @@ fn focus_goes_to_the_tile_that_takes_a_vanished_tiles_place() {
     assert_eq!(state.focus, Target::App(order(&state)[7].clone()));
 }
 
+#[test]
+fn rows_above_the_dock_are_off_until_chosen_and_the_remote_follows_them_as_drawn() {
+    use crate::state::vertical_neighbour;
+    // None above: Up and Down step a row in place, Up from the dock leaves the apps.
+    assert_eq!(vertical_neighbour(7, 18, 0, true), Some(2));
+    assert_eq!(vertical_neighbour(2, 18, 0, true), None);
+    assert_eq!(vertical_neighbour(2, 18, 0, false), Some(7));
+    // Two above: rows 1 and 2 over the dock, top to bottom, then the grid from row 3.
+    assert_eq!(vertical_neighbour(2, 18, 2, true), Some(12));
+    assert_eq!(vertical_neighbour(12, 18, 2, true), Some(7));
+    assert_eq!(vertical_neighbour(7, 18, 2, true), None);
+    assert_eq!(vertical_neighbour(7, 18, 2, false), Some(12));
+    assert_eq!(vertical_neighbour(12, 18, 2, false), Some(2));
+    assert_eq!(vertical_neighbour(2, 18, 2, false), Some(17));
+    // A short last row: the last app.
+    assert_eq!(vertical_neighbour(4, 18, 2, false), Some(17));
+    assert_eq!(vertical_neighbour(17, 18, 2, false), None);
+
+    let mut state = ready();
+    state.page = Page::Apps;
+    assert_eq!(state.preferences.rows_above_dock, 0);
+    let tiles = order(&state);
+    assert_eq!(state.rows_above(tiles.len()), 0);
+    // Never more than fit, nor more than there are apps for.
+    state.preferences.rows_above_dock = 5;
+    assert_eq!(state.rows_above(tiles.len()), 2);
+    assert_eq!(state.rows_above(6), 1);
+    assert_eq!(state.rows_above(5), 0);
+    // Row 1 over row 2 over the dock; the grid below.
+    let (first, second) = (state.slot_position(5).1, state.slot_position(10).1);
+    assert!(first < second && second < 0.);
+    assert!(state.slot_position(15).1 > 0.);
+    // Up from the dock climbs the rows above, then reaches the bar.
+    state.focus = Target::App(tiles[1].clone());
+    state.direction(Direction::Up, &controls(&state));
+    assert_eq!(state.focus, Target::App(tiles[11].clone()));
+    state.direction(Direction::Up, &controls(&state));
+    assert_eq!(state.focus, Target::App(tiles[6].clone()));
+    assert_eq!(state.scroll, 0.);
+    state.direction(Direction::Up, &controls(&state));
+    assert_eq!(state.focus, Target::SearchButton);
+    // Settings › General goes Off, 1 row, 2 rows and round, and saves each.
+    state.preferences.rows_above_dock = 0;
+    state.page = Page::Settings;
+    state.section = 0;
+    state.focus = Target::Setting(13);
+    for rows in [1, 2, 0] {
+        assert_eq!(state.activate(), vec![Effect::Save]);
+        assert_eq!(state.preferences.rows_above_dock, rows);
+    }
+    // Older preference files, without it, read as off; nonsense too.
+    let old: Preferences = serde_json::from_str("{}").unwrap();
+    assert_eq!(old.rows_above_dock, 0);
+    let odd: Preferences = serde_json::from_str(r#"{"rows_above_dock": "lots"}"#).unwrap();
+    assert_eq!(odd.rows_above_dock, 0);
+}
+
 // Lounge as the TV's Home (`lounge --home` mounts its executable over LG Home's).
 
 #[test]

@@ -9,6 +9,8 @@ mod rearrange;
 mod switcher;
 mod text;
 
+pub use rearrange::{row_offset, vertical_neighbour};
+
 use crate::i18n;
 use crate::model::{App, Appearance, BACKGROUNDS, Inventory, Preferences};
 use crate::weather::{self, Unit};
@@ -18,6 +20,8 @@ use std::time::{Duration, Instant};
 pub const WEATHER_SECTION: usize = 2;
 pub const SECTION_COUNT: usize = 3;
 pub const APPS_COLUMNS: usize = 5;
+/// The most rows Settings can put above the dock: two fill the room under the bar.
+pub const MAX_ROWS_ABOVE: usize = 2;
 pub const HOME_STRIP_LEFT: f32 = 84.;
 pub const HOME_STRIP_RIGHT: f32 = 1836.;
 pub const HOME_TILE_WIDTH: f32 = 324.;

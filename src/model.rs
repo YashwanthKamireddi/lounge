@@ -167,6 +167,10 @@ pub struct Preferences {
     pub focus_outline: bool,
     /// App names under the tiles a size larger.
     pub large_names: bool,
+    /// Rows of apps drawn above the dock, after the dock's own row (0, the default, keeps the
+    /// wallpaper and Top Shelf clear; at most `state::MAX_ROWS_ABOVE`).
+    #[serde(deserialize_with = "lenient")]
+    pub rows_above_dock: usize,
     /// Lounge has asked, once, whether to become the TV's Home (see `Overlay::OfferHome`).
     pub home_offered: bool,
     #[serde(deserialize_with = "lenient_modes")]
@@ -219,6 +223,7 @@ impl Default for Preferences {
             reduced_motion: false,
             focus_outline: false,
             large_names: false,
+            rows_above_dock: 0,
             home_offered: false,
             input_modes: BTreeMap::new(),
             show_weather: true,

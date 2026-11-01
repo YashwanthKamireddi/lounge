@@ -137,11 +137,16 @@ impl State {
                 .collect();
             if let Some(index) = slots.iter().position(|slot| ids[*slot] == id) {
                 let last = slots.len() - 1;
+                let above = self.rows_above(slots.len());
                 let next = match direction {
                     Direction::Left => index.saturating_sub(1),
                     Direction::Right => (index + 1).min(last),
-                    Direction::Up => index.saturating_sub(APPS_COLUMNS),
-                    Direction::Down => (index + APPS_COLUMNS).min(last),
+                    Direction::Up => {
+                        vertical_neighbour(index, slots.len(), above, true).unwrap_or(index)
+                    }
+                    Direction::Down => {
+                        vertical_neighbour(index, slots.len(), above, false).unwrap_or(index)
+                    }
                 };
                 if next != index {
                     let mut visible: Vec<String> =
@@ -390,28 +395,19 @@ impl State {
                     // A preceding row may be above the visible scroll region.
                     // Its grid index still defines the route; reveal_focus then
                     // scrolls it into view, without letting the fixed nav steal Up.
+                    let above = self.rows_above(apps.len());
+                    let up = matches!(direction, Direction::Up);
                     let next = match direction {
                         // Up from the dock: Top Shelf full screen first for an app with art
-                        // (Down returns), then the Inputs button beside the time pill. Only
-                        // apps with Top Shelf art go full screen: a lone wallpaper without
-                        // the dock would only confuse.
+                        // (Down returns). Only apps with Top Shelf art go full screen: a lone
+                        // wallpaper without the dock would only confuse. Rows above the dock
+                        // take Up instead.
                         Direction::Up
-                            if index < APPS_COLUMNS && (self.expanded || !self.has_art(id)) =>
+                            if index < APPS_COLUMNS
+                                && above == 0
+                                && !self.expanded
+                                && self.has_art(id) =>
                         {
-                            // The bar's button above the tile's half of the screen: Search over
-                            // the left, Inputs over the right.
-                            let x = controls
-                                .iter()
-                                .find(|control| control.target == self.focus)
-                                .map_or(0., |control| control.rect.center().0);
-                            self.bar_return = Some(self.focus.clone());
-                            Some(if x >= 960. && !self.input_choices().is_empty() {
-                                Target::InputsButton
-                            } else {
-                                Target::SearchButton
-                            })
-                        }
-                        Direction::Up if index < APPS_COLUMNS => {
                             self.expanded = true;
                             self.shelf_since = None;
                             self.reveal_focus(controls);
@@ -422,15 +418,24 @@ impl State {
                             self.reveal_focus(controls);
                             return vec![];
                         }
-                        Direction::Up => Some(Target::App(apps[index - APPS_COLUMNS].id.clone())),
-                        Direction::Down
-                            if (index / APPS_COLUMNS + 1) * APPS_COLUMNS < apps.len() =>
-                        {
-                            Some(Target::App(
-                                apps[(index + APPS_COLUMNS).min(apps.len() - 1)].id.clone(),
-                            ))
-                        }
-                        _ => None,
+                        _ => match vertical_neighbour(index, apps.len(), above, up) {
+                            Some(next) => Some(Target::App(apps[next].id.clone())),
+                            // Up from the top row: the bar's button above the tile's half of
+                            // the screen, Search over the left, Inputs over the right.
+                            None if up => {
+                                let x = controls
+                                    .iter()
+                                    .find(|control| control.target == self.focus)
+                                    .map_or(0., |control| control.rect.center().0);
+                                self.bar_return = Some(self.focus.clone());
+                                Some(if x >= 960. && !self.input_choices().is_empty() {
+                                    Target::InputsButton
+                                } else {
+                                    Target::SearchButton
+                                })
+                            }
+                            None => None,
+                        },
                     };
                     if let Some(next) = next {
                         self.focus(next, controls);
