@@ -209,7 +209,7 @@ fn restart_updated_home() {
         Ok(()) => {
             use std::os::unix::process::CommandExt;
             platform::status("home: a package update replaced Lounge; starting the new one");
-            let error = std::process::Command::new(platform::LG_HOME_EXE)
+            let error = std::process::Command::new(platform::home_executable())
                 .args(std::env::args_os().skip(1))
                 .env("LOUNGE_HOME_RESTARTED", "1")
                 .exec();
@@ -297,7 +297,10 @@ fn run() -> Result<(), String> {
         // As Home, Home pressed on Lounge comes to Lounge as a key, as it came to LG's Home.
         if platform::is_home() {
             sdl2::hint::set("SDL_WEBOS_ACCESS_POLICY_KEYS_HOME", "true");
-            // Lounge registers with sam itself (`platform::register_home`).
+        }
+        // In LG Home's place Lounge registers with sam itself (`platform::register_home`). The
+        // staged Home keeps SDL's own registration, as upstream Luma's was verified.
+        if matches!(platform::home_role(), Some(platform::HomeRole::InPlace(_))) {
             sdl2::hint::set("SDL_WEBOS_REGISTER_APP", "0");
         }
     }

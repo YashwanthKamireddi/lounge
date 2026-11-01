@@ -13,14 +13,29 @@ mod installation;
 
 pub const APP_ID: &str = "io.github.yashwanthkamireddi.lounge";
 pub const HOME_ID: &str = "com.webos.app.home";
-/// LG's Home executable. With Lounge as the TV's Home, Lounge's executable is mounted over it
-/// (`lounge --home`, see `home_mount`), so webOS starts Lounge with LG Home's manifest, window
-/// type and LS2 role.
-pub const LG_HOME_EXE: &str = "/usr/bin/com.webos.app.home";
+/// LG's full-screen Home: what the Home key opens on some webOS 5 and 6 TVs, where Lounge
+/// stands in for it instead (see `home_mount`).
+pub const FULL_HOME_ID: &str = "com.webos.app.fullhome";
 /// The root-owned copy of `tv/home.sh`, also run by the boot hook.
 const HOME_SCRIPT: &str = "/var/lib/lounge/home.sh";
 /// Written while Lounge is the TV's Home; /var/run is shared with the app's jail.
 const HOME_MARKER: &str = crate::home_mount::MARKER;
+
+/// Either of LG's Home apps, which Lounge never lists or switches to.
+pub fn is_home_id(id: &str) -> bool {
+    id == HOME_ID || id == FULL_HOME_ID
+}
+
+/// How this process is the TV's Home.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HomeRole {
+    /// Mounted in place of LG Home's executable (webOS 5 to 9), as that Home id: LG's
+    /// manifest, window type and LS2 role.
+    InPlace(&'static str),
+    /// Started by sam from the staged Home manifest (webOS 10 and 11), as root under Lounge's
+    /// own LS2 role.
+    Staged,
+}
 
 /// This process's executable path, without the mark the kernel adds once the file was
 /// replaced (a package update under a running Home).
@@ -32,14 +47,57 @@ fn executable() -> Option<PathBuf> {
     ))
 }
 
-/// Whether this process runs as the TV's Home, in place of LG's.
-pub fn is_home() -> bool {
-    static HOME: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *HOME.get_or_init(|| executable().is_some_and(|path| is_home_path(&path)))
+/// Whether, and how, this process runs as the TV's Home, in place of LG's.
+pub fn home_role() -> Option<HomeRole> {
+    static ROLE: std::sync::OnceLock<Option<HomeRole>> = std::sync::OnceLock::new();
+    *ROLE.get_or_init(|| {
+        if let Some(id) = executable().and_then(|path| home_path_id(&path)) {
+            return Some(HomeRole::InPlace(id));
+        }
+        // The staged Home runs Lounge's own executable: sam's launch argument names the id.
+        let launch = std::env::args()
+            .nth(1)
+            .and_then(|argument| serde_json::from_str::<Value>(&argument).ok());
+        let staged = launch.is_some_and(|launch| staged_launch(&launch));
+        (cfg!(feature = "webos") && user_id() == 0 && staged).then_some(HomeRole::Staged)
+    })
 }
 
-pub fn is_home_path(path: &std::path::Path) -> bool {
-    path == std::path::Path::new(LG_HOME_EXE)
+/// sam started the staged Home: its launch argument names com.webos.app.home.
+pub fn staged_launch(launch: &Value) -> bool {
+    ["nid", "appId"]
+        .iter()
+        .any(|key| launch.get(key).and_then(Value::as_str) == Some(HOME_ID))
+}
+
+/// Whether this process runs as the TV's Home, in place of LG's.
+pub fn is_home() -> bool {
+    home_role().is_some()
+}
+
+/// The Home id LG's executable at `path` belongs to. With Lounge as the TV's Home, Lounge's
+/// executable is mounted over LG's (`lounge --home`, see `home_mount`), so webOS starts Lounge
+/// with that Home's manifest, window type and LS2 role.
+pub fn home_path_id(path: &std::path::Path) -> Option<&'static str> {
+    [HOME_ID, FULL_HOME_ID]
+        .into_iter()
+        .find(|id| path == std::path::Path::new("/usr/bin").join(id))
+}
+
+/// The Home id webOS starts this process as (com.webos.app.home outside Home).
+pub fn home_id() -> &'static str {
+    match home_role() {
+        Some(HomeRole::InPlace(id)) => id,
+        _ => HOME_ID,
+    }
+}
+
+/// What sam starts as Home, to start again from it after an update.
+pub fn home_executable() -> PathBuf {
+    match home_role() {
+        Some(HomeRole::Staged) => PathBuf::from(crate::home_mount::STAGE).join("lounge"),
+        _ => PathBuf::from("/usr/bin").join(home_id()),
+    }
 }
 
 /// The user this process runs as (the jailed app's own user, or root as Home).
@@ -53,7 +111,7 @@ pub fn user_id() -> u32 {
 
 /// The app id webOS knows this process by: LG's Home id when Lounge is the Home.
 pub fn own_id() -> &'static str {
-    if is_home() { HOME_ID } else { APP_ID }
+    if is_home() { home_id() } else { APP_ID }
 }
 
 /// The installed package holding assets/, lib/ and the executable: next to the executable,
@@ -103,6 +161,15 @@ pub fn home_mount_stale() -> bool {
     is_home() && installation().is_ok_and(|found| !found.current)
 }
 
+/// The Home a normal launch opens instead: the Home id Lounge stands in for.
+fn marked_home() -> String {
+    std::fs::read_to_string(crate::home_mount::TARGET_MARKER)
+        .ok()
+        .map(|id| id.trim().to_owned())
+        .filter(|id| is_home_id(id))
+        .unwrap_or_else(|| HOME_ID.to_owned())
+}
+
 fn installation() -> Result<installation::Found, String> {
     static FOUND: std::sync::OnceLock<Result<installation::Found, String>> =
         std::sync::OnceLock::new();
@@ -124,7 +191,7 @@ pub fn redirect_to_home() -> bool {
     }
     let launched = call(
         "luna://com.webos.applicationManager/launch",
-        json!({"id": HOME_ID}),
+        json!({"id": marked_home()}),
     );
     status(&match &launched {
         Ok(_) => "Lounge is the TV's Home: opened Home instead".to_owned(),
@@ -142,12 +209,16 @@ pub fn home_in_front() -> bool {
     )
     .ok()
     .and_then(|reply| reply.get("appId")?.as_str().map(str::to_owned))
-    .is_some_and(|front| front.is_empty() || front == HOME_ID)
+    .is_some_and(|front| front.is_empty() || front == home_id())
 }
 
 /// As Home after a package update: mounts the new executable in LG Home's place. The caller
-/// then starts again from it.
+/// then starts again from it. The staged Home links to the package's own paths, which the
+/// update replaced in place: nothing to renew.
 pub fn refresh_home_mount() -> Result<(), String> {
+    if home_role() == Some(HomeRole::Staged) {
+        return Ok(());
+    }
     run_home_script("refresh").map(|_| ())
 }
 
@@ -198,8 +269,13 @@ impl Lifecycle {
 /// bringing the running Lounge back.
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 pub fn register_home(lifecycle: impl Fn(Lifecycle) + Send + 'static) -> Result<(), String> {
+    // Lounge's own role cannot name itself com.webos.app.home: sam starts the staged Home
+    // afresh for each Home press instead.
+    if home_role() == Some(HomeRole::Staged) {
+        return Err("off for the staged Home (sam restarts it at each Home press)".into());
+    }
     crate::luna::subscribe_as(
-        Some(HOME_ID),
+        Some(home_id()),
         "luna://com.webos.applicationManager/registerApp",
         &json!({}),
         move |reply| {
@@ -256,7 +332,7 @@ pub fn watch_opened(front: Wake) -> Result<(), String> {
                     id.clone_into(&mut latest);
                 }
                 note_opened(id);
-                if !id.is_empty() && id != APP_ID && id != HOME_ID {
+                if !id.is_empty() && id != APP_ID && !is_home_id(id) {
                     front();
                 }
             }
@@ -856,7 +932,7 @@ pub fn front_app() -> Option<String> {
 /// Whether `front` hides Home: an app from the grid (`apps`), not one of LG's overlays, which
 /// sit over Home (Settings, Search), nor Home itself.
 pub fn covers_home<'a>(front: &str, mut apps: impl Iterator<Item = &'a str>) -> bool {
-    front != HOME_ID
+    !is_home_id(front)
         && front != APP_ID
         && !OVERLAY_APPS.iter().any(|(app, _)| *app == front)
         && apps.any(|app| app == front)
@@ -1256,7 +1332,7 @@ static OPENED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
 fn note_opened(id: &str) {
-    if id.is_empty() || id == APP_ID || id == HOME_ID || !valid_app_id(id) {
+    if id.is_empty() || id == APP_ID || is_home_id(id) || !valid_app_id(id) {
         return;
     }
     let _list = OPENED_LOCK.lock();
@@ -1579,7 +1655,7 @@ pub fn normalize_apps(raw: &Value) -> Result<Vec<App>, String> {
             || id == "com.luma.native"
             || id == "com.luma.launcher"
             || id == "com.luma.launcher.native"
-            || id == "com.webos.app.home"
+            || is_home_id(id)
             || id.starts_with("com.webos.app.hdmi")
             || id.starts_with("com.webos.app.externalinput.")
             || (!live && (visible == Some(&json!(false)) || visible == Some(&json!("false"))))

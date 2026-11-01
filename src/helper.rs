@@ -16,6 +16,7 @@ pub fn run(args: &[String]) -> Option<i32> {
         flag,
         args.get(1).map(String::as_str),
         args.get(2).map(String::as_str),
+        args.get(3).map(String::as_str),
     );
     // A desktop build never mounts, kills or removes anything.
     #[cfg(not(all(feature = "webos", unix)))]
@@ -28,7 +29,12 @@ pub fn run(args: &[String]) -> Option<i32> {
 }
 
 #[cfg(all(feature = "webos", unix))]
-fn tv(flag: &str, argument: Option<&str>, app_dir: Option<&str>) -> (String, bool) {
+fn tv(
+    flag: &str,
+    argument: Option<&str>,
+    app_dir: Option<&str>,
+    target: Option<&str>,
+) -> (String, bool) {
     let missing = || (crate::home_mount::failure("Missing argument"), false);
     match flag {
         "--home" => {
@@ -40,7 +46,7 @@ fn tv(flag: &str, argument: Option<&str>, app_dir: Option<&str>) -> (String, boo
                 return (crate::home_mount::failure("Run as root"), false);
             }
             let home = crate::home_mount::Home::new(crate::home_mount::Tv);
-            crate::home_mount::command(&home, command, app_dir)
+            crate::home_mount::command(&home, command, app_dir, target)
         }
         "--read-app-icon" => {
             let Some(source) = argument else {

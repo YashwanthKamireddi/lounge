@@ -11,7 +11,7 @@ impl State {
         let known = |id: &String| {
             self.switcher_app(id).is_some()
                 && id != crate::platform::APP_ID
-                && id != crate::platform::HOME_ID
+                && !crate::platform::is_home_id(id)
         };
         let mut apps: Vec<String> = self
             .preferences

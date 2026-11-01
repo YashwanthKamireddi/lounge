@@ -265,6 +265,20 @@ executable and copied to `/var/lib/lounge` when it changes. The script runs the 
 package's own executable for the work (`lounge --home enable|disable|status|apply|boot`,
 `src/home-mount.rs`), found through the saved `appDir` or the install directories, never beside
 `$0` (the boot hook is a symlink). No command starts the TV's Node.js.
+`enable` picks the way from what the TV has (`/etc/starfish-release`, LG Home's manifest),
+never from a model list; `home.json` keeps the `method` and, where it is not
+`com.webos.app.home`, the `homeId`:
+
+| webOS                      | LG's Home                                                                                                                                                            | Method                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5, 6                       | native lifecycle-v2 `com.webos.app.home`, or `com.webos.app.fullhome` where `general.defaultApps.home` names it (or `home.sh enable APP_DIR com.webos.app.fullhome`) | `executable` over that Home's `/usr/bin/<id>`; `/var/run/lounge-home-target` names a full-screen Home for the normal tile's redirect                                                                                                                                                                                                                                                                                                                                               |
+| 7 to 9, or no release file | native lifecycle-v2 `com.webos.app.home`                                                                                                                             | `executable` (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 10, 11                     | role bound to the app id, not the path                                                                                                                               | `manifest`: `/var/lib/lounge/app` (Lounge's manifest as `com.webos.app.home`, hidden, no lifecycle version, links to the package) bind-mounted over `/usr/palm/applications/com.webos.app.home`; sam rereads it through `blockSystemApp` (with `forceBlockSystemApp: false` where the schema has it) and `releaseBlockSystemApp`, and Lounge runs as root under its own role, unregistered (sam restarts it per Home key, as upstream Luma before its `luna-send -a` registration) |
+
+Anything else (webOS 4 or 12+, a Home that is not a native lifecycle-v2 program on 5 to 9, the
+full-screen Home outside 5 and 6) is refused before anything changes ("…not supported" / "…stand
+in for"). `disable` undoes whichever way the settings, or the mounts alone, say. The rest of this
+section describes the `executable` method on webOS 7.6.
 `enable` bind-mounts the installed `lounge` over LG's `/usr/bin/com.webos.app.home`, removes
 LG's CRIU image of its Home (`/tmp/checkpoint` and the copy in `/mnt/lg/cmn_data/checkpoint` sam
 restores from), writes the
@@ -299,7 +313,17 @@ Give Home back to LG by hand: `sh /var/lib/lounge/home.sh disable`. That never d
 Lounge's executable: when it is missing, crashes, hangs past 60 s or answers anything but
 success, the script itself disables the settings, removes the marker and Lounge's hook,
 unmounts Lounge's mount (detaching a busy one), stops what runs as LG Home's executable and
-reopens Home where Home was in front. It never touches a foreign mount.
+reopens Home where Home was in front. It never touches a foreign mount. It knows every way:
+the full-screen Home's executable, and the staged Home (unmounted, sam made to read LG's manifest
+again, `/var/lib/lounge/app` removed without following its links).
+
+At a cold boot the hook mounts first, before waiting for sam (`mount_early`): sam then starts
+Lounge as Home from its first start, and LG's Home never runs. Only where no CRIU image of LG's
+Home is left for sam to restore (CRIU refuses it with the mount; see above); otherwise, and for
+the staged Home, the mount waits for sam's boot copy as before. `/tmp/lounge-home-boot.log` says
+which: "mounted before LG's Home started", "mounted; LG's Home was already running (N)" (the hook
+came after sam's start, and the boot apply replaces that Home), or "an image of LG's Home is left".
+Whether the hook runs before sam starts Home is the TV's boot order: not verified on a TV yet.
 
 ## Switcher, quitting, uninstalling and the clock
 

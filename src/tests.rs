@@ -1485,15 +1485,25 @@ fn focus_goes_to_the_tile_that_takes_a_vanished_tiles_place() {
 
 #[test]
 fn only_lg_home_executable_path_makes_lounge_the_home() {
-    use crate::platform::{LG_HOME_EXE, is_home_path};
-    assert!(is_home_path(std::path::Path::new(LG_HOME_EXE)));
+    use crate::platform::{FULL_HOME_ID, HOME_ID, home_path_id};
+    let id = |path: &str| home_path_id(std::path::Path::new(path));
+    assert_eq!(id("/usr/bin/com.webos.app.home"), Some(HOME_ID));
+    assert_eq!(id("/usr/bin/com.webos.app.fullhome"), Some(FULL_HOME_ID));
     for path in [
         "/media/developer/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge/lounge",
         "/usr/bin/com.webos.app.home.real",
+        "/usr/bin/com.webos.app.livetv",
         "/usr/bin/lounge",
     ] {
-        assert!(!is_home_path(std::path::Path::new(path)));
+        assert_eq!(id(path), None);
     }
+    // A staged Home is named by sam's launch argument.
+    assert!(crate::platform::staged_launch(
+        &serde_json::json!({"nid": HOME_ID})
+    ));
+    assert!(!crate::platform::staged_launch(
+        &serde_json::json!({"nid": crate::platform::APP_ID})
+    ));
     // A test run is never the TV's Home.
     assert_eq!(crate::platform::own_id(), crate::platform::APP_ID);
 }

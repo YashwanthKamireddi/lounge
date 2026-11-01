@@ -3,16 +3,17 @@
 //! location, never by title: a renamed app must not slip past them.
 use crate::{
     model::valid_app_id,
-    platform::{APP_ID, HOME_ID},
+    platform::{APP_ID, FULL_HOME_ID, HOME_ID},
 };
 use serde_json::Value;
 
 /// Apps never removed from Lounge, whatever webOS says about them: Lounge
 /// itself (and the launchers it replaced), LG's Home, and Homebrew Channel
 /// (removing it would take Lounge's elevated access with it).
-const PROTECTED: [&str; 7] = [
+const PROTECTED: [&str; 8] = [
     APP_ID,
     HOME_ID,
+    FULL_HOME_ID,
     "com.ecklf.luma",
     "com.luma.native",
     "com.luma.launcher",
