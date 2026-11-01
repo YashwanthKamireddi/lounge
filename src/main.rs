@@ -534,8 +534,7 @@ fn run() -> Result<(), String> {
     }
     // Developer flag: log every input event (stderr goes to /dev/null otherwise).
     let log_events = webos && std::path::Path::new("/tmp/lounge-events").exists();
-    let frame_log =
-        diagnostics::FrameLog::new(webos && std::path::Path::new("/tmp/lounge-debug").exists());
+    let frame_log = diagnostics::FrameLog::new(webos && debug::enabled());
     let partial = damage::Partial::new();
     // Back from an app: queue what the trim freed, after the first frame.
     let rewarm = false;

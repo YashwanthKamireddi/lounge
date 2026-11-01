@@ -238,21 +238,23 @@ pub fn watch_opened(front: Wake) -> Result<(), String> {
                 if let Ok(mut latest) = FRONT.lock()
                     && *latest != id
                 {
-                    let line = if id.is_empty() {
-                        "front: nothing".to_owned()
-                    } else {
-                        format!("front {id}")
-                    };
-                    // With which app had a video loaded at that moment: a screen saver or a
-                    // memory close landing on a video shows as such. Off this stream's thread.
-                    thread::spawn(move || {
-                        let video = video_apps();
-                        crate::history::note(&if video.is_empty() {
-                            line
+                    if crate::debug::enabled() {
+                        let line = if id.is_empty() {
+                            "front: nothing".to_owned()
                         } else {
-                            format!("{line} (video loaded: {})", video.join(", "))
+                            format!("front {id}")
+                        };
+                        // With which app had a video loaded at that moment: a screen saver or a
+                        // memory close landing on a video shows as such. Off this stream's thread.
+                        thread::spawn(move || {
+                            let video = video_apps();
+                            crate::history::note(&if video.is_empty() {
+                                line
+                            } else {
+                                format!("{line} (video loaded: {})", video.join(", "))
+                            });
                         });
-                    });
+                    }
                     id.clone_into(&mut latest);
                 }
                 note_opened(id);
@@ -944,6 +946,9 @@ const STATUS: &str = "/tmp/lounge-status";
 /// cycle), bounded so the file in /tmp (memory) never grows.
 pub fn status_reset() {
     const KEEP: usize = 150;
+    if !crate::debug::enabled() {
+        return;
+    }
     let previous = std::fs::read_to_string(STATUS).unwrap_or_default();
     let lines: Vec<&str> = previous.lines().collect();
     let kept = lines[lines.len().saturating_sub(KEEP)..].join("\n");
@@ -971,8 +976,8 @@ static APPENDED: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
 /// Records `line` (also on stderr).
 pub fn status(line: &str) {
     eprintln!("Lounge {line}");
-    // Tests leave the TV's log file alone.
-    if cfg!(test) {
+    // Tests leave the TV's log file alone; and without diagnostics asked for, no file at all.
+    if cfg!(test) || !crate::debug::enabled() {
         return;
     }
     use std::io::Write;

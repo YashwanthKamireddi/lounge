@@ -4,8 +4,8 @@
 //! took its place, and whether the app ended by itself, was closed for memory, or was closed
 //! by Lounge.
 //!
-//! On the TV only, and only as Home (root): the status log in /tmp is gone after every
-//! power-off, this file is not. Events are rare (a few per app opened), so the flash sees a
+//! On the TV only, only as Home (root), and only with diagnostics on (`debug::enabled`): the
+//! status log in /tmp is gone after every power-off, this file is not. Events are rare (a few per app opened), so the flash sees a
 //! line now and then, and the file is cut back to its newest lines once it grows.
 
 #[cfg(feature = "webos")]
@@ -37,7 +37,7 @@ static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[cfg(feature = "webos")]
 pub fn note(line: &str) {
     use std::io::Write;
-    if !crate::platform::is_home() {
+    if !crate::platform::is_home() || !crate::debug::enabled() {
         return;
     }
     let _guard = WRITE

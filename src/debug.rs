@@ -1,8 +1,22 @@
-/// webOS sends a launched app's stderr to /dev/null. When `/tmp/lounge-debug`
-/// exists (developer use only), send it to `/tmp/lounge.log` instead.
+/// Whether this TV asked for Lounge's diagnostics: the status log, the app history and the
+/// frame logs. Off on every TV unless `/var/lib/lounge/debug` (kept across power-offs) or
+/// `/tmp/lounge-debug` (until the next one) exists, so by default Lounge writes no log files at
+/// all. Read once, at start.
+pub(crate) fn enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        cfg!(feature = "webos")
+            && ["/var/lib/lounge/debug", "/tmp/lounge-debug"]
+                .iter()
+                .any(|flag| std::path::Path::new(flag).exists())
+    })
+}
+
+/// webOS sends a launched app's stderr to /dev/null. With diagnostics on, send it to
+/// `/tmp/lounge.log` instead.
 pub(crate) fn debug_log() {
     #[cfg(feature = "webos")]
-    if std::path::Path::new("/tmp/lounge-debug").exists()
+    if enabled()
         && let Ok(file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
