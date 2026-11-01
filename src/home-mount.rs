@@ -53,7 +53,7 @@ const BOOT_COPY: &str = "/tmp/finish_criu_boottime_copy";
 // pointed at a launcher. With Lounge as com.webos.app.home they are all stock again.
 const FILTER: &str = "/var/lib/lounge/home-key-filter.js";
 const CHAIN: &str = "com.webos.surfacemanager.keyFilters";
-const OLD_LAUNCHERS: [&str; 2] = [APP, "com.ecklf.luma"];
+const OLD_LAUNCHERS: [&str; 1] = [APP];
 
 fn exe_of(id: &str) -> String {
     format!("/usr/bin/{id}")

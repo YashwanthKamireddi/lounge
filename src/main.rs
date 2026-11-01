@@ -305,7 +305,8 @@ fn run() -> Result<(), String> {
             sdl2::hint::set("SDL_WEBOS_ACCESS_POLICY_KEYS_HOME", "true");
         }
         // In LG Home's place Lounge registers with sam itself (`platform::register_home`). The
-        // staged Home keeps SDL's own registration, as upstream Luma's was verified.
+        // staged Home keeps SDL's own registration as well as its root helper's
+        // (`platform::register_staged_home`).
         if matches!(platform::home_role(), Some(platform::HomeRole::InPlace(_))) {
             sdl2::hint::set("SDL_WEBOS_REGISTER_APP", "0");
         }

@@ -186,7 +186,6 @@ fn inventory_filters_system_apps_duplicates_and_unsafe_identifiers() {
         {"id":"netflix","title":" Netflix\n"}, {"id":"netflix","title":"Duplicate"},
         {"id":"bad;command","title":"Bad"}, {"id":"com.webos.app.hidden","title":"Internal"},
         {"id":"com.webos.app.livetv","visible":false,"title":"Live TV"},
-        {"id":"com.luma.launcher.native","visible":true},
         {"id":"com.webos.app.hdmi1","visible":true},
         {"id":"hidden","visible":"false"}
     ]))
@@ -228,26 +227,6 @@ fn an_input_is_in_use_by_whichever_report_means_something_on_this_firmware() {
     .unwrap();
     let connected: Vec<_> = everywhere.iter().map(|input| input.connected).collect();
     assert_eq!(connected, [Some(true), Some(false)]);
-}
-
-#[test]
-fn luma_preferences_keep_settings_and_search_in_place() {
-    let mut preferences: Preferences = serde_json::from_value(json!({
-        "favorites": ["netflix", "luma.settings", "luma.search", "youtube.leanback.v4"],
-        "hidden": ["luma.search"],
-    }))
-    .unwrap();
-    preferences.sanitize();
-    assert_eq!(
-        preferences.favorites.unwrap(),
-        [
-            "netflix",
-            "lounge.settings",
-            "lounge.search",
-            "youtube.leanback.v4"
-        ]
-    );
-    assert_eq!(preferences.hidden, ["lounge.search"]);
 }
 
 #[test]
@@ -1687,7 +1666,6 @@ fn only_apps_the_owner_installed_can_be_uninstalled() {
     for id in [
         crate::platform::APP_ID,
         crate::platform::HOME_ID,
-        "com.ecklf.luma",
         "org.webosbrew.hbchannel",
         "org.webosbrew.hbchannel.service",
         "com.webos.app.browser",

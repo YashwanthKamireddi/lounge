@@ -8,18 +8,9 @@ use crate::{
 use serde_json::Value;
 
 /// Apps never removed from Lounge, whatever webOS says about them: Lounge
-/// itself (and the launchers it replaced), LG's Home, and Homebrew Channel
-/// (removing it would take Lounge's elevated access with it).
-const PROTECTED: [&str; 8] = [
-    APP_ID,
-    HOME_ID,
-    FULL_HOME_ID,
-    "com.ecklf.luma",
-    "com.luma.native",
-    "com.luma.launcher",
-    "com.luma.launcher.native",
-    "org.webosbrew.hbchannel",
-];
+/// itself, LG's Home, and Homebrew Channel (removing it would take Lounge's
+/// elevated access with it).
+const PROTECTED: [&str; 4] = [APP_ID, HOME_ID, FULL_HOME_ID, "org.webosbrew.hbchannel"];
 
 /// Whether Lounge would ever remove `id`: not protected, not LG's (every
 /// `com.webos.`, `com.palm.` and `com.lge.` app, removable or not, as LG's

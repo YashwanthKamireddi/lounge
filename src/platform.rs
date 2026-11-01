@@ -1767,13 +1767,7 @@ pub fn normalize_apps(raw: &Value) -> Result<Vec<App>, String> {
         };
         let live = id == "com.webos.app.livetv";
         let visible = entry.get("visible");
-        // Earlier launchers this one replaces (Luma and its prototypes) are
-        // never listed as apps.
         if id == APP_ID
-            || id == "com.ecklf.luma"
-            || id == "com.luma.native"
-            || id == "com.luma.launcher"
-            || id == "com.luma.launcher.native"
             || is_home_id(id)
             || id.starts_with("com.webos.app.hdmi")
             || id.starts_with("com.webos.app.externalinput.")

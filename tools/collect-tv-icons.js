@@ -55,14 +55,7 @@ function shouldCollect(id, visibility) {
   if (!validAppId(id)) return false;
   var live = id === 'com.webos.app.livetv';
   return !(
-    [
-      'io.github.yashwanthkamireddi.lounge',
-      'com.ecklf.luma',
-      'com.luma.native',
-      'com.luma.launcher',
-      'com.luma.launcher.native',
-      'com.webos.app.home',
-    ].indexOf(id) >= 0 ||
+    ['io.github.yashwanthkamireddi.lounge', 'com.webos.app.home'].indexOf(id) >= 0 ||
     id.indexOf('com.webos.app.hdmi') === 0 ||
     id.indexOf('com.webos.app.externalinput.') === 0 ||
     (!live && (visibility === false || visibility === 'false')) ||

@@ -8,7 +8,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/YashwanthKamireddi/lounge/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/YashwanthKamireddi/lounge/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/YashwanthKamireddi/lounge?label=release&color=3b4590)](https://github.com/YashwanthKamireddi/lounge/releases/latest)
-[![webOS 5 to 11](https://img.shields.io/badge/LG%20webOS-5%20to%2011-a50034?logo=lg&logoColor=white)](#compatibility)
+[![LG webOS 5, 6, 22 to 26](https://img.shields.io/badge/LG%20webOS-5%20%C2%B7%206%20%C2%B7%2022%E2%80%9326-a50034?logo=lg&logoColor=white)](#compatibility)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3b4590)](license)
 
 [![Rust](https://img.shields.io/badge/Rust-native-000000?logo=rust&logoColor=white)](development.md)
@@ -81,9 +81,10 @@ ever fails to start three times in a minute, it hands Home back to LG by itself.
 
 ## Compatibility
 
-Lounge runs on webOS 5 and newer (LG's 2020 models onward) and picks the right way to become Home
-for each version by itself. It is verified on webOS 7.6; the other versions are covered by tests
-and are waiting for reports. If a TV can't have Lounge as its Home, Settings says why: the
+Lounge runs on every LG TV from 2020 on: webOS 5 and 6, then webOS 22 to 26 (LG names these by
+year; internally they are versions 7 to 11). It picks the right way to become Home
+for each by itself. It is verified on webOS 22 (version 7.6); the others are covered by tests and
+are waiting for reports. If a TV can't have Lounge as its Home, Settings says why: the
 Homebrew Channel needs root, another launcher is already Home, or the webOS version isn't
 supported yet. Lounge then still opens as an app.
 

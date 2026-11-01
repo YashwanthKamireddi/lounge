@@ -472,7 +472,7 @@ fn tv(options: Options) -> Home<Fake> {
         } else {
             json!([glasshouse(), stock_filter()])
         },
-        idle_app: json!({"appId": if old { "com.ecklf.luma" } else { HOME }}),
+        idle_app: json!({"appId": if old { APP } else { HOME }}),
         default_apps: if old {
             json!({"home": APP})
         } else {
@@ -546,7 +546,7 @@ fn enable_puts_lounge_in_home_place_removes_the_old_home_button_and_opens_home()
         assert!(!state.files.contains_key(FILTER));
         assert!(!state.files.contains_key("/var/lib/lounge/home-button.js"));
         let backup: Value = serde_json::from_str(&state.files[BACKUP]).unwrap();
-        assert_eq!(backup["idleApp"]["appId"], "com.ecklf.luma");
+        assert_eq!(backup["idleApp"]["appId"], APP);
         assert_eq!(backup["defaultApps"]["home"], APP);
         // No image of LG's Home is left for sam to restore over Lounge, in RAM or persistent.
         assert!(
