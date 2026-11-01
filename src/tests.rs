@@ -2271,3 +2271,33 @@ fn pacing_summary_counts_frames_by_refreshes() {
     assert!(line.contains("on time 90%"), "{line}");
     assert!(line.contains("2 refreshes 1, 3+ refreshes 1"), "{line}");
 }
+
+#[test]
+fn a_failed_home_change_names_its_cause() {
+    use crate::state::home_block;
+    assert_eq!(
+        home_block("Homebrew Channel needs root access"),
+        "tvHomeNeedsRoot"
+    );
+    assert_eq!(home_block("Run as root"), "tvHomeNeedsRoot");
+    assert_eq!(
+        home_block("Another integration is mounted over LG Home"),
+        "tvHomeOther"
+    );
+    assert_eq!(
+        home_block("This TV's Home is not a native lifecycle-v2 program Lounge can stand in for"),
+        "tvHomeUnsupported"
+    );
+    assert_eq!(home_block("timed out"), "tvHomeError");
+}
+
+#[test]
+fn a_missing_service_is_not_retried_for_ever() {
+    assert!(crate::platform::permanent(
+        "Unknown method \"getAllInputStatus\" for category \"/\""
+    ));
+    assert!(crate::platform::permanent(
+        "Service does not exist: com.webos.service.eim."
+    ));
+    assert!(!crate::platform::permanent("Timed out"));
+}

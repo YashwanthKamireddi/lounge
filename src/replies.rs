@@ -46,11 +46,16 @@ impl Replies {
                 self.prefetched = false;
                 scroll_preview::append(&mut inventory, test_extra_apps);
                 state.set_inventory(inventory, warning);
-                if self.initial_focus
-                    && state.focus == Target::Nav(0)
-                    && state.page == state::Page::Apps
-                {
-                    state.focus = state.first_content();
+                if self.initial_focus && state.page == state::Page::Apps {
+                    let first = state.first_content();
+                    if state.focus == Target::Nav(0) {
+                        state.focus = first;
+                    } else if let Some(state::Overlay::OfferHome { restore }) = &mut state.overlay
+                        && *restore == Target::Nav(0)
+                    {
+                        // The Make Home question came first: closing it lands on the first app.
+                        *restore = first;
+                    }
                 }
                 self.initial_focus = false;
             }
@@ -92,11 +97,31 @@ impl Replies {
                             state.notify(i18n::t(if on { "tvHomeLounge" } else { "tvHomeLg" }));
                         }
                         state.tv_home = Some(on);
+                        state.tv_home_blocked = None;
+                        // A TV that can have Lounge as its Home, and does not yet: asked once,
+                        // the first time nothing else is open.
+                        if !asked
+                            && !on
+                            && !state.preferences.home_offered
+                            && state.overlay.is_none()
+                        {
+                            state.preferences.home_offered = true;
+                            state.overlay = Some(state::Overlay::OfferHome {
+                                restore: state.focus.clone(),
+                            });
+                            state.focus = Target::Alert(0);
+                            state.panel_started =
+                                (!state.preferences.reduced_motion).then(crate::clock::now);
+                            state.queued.push(state::Effect::Save);
+                        }
                     }
                     Err(error) => {
                         eprintln!("Lounge as Home: {error}");
+                        let block = state::home_block(&error);
                         if asked {
-                            state.notify(i18n::t("tvHomeError"));
+                            state.notify(i18n::t(block));
+                        } else if state.tv_home.is_none() {
+                            state.tv_home_blocked = Some(block);
                         }
                     }
                 }
