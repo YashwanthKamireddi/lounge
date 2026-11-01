@@ -376,7 +376,10 @@ impl System for Fake {
     }
 
     fn log(&self, line: &str) {
-        self.0.borrow_mut().logs.push(line.to_owned());
+        // The start marker only times the boot (with diagnostics on); the tests check decisions.
+        if line != "boot: started" && !line.starts_with("boot: image files:") {
+            self.0.borrow_mut().logs.push(line.to_owned());
+        }
     }
 }
 

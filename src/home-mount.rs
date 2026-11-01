@@ -1095,6 +1095,7 @@ impl<S: System> Home<S> {
     /// At boot: the mount first, where it can go before sam starts Home, then the full apply
     /// once sam is up and its own CRIU boot work is done (bounded waits).
     fn boot(&self) -> Result<(), String> {
+        self.system.log("boot: started");
         let Some(settings) = self.config()?.filter(|settings| settings.enabled) else {
             return Ok(());
         };
@@ -1104,9 +1105,9 @@ impl<S: System> Home<S> {
             return Ok(());
         }
         let (method, id) = settings.way()?;
-        if method == Method::Executable {
-            self.mount_early(app_dir, id);
-        }
+        // Mounted already, nothing of LG's Home is left for sam's boot copy to check: Lounge
+        // takes over as soon as sam answers, not after the copy.
+        let early = method == Method::Executable && self.mount_early(app_dir, id);
         for i in 0..30 {
             match self.foreground() {
                 Ok(_) => break,
@@ -1120,7 +1121,7 @@ impl<S: System> Home<S> {
             }
         }
         for _ in 0..30 {
-            if !self.system.exists("/tmp/criu_enable") || self.system.exists(BOOT_COPY) {
+            if early || !self.system.exists("/tmp/criu_enable") || self.system.exists(BOOT_COPY) {
                 break;
             }
             self.system.pause(2);
@@ -1135,18 +1136,50 @@ impl<S: System> Home<S> {
     /// LG's Home is left for sam to restore (CRIU refuses it with Lounge mounted, see
     /// `checkpoint_of`); `apply` then mounts after sam's boot copy, as before. Whatever happens
     /// here, the boot apply that follows checks and finishes it.
-    fn mount_early(&self, app_dir: &str, id: &str) {
-        let [checkpoint, persistent, _] = checkpoint_of(id);
-        if self.system.exists(&checkpoint)
-            || (self.system.exists(&persistent)
-                && self
-                    .system
-                    .list(&persistent)
-                    .map_or(true, |names| !names.is_empty()))
-        {
+    /// Removes LG Home's used RAM image (its files, then the folder) and its hash note. False,
+    /// leaving the rest as it was, if any part could not be removed.
+    fn discard_image(&self, checkpoint: &str, hash_check: &str) -> bool {
+        let Ok(names) = self.system.list(checkpoint) else {
+            return false;
+        };
+        for name in names {
+            if self.system.unlink(&format!("{checkpoint}/{name}")).is_err() {
+                return false;
+            }
+        }
+        let _ = self.system.unlink(hash_check);
+        self.system.remove_dir(checkpoint).is_ok()
+    }
+
+    /// True when Lounge is mounted at the end.
+    fn mount_early(&self, app_dir: &str, id: &str) -> bool {
+        let [checkpoint, persistent, hash_check] = checkpoint_of(id);
+        let saved_on_flash = self.system.exists(&persistent)
+            && self
+                .system
+                .list(&persistent)
+                .map_or(true, |names| !names.is_empty());
+        if self.system.exists(&checkpoint) && !saved_on_flash {
+            // sam restored LG's Home from its RAM image before this hook ran (a Quick Start boot),
+            // and would next verify that image against LG Home's executable and save it to flash
+            // for the next boot: with Lounge mounted that check fails. With Lounge as Home the
+            // image can only ever bring LG's Home back, so once it has been used it is dropped
+            // (only Home's; every other app's image stays), and Lounge goes in at once.
+            let restored = self
+                .home_processes(None, id)
+                .is_ok_and(|pids| !pids.is_empty());
+            if restored && self.discard_image(&checkpoint, &hash_check) {
+                self.system
+                    .log("boot: LG's Home came back from its image; image dropped, mounting now");
+            } else {
+                self.system
+                    .log("boot: an image of LG's Home is left; mounting after sam's boot copy");
+                return false;
+            }
+        } else if saved_on_flash || self.system.exists(&checkpoint) {
             self.system
                 .log("boot: an image of LG's Home is left; mounting after sam's boot copy");
-            return;
+            return false;
         }
         let running = self
             .home_processes(Some(app_dir), id)
@@ -1160,11 +1193,12 @@ impl<S: System> Home<S> {
             }
             Ok::<(), String>(())
         })();
-        self.system.log(&match mounted {
+        self.system.log(&match &mounted {
             Ok(()) if running == 0 => "boot: mounted before LG's Home started".to_owned(),
             Ok(()) => format!("boot: mounted; LG's Home was already running ({running})"),
             Err(error) => format!("boot: early mount failed: {error}"),
         });
+        mounted.is_ok()
     }
 
     /// A cold boot shows Home. LG's boot manager opens the last input (or Live TV) and, unlike
@@ -1419,7 +1453,13 @@ impl System for Tv {
     }
 
     fn log(&self, line: &str) {
-        eprintln!("Lounge Home: {line}");
+        // Seconds since boot: the boot step's lines (kept only with diagnostics on) then say
+        // when, on the same clock as everything else the TV reports.
+        let up = std::fs::read_to_string("/proc/uptime")
+            .ok()
+            .and_then(|text| text.split_whitespace().next().map(str::to_owned))
+            .unwrap_or_default();
+        eprintln!("Lounge Home ({up} s): {line}");
     }
 }
 
