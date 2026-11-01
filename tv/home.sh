@@ -20,7 +20,9 @@ SCHEMA=/etc/palm/schemas/sam/applicationManager.blockSystemApp.schema
 MOUNTS=/proc/self/mountinfo
 PROC=/proc
 LOCK=/tmp/lounge-home.lock
-BOOT_LOG=/tmp/lounge-home-boot.log
+# The boot step's own lines, kept only with diagnostics switched on (as Lounge's other logs).
+BOOT_LOG=/dev/null
+[ -e /var/lib/lounge/debug ] || [ -e /tmp/lounge-debug ] && BOOT_LOG=/tmp/lounge-home-boot.log
 LUNA=/usr/bin/luna-send
 # Where the TV installs Lounge (tv/install-directories.txt).
 DIRS='/media/developer/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge /media/cryptofs/apps/usr/palm/applications/io.github.yashwanthkamireddi.lounge'
