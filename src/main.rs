@@ -736,7 +736,19 @@ impl Shell {
     /// quits; then everything is saved and a scripted run's report written.
     fn run(mut self) -> Result<(), String> {
         self.stage("event loop");
+        // The panel's refresh, for the animation clock's frame grid (`clock::begin_frame`); a
+        // display that reports none (0 Hz) is taken as 60 Hz, as every webOS panel's UI plane is.
+        let hertz = self
+            .window
+            .display_index()
+            .ok()
+            .and_then(|index| self.video.current_display_mode(index).ok())
+            .map(|mode| mode.refresh_rate)
+            .filter(|hertz| *hertz > 0)
+            .unwrap_or(60);
+        let frame_period = Duration::from_secs_f64(1. / f64::from(hertz));
         while self.running {
+            clock::begin_frame(frame_period);
             let now = self.tick();
             self.input(now);
             self.follow_up()?;
