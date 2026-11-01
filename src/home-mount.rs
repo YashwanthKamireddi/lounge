@@ -1,14 +1,24 @@
 //! Lounge as the TV's Home, run as root by `tv/home.sh` (`lounge --home COMMAND`).
 //!
-//! LG's Home is a native lifecycle-v2 program whose LS2 role is bound to its executable path.
-//! Mounting Lounge's executable over that path leaves LG's manifest, window type and role in
-//! place, so webOS itself starts Lounge as com.webos.app.home on every path to Home. The mount
-//! lives in RAM: removing the boot hook and restarting always gives back LG's Home.
+//! Which way depends on the TV, read from what it has, never from a model list:
+//!
+//! - `executable` (webOS 5 to 9): LG's Home is a native lifecycle-v2 program whose LS2 role is
+//!   bound to its executable path. Mounting Lounge's executable over that path leaves LG's
+//!   manifest, window type and role in place, so webOS itself starts Lounge as LG's Home on
+//!   every path to Home. On webOS 5 and 6 that Home is com.webos.app.fullhome where the Home
+//!   key opens it (`general.defaultApps.home`), else com.webos.app.home.
+//! - `manifest` (webOS 10 and 11): LG Home's role is bound to its app id instead, so a mounted
+//!   executable would run without it. A Home app staged in /var/lib/lounge/app (LG Home's id,
+//!   links to the installed package) is mounted over LG Home's app folder, and sam is made to
+//!   read that one manifest again (`blockSystemApp`, then `releaseBlockSystemApp`).
+//!
+//! Anything else is refused before anything changes. Every mount lives in RAM: removing the
+//! boot hook and restarting always gives back LG's Home.
 //!
 //! This used to be `tv/home.cjs` on the TV's Node.js, which costs 4-5 s of CPU to start. Every
 //! file, mount, process and Luna call goes through `System`, so the tests run it against a model
 //! TV; nothing touches the machine they run on.
-use crate::platform::{APP_ID as APP, HOME_ID as HOME, LG_HOME_EXE as EXE};
+use crate::platform::{APP_ID as APP, FULL_HOME_ID as FULL_HOME, HOME_ID as HOME};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io;
@@ -19,24 +29,59 @@ const BACKUP: &str = "/var/lib/lounge/home-backup.json";
 const HOOK: &str = "/var/lib/webosbrew/init.d/10-lounge-home";
 /// What the boot hook links to: the root-owned copy of `tv/home.sh`.
 const HOOK_TARGET: &str = "/var/lib/lounge/home.sh";
+/// The Home app the `manifest` method mounts over LG Home's app folder.
+pub const STAGE: &str = "/var/lib/lounge/app";
 /// A normal tile launch of Lounge opens the Home instance instead. The app's jail shares
 /// /var/run but not this mount; /var/run is RAM, like the mount.
 pub const MARKER: &str = "/var/run/lounge-home";
+/// The Home id that launch opens, where it is not com.webos.app.home.
+pub const TARGET_MARKER: &str = "/var/run/lounge-home-target";
+/// "Rockhopper release 10.3.1-3006": the webOS version decides the method.
+const RELEASE: &str = "/etc/starfish-release";
+/// webOS 11's sam requires `forceBlockSystemApp` with the block; webOS 10's has no such field.
+const BLOCK_SCHEMA: &str = "/etc/palm/schemas/sam/applicationManager.blockSystemApp.schema";
+const TARGETS: [&str; 2] = [HOME, FULL_HOME];
 // LG snapshots its Home with CRIU: LG's Home dumps itself (Lounge never does), sam keeps the
 // image in /tmp and a copy in /mnt/lg/cmn_data, and restores Home from it. With Lounge mounted
 // CRIU rejects that image ("bad size"), but the failed restore leaves the next process ids low:
 // Lounge then takes ids LG's input apps' images need, and their restores fail. So no image of
 // LG's Home is left for sam while Lounge is Home. sam deletes both copies itself after such a
 // failure; LG's Home writes them again the next time it runs (after disable, or a cold boot).
-const CHECKPOINT: &str = "/tmp/checkpoint/com.webos.app.home";
-const PERSISTENT_CHECKPOINT: &str = "/mnt/lg/cmn_data/checkpoint/com.webos.app.home";
-const HASH_CHECK: &str = "/tmp/checkpoint/hash_check_com.webos.app.home";
+// See `checkpoint_of`.
 const BOOT_COPY: &str = "/tmp/finish_criu_boottime_copy";
 // What the earlier Home Button left behind: its compositor key filter and the Home settings
 // pointed at a launcher. With Lounge as com.webos.app.home they are all stock again.
 const FILTER: &str = "/var/lib/lounge/home-key-filter.js";
 const CHAIN: &str = "com.webos.surfacemanager.keyFilters";
 const OLD_LAUNCHERS: [&str; 2] = [APP, "com.ecklf.luma"];
+
+fn exe_of(id: &str) -> String {
+    format!("/usr/bin/{id}")
+}
+
+/// LG's image of the Home `id`: in RAM, persistent, and sam's hash of it.
+fn checkpoint_of(id: &str) -> [String; 3] {
+    [
+        format!("/tmp/checkpoint/{id}"),
+        format!("/mnt/lg/cmn_data/checkpoint/{id}"),
+        format!("/tmp/checkpoint/hash_check_{id}"),
+    ]
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Method {
+    Executable,
+    Manifest,
+}
+
+impl Method {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Executable => "executable",
+            Self::Manifest => "manifest",
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Signal {
@@ -56,6 +101,8 @@ pub trait System {
     /// Removes a file or symlink (never followed); one already gone is fine.
     fn unlink(&self, file: &str) -> Result<(), String>;
     fn list(&self, directory: &str) -> Result<Vec<String>, String>;
+    /// Creates a directory, mode 755; one already there is fine.
+    fn make_dir(&self, directory: &str) -> Result<(), String>;
     fn remove_dir(&self, directory: &str) -> Result<(), String>;
     fn symlink(&self, target: &str, link: &str) -> Result<(), String>;
     /// A symlink's target; None when `link` is missing or not a symlink.
@@ -80,6 +127,27 @@ struct Settings {
     method: String,
     #[serde(rename = "appDir", default, skip_serializing_if = "Option::is_none")]
     app_dir: Option<String>,
+    /// Only where it is not com.webos.app.home.
+    #[serde(rename = "homeId", default, skip_serializing_if = "Option::is_none")]
+    home_id: Option<String>,
+}
+
+impl Settings {
+    /// The method and Home id these settings name; anything else was not written by Lounge.
+    fn way(&self) -> Result<(Method, &'static str), String> {
+        let id = match self.home_id.as_deref() {
+            None => HOME,
+            Some(id) => TARGETS
+                .into_iter()
+                .find(|target| *target == id)
+                .ok_or_else(|| format!("{CONFIG}: unknown Home {id}"))?,
+        };
+        match self.method.as_str() {
+            "" | "executable" => Ok((Method::Executable, id)),
+            "manifest" if id == HOME => Ok((Method::Manifest, id)),
+            method => Err(format!("{CONFIG}: unknown method {method} for {id}")),
+        }
+    }
 }
 
 /// What `status` reports, in this order: `tv/home.sh` and Settings read it.
@@ -97,6 +165,9 @@ pub struct Status {
     pub checkpoint: bool,
     #[serde(rename = "appDir")]
     pub app_dir: Option<String>,
+    /// Only where it is not com.webos.app.home.
+    #[serde(rename = "homeId", skip_serializing_if = "Option::is_none")]
+    pub home_id: Option<&'static str>,
 }
 
 /// Only a mount of Lounge's executable is Lounge's, also after a package update replaced the
@@ -107,6 +178,29 @@ pub fn ours(root: Option<&str>) -> bool {
             .unwrap_or(root)
             .ends_with("/io.github.yashwanthkamireddi.lounge/lounge")
     })
+}
+
+/// Only a mount of Lounge's staged Home folder is Lounge's. The root is relative to the file
+/// system holding it: /var/lib/lounge/app, or /lib/lounge/app where /var is its own.
+pub fn staged(root: Option<&str>) -> bool {
+    root.is_some_and(|root| {
+        root.strip_suffix("//deleted")
+            .unwrap_or(root)
+            .ends_with("/lounge/app")
+    })
+}
+
+/// The webOS major version in /etc/starfish-release ("Rockhopper release 7.6.0-11").
+fn webos_version(release: &str) -> Option<u32> {
+    let release = release.to_ascii_lowercase();
+    let rest = release[release.find("release ")? + "release ".len()..].trim_start();
+    let end = rest.find('.')?;
+    rest[..end].parse().ok()
+}
+
+/// A package artwork name the staged Home may link to: a plain name beside the executable.
+fn plain_name(name: &str) -> bool {
+    !name.is_empty() && !name.starts_with('.') && !name.contains('/')
 }
 
 /// The key filter chain without Lounge's old Home Button filter (Glasshouse's own entry stays).
@@ -136,6 +230,22 @@ fn startup_screen(app: &str) -> bool {
 
 fn same(a: Option<(u64, u64)>, b: Option<(u64, u64)>) -> bool {
     a.is_some() && a == b
+}
+
+/// Whether one process is a Home for `id`: LG's native executable, LG's Flutter Home, or
+/// Lounge started from the staged Home (`nid`/`appId` in sam's launch argument).
+fn home_process(cmdline: &str, id: &str) -> bool {
+    let args: Vec<&str> = cmdline.split('\0').collect();
+    let argv0 = args.first().copied().unwrap_or_default();
+    let name = argv0.rsplit('/').next().unwrap_or_default();
+    let launched_as = || {
+        args.get(1)
+            .and_then(|arg| serde_json::from_str::<Value>(arg).ok())
+            .is_some_and(|launch| launch["nid"] == id || launch["appId"] == id)
+    };
+    argv0 == exe_of(id)
+        || (name == "flutter-client" && args.windows(2).any(|pair| pair == ["-i", id]))
+        || (name == "lounge" && launched_as())
 }
 
 pub struct Home<S: System> {
@@ -216,69 +326,249 @@ impl<S: System> Home<S> {
             .next_back())
     }
 
-    /// Anything mounted over LG Home's manifest belongs to another integration.
-    fn manifest_mounted(&self) -> Result<bool, String> {
-        Ok(self.mount_lines()?.iter().any(|(_, target)| {
-            target == MANIFEST_DIR
+    /// Anything but Lounge's staged Home mounted over (or inside) LG Home's app folder `id`
+    /// belongs to another integration.
+    fn manifest_foreign(&self, id: &str) -> Result<bool, String> {
+        let directory = format!("/usr/palm/applications/{id}");
+        Ok(self.mount_lines()?.iter().any(|(root, target)| {
+            (target == &directory && !(id == HOME && staged(Some(root))))
                 || target
-                    .strip_prefix(MANIFEST_DIR)
+                    .strip_prefix(&directory)
                     .is_some_and(|rest| rest.starts_with('/'))
         }))
     }
 
-    fn refuse_foreign(&self) -> Result<Option<String>, String> {
-        let root = self.mount_root(EXE)?;
-        if (root.is_some() && !ours(root.as_deref())) || self.manifest_mounted()? {
-            return Err("Another integration is mounted over LG Home; nothing was changed".into());
-        }
-        Ok(root)
+    /// Anything but Lounge's executable mounted over LG's Home executable `id`.
+    fn exe_foreign(&self, id: &str) -> Result<bool, String> {
+        let root = self.mount_root(&exe_of(id))?;
+        Ok(root.is_some() && !ours(root.as_deref()))
     }
 
-    fn mounted(&self, app_dir: &str) -> bool {
+    fn refuse_foreign(&self, id: &str) -> Result<(), String> {
+        if self.exe_foreign(id)? || self.manifest_foreign(id)? {
+            return Err("Another integration is mounted over LG Home; nothing was changed".into());
+        }
+        Ok(())
+    }
+
+    fn mounted(&self, app_dir: &str, id: &str) -> bool {
         same(
             self.system.stat(&format!("{app_dir}/lounge")),
-            self.system.stat(EXE),
+            self.system.stat(&exe_of(id)),
         )
     }
 
-    fn unmount(&self) -> Result<(), String> {
+    /// Lounge's staged Home is the mount on top of LG Home's app folder.
+    fn stage_mounted(&self) -> Result<bool, String> {
+        Ok(staged(self.mount_root(MANIFEST_DIR)?.as_deref()))
+    }
+
+    /// The staged Home is mounted and runs this installation's executable.
+    fn stage_current(&self, app_dir: &str) -> Result<bool, String> {
+        Ok(self.stage_mounted()?
+            && same(self.system.stat(STAGE), self.system.stat(MANIFEST_DIR))
+            && self
+                .system
+                .read_link(&format!("{STAGE}/lounge"))?
+                .as_deref()
+                == Some(format!("{app_dir}/lounge").as_str()))
+    }
+
+    /// Removes Lounge's mount on `path`, `owned` telling Lounge's from another's.
+    fn unmount(&self, path: &str, owned: fn(Option<&str>) -> bool) -> Result<(), String> {
         for _ in 0..3 {
-            let Some(root) = self.mount_root(EXE)? else {
+            let Some(root) = self.mount_root(path)? else {
                 break;
             };
-            if !ours(Some(&root)) {
+            if !owned(Some(&root)) {
                 return Err("Another integration is mounted over LG Home".into());
             }
-            if let Err(error) = self.system.run("/bin/umount", &[EXE]) {
+            if let Err(error) = self.system.run("/bin/umount", &[path]) {
                 // A running Home executes the mounted file: detach it instead.
                 self.system.log(&format!("{error}; detaching the mount"));
-                self.system.run("/bin/umount", &["-l", EXE])?;
+                self.system.run("/bin/umount", &["-l", path])?;
             }
         }
-        if self.mount_root(EXE)?.is_some() {
+        if self.mount_root(path)?.is_some() {
             return Err("The Lounge Home mount is still active".into());
         }
         Ok(())
     }
 
-    fn mount(&self, app_dir: &str) -> Result<(), String> {
-        if self.mount_root(EXE)?.is_some() && !self.mounted(app_dir) {
-            self.unmount()?;
+    fn mount(&self, app_dir: &str, id: &str) -> Result<(), String> {
+        let exe = exe_of(id);
+        if self.mount_root(&exe)?.is_some() && !self.mounted(app_dir, id) {
+            self.unmount(&exe, ours)?;
         }
-        if !self.mounted(app_dir) {
-            self.system
-                .run("/bin/mount", &["--bind", &format!("{app_dir}/lounge"), EXE])?;
+        if !self.mounted(app_dir, id) {
+            self.system.run(
+                "/bin/mount",
+                &["--bind", &format!("{app_dir}/lounge"), &exe],
+            )?;
         }
-        if !self.mounted(app_dir) {
+        if !self.mounted(app_dir, id) {
             return Err("The Home bind mount did not take".into());
         }
         Ok(())
     }
 
+    /// Writes the Home app sam reads in LG Home's place: Lounge's own manifest under LG Home's
+    /// id, hidden, and links to the installed executable, libraries, assets and artwork. It
+    /// declares no lifecycle version (v1): Lounge's role cannot register as Home with sam, which
+    /// then starts it afresh for each Home press.
+    fn stage(&self, app_dir: &str) -> Result<(), String> {
+        let mut manifest = self.json(&format!("{app_dir}/appinfo.json"))?;
+        if manifest["id"] != APP || manifest["type"] != "native" || manifest["main"] != "lounge" {
+            return Err("No installed native Lounge package found".into());
+        }
+        self.system.make_dir(STAGE)?;
+        let mut names = vec!["lounge", "assets", "lib"];
+        for key in ["icon", "largeIcon"] {
+            if let Some(name) = manifest[key].as_str().filter(|name| plain_name(name)) {
+                names.push(name);
+            }
+        }
+        for name in names {
+            let source = format!("{app_dir}/{name}");
+            let link = format!("{STAGE}/{name}");
+            if !self.system.exists(&source)
+                || self.system.read_link(&link)?.as_deref() == Some(source.as_str())
+            {
+                continue;
+            }
+            self.system.unlink(&link)?;
+            self.system.symlink(&source, &link)?;
+        }
+        manifest["id"] = json!(HOME);
+        manifest["title"] = json!("Home");
+        manifest["visible"] = json!(false);
+        manifest["appCategory"] = json!(["home"]);
+        if let Some(fields) = manifest.as_object_mut() {
+            fields.remove("nativeLifeCycleInterfaceVersion");
+        }
+        self.write_json(&format!("{STAGE}/appinfo.json"), &manifest)
+    }
+
+    fn mount_stage(&self, app_dir: &str) -> Result<(), String> {
+        if !self.stage_mounted()? {
+            self.stage(app_dir)?;
+            self.system
+                .run("/bin/mount", &["--bind", STAGE, MANIFEST_DIR])?;
+        } else if !self.stage_current(app_dir)? {
+            // Lounge moved (a developer and a store install): the links follow it.
+            self.stage(app_dir)?;
+        }
+        if !self.stage_current(app_dir)? {
+            return Err("The Home bind mount did not take".into());
+        }
+        Ok(())
+    }
+
+    /// The staged Home's links and manifest, once nothing is mounted from it. Links are
+    /// unlinked, never followed: the package stays.
+    fn remove_stage(&self) -> Result<(), String> {
+        if !self.system.exists(STAGE) || self.stage_mounted()? {
+            return Ok(());
+        }
+        for name in self.system.list(STAGE)? {
+            self.system.unlink(&format!("{STAGE}/{name}"))?;
+        }
+        self.system.remove_dir(STAGE)
+    }
+
+    /// Whether sam has read Lounge's staged Home (`lounge`) or LG's own as com.webos.app.home.
+    fn sam_reads(&self, lounge: bool) -> Result<bool, String> {
+        let reply = self.accepted(
+            "luna://com.webos.applicationManager/getAppInfo",
+            json!({"id": HOME}),
+            "Read Home's manifest",
+        )?;
+        let info = &reply["appInfo"];
+        let main = info["main"].as_str().unwrap_or_default();
+        Ok(info.is_object() && (main.rsplit('/').next() == Some("lounge")) == lounge)
+    }
+
+    /// A block left in place would keep Home from starting, across a reboot too: the release
+    /// always follows the block, retried.
+    fn release(&self) -> Result<(), String> {
+        let mut last = String::new();
+        for _ in 0..3 {
+            match self.luna(
+                "luna://com.webos.applicationManager/releaseBlockSystemApp",
+                json!({"id": HOME}),
+            ) {
+                Ok(reply) => {
+                    let text = reply["errorText"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_ascii_lowercase();
+                    if reply["returnValue"] == true
+                        || (text.contains("not") && text.contains("blocked"))
+                    {
+                        return Ok(());
+                    }
+                    last = reply.to_string();
+                }
+                Err(error) => last = error,
+            }
+            self.system.pause(1);
+        }
+        Err(format!("Release Home: {last}"))
+    }
+
+    /// Makes sam read Home's manifest again, without restarting sam: blocking a system app and
+    /// releasing it rereads that one app (webOS 10 and 11). `lounge`: the staged Home is
+    /// expected, else LG's own.
+    fn reread(&self, lounge: bool) -> Result<(), String> {
+        if self.sam_reads(lounge)? {
+            return Ok(());
+        }
+        let mut payload = json!({"id": HOME});
+        if self
+            .system
+            .read(BLOCK_SCHEMA)
+            .is_ok_and(|schema| schema.contains("\"forceBlockSystemApp\""))
+        {
+            payload["forceBlockSystemApp"] = json!(false);
+        }
+        let blocked = self
+            .luna(
+                "luna://com.webos.applicationManager/blockSystemApp",
+                payload,
+            )
+            .and_then(|reply| {
+                let text = reply["errorText"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if reply["returnValue"] == true
+                    || (text.contains("already") && text.contains("blocked"))
+                {
+                    Ok(())
+                } else {
+                    Err(format!("Block Home: {reply}"))
+                }
+            });
+        // Released even where the block seemed to fail: it may have taken all the same.
+        match (blocked, self.release()) {
+            (Err(block), Err(release)) => return Err(format!("{block}; {release}")),
+            (Err(error), _) | (_, Err(error)) => return Err(error),
+            _ => {}
+        }
+        for _ in 0..15 {
+            if self.sam_reads(lounge)? {
+                return Ok(());
+            }
+            self.system.pause(1);
+        }
+        Err("sam did not read Home's manifest again".into())
+    }
+
     /// Files are unlinked, never followed (the /tmp pages are a symlink into the persistent
     /// copy); the persistent directory itself stays, as sam leaves it.
-    fn remove_checkpoint(&self) -> Result<(), String> {
-        for directory in [CHECKPOINT, PERSISTENT_CHECKPOINT] {
+    fn remove_checkpoint(&self, id: &str) -> Result<(), String> {
+        let [checkpoint, persistent, hash_check] = checkpoint_of(id);
+        for directory in [&checkpoint, &persistent] {
             if !self.system.exists(directory) {
                 continue;
             }
@@ -286,21 +576,21 @@ impl<S: System> Home<S> {
                 self.system.unlink(&format!("{directory}/{name}"))?;
             }
         }
-        if self.system.exists(CHECKPOINT) {
-            self.system.remove_dir(CHECKPOINT)?;
+        if self.system.exists(&checkpoint) {
+            self.system.remove_dir(&checkpoint)?;
         }
-        self.system.unlink(HASH_CHECK)
+        self.system.unlink(&hash_check)
     }
 
-    /// Processes started as LG's Home executable. `keep`: leave a running copy of the current
-    /// Lounge alone, so applying again never restarts a healthy Home.
-    fn home_processes(&self, keep: Option<&str>) -> Result<Vec<u32>, String> {
+    /// Processes started as the Home `id`. `keep`: leave a running copy of the current Lounge
+    /// alone, so applying again never restarts a healthy Home.
+    fn home_processes(&self, keep: Option<&str>, id: &str) -> Result<Vec<u32>, String> {
         let exe = keep.and_then(|dir| self.system.stat(&format!("{dir}/lounge")));
         let mut found = vec![];
         for pid in self.system.pids()? {
             match self.system.read(&format!("/proc/{pid}/cmdline")) {
                 Ok(cmdline) => {
-                    if cmdline.split('\0').next() == Some(EXE)
+                    if home_process(&cmdline, id)
                         && !same(exe, self.system.stat(&format!("/proc/{pid}/exe")))
                     {
                         found.push(pid);
@@ -316,8 +606,8 @@ impl<S: System> Home<S> {
         Ok(found)
     }
 
-    fn stop_home(&self, keep: Option<&str>) -> Result<usize, String> {
-        let pids = self.home_processes(keep)?;
+    fn stop_home(&self, keep: Option<&str>, id: &str) -> Result<usize, String> {
+        let pids = self.home_processes(keep, id)?;
         for &pid in &pids {
             self.system.kill(pid, Signal::Term)?;
         }
@@ -348,10 +638,10 @@ impl<S: System> Home<S> {
         Ok(pids.len())
     }
 
-    fn launch_home(&self) -> Result<(), String> {
+    fn launch_home(&self, id: &str) -> Result<(), String> {
         self.accepted(
             "luna://com.webos.applicationManager/launch",
-            json!({"id": HOME}),
+            json!({"id": id}),
             "Open Home",
         )
         .map(|_| ())
@@ -359,14 +649,14 @@ impl<S: System> Home<S> {
 
     /// Right after the previous Home stopped, sam can accept a launch without starting
     /// anything: Home in front is the success condition.
-    fn open_home(&self) -> Result<(), String> {
+    fn open_home(&self, id: &str) -> Result<(), String> {
         for i in 0..15 {
             if (i == 0 || i == 6)
-                && let Err(error) = self.launch_home()
+                && let Err(error) = self.launch_home(id)
             {
                 self.system.log(&error);
             }
-            if self.foreground()? == HOME {
+            if self.foreground()? == id {
                 return Ok(());
             }
             self.system.pause(1);
@@ -409,11 +699,14 @@ impl<S: System> Home<S> {
             .map_err(|e| format!("{CONFIG}: {e}"))
     }
 
-    fn stock_home(&self) -> Result<(), String> {
-        let stock = self.json(&format!("{MANIFEST_DIR}/appinfo.json"))?;
-        if stock["id"] != HOME
+    /// LG's Home `id` is a native lifecycle-v2 program at /usr/bin/`id`.
+    fn native_home(&self, id: &str) -> Result<(), String> {
+        let stock = self
+            .json(&format!("/usr/palm/applications/{id}/appinfo.json"))
+            .unwrap_or_default();
+        if stock["id"] != id
             || stock["type"] != "native"
-            || stock["main"] != format!("file://{EXE}").as_str()
+            || stock["main"] != format!("file://{}", exe_of(id)).as_str()
             || stock["nativeLifeCycleInterfaceVersion"] != 2
         {
             return Err(
@@ -422,6 +715,94 @@ impl<S: System> Home<S> {
             );
         }
         Ok(())
+    }
+
+    /// LG's Home folder holds LG's own Home manifest (or Lounge's staged one, mounted).
+    fn manifest_home(&self) -> Result<(), String> {
+        if self.stage_mounted()? {
+            return Ok(());
+        }
+        let stock = self
+            .json(&format!("{MANIFEST_DIR}/appinfo.json"))
+            .unwrap_or_default();
+        if stock["id"] != HOME || stock["main"] == "lounge" {
+            return Err("This TV's Home manifest is not one Lounge can stand in for".into());
+        }
+        Ok(())
+    }
+
+    /// On webOS 5 and 6 the Home key opens LG's full-screen Home where the TV says so.
+    fn home_key_opens_full_home(&self) -> bool {
+        let reply = self.luna(
+            "luna://com.webos.settingsservice/getSystemSettings",
+            json!({"category": "general", "keys": ["defaultApps"]}),
+        );
+        match reply {
+            Ok(reply) => reply["settings"]["defaultApps"]["home"] == FULL_HOME,
+            Err(error) => {
+                self.system.log(&error);
+                false
+            }
+        }
+    }
+
+    /// How Lounge can be this TV's Home, from what the TV has. `wanted`: a Home id asked for by
+    /// hand (`home.sh enable APP_DIR com.webos.app.fullhome`).
+    fn choose(&self, wanted: Option<&str>) -> Result<(Method, &'static str), String> {
+        let wanted = match wanted {
+            None => None,
+            Some(id) => Some(
+                TARGETS
+                    .into_iter()
+                    .find(|target| *target == id)
+                    .ok_or_else(|| format!("{id} is not a Home Lounge can stand in for"))?,
+            ),
+        };
+        let version = self
+            .system
+            .read(RELEASE)
+            .ok()
+            .as_deref()
+            .and_then(webos_version);
+        let Some(version) = version else {
+            // No version to go by: only LG Home's own executable shape, the one every webOS 5
+            // to 9 TV seen so far has.
+            if wanted.is_some_and(|id| id != HOME) {
+                return Err(format!(
+                    "{FULL_HOME} as Lounge's Home is not supported where the webOS version is unknown"
+                ));
+            }
+            self.native_home(HOME)?;
+            return Ok((Method::Executable, HOME));
+        };
+        match version {
+            5..=9 => {
+                let id = match wanted {
+                    Some(id) => id,
+                    None if version <= 6 && self.home_key_opens_full_home() => FULL_HOME,
+                    None => HOME,
+                };
+                if id == FULL_HOME && version > 6 {
+                    return Err(format!(
+                        "{FULL_HOME} as Lounge's Home is not supported on webOS {version}"
+                    ));
+                }
+                self.native_home(id)?;
+                Ok((Method::Executable, id))
+            }
+            10 | 11 => {
+                if wanted.is_some_and(|id| id != HOME) {
+                    return Err(format!(
+                        "{FULL_HOME} as Lounge's Home is not supported on webOS {version}"
+                    ));
+                }
+                self.manifest_home()?;
+                Ok((Method::Manifest, HOME))
+            }
+            _ => Err(format!(
+                "Lounge as Home is not supported on webOS {version} (webOS 5 to 11 are)"
+            )),
+        }
     }
 
     fn installation(&self, app_dir: Option<&str>) -> Result<String, String> {
@@ -452,9 +833,10 @@ impl<S: System> Home<S> {
         Err("No installed native Lounge package found".into())
     }
 
-    /// Mounts Lounge in Home's place. `open`: bring Home to the front even if it was not.
+    /// Puts Lounge in Home's place. `open`: bring Home to the front even if it was not.
     fn apply(&self, settings: &Settings, open: bool) -> Result<(), String> {
-        self.refuse_foreign()?;
+        let (method, id) = settings.way()?;
+        self.refuse_foreign(id)?;
         let app_dir = settings.app_dir.as_deref().unwrap_or("undefined");
         if !self.system.exists(&format!("{app_dir}/lounge")) {
             return Err("Lounge is no longer installed".into());
@@ -464,14 +846,26 @@ impl<S: System> Home<S> {
             String::new()
         });
         let applied = (|| {
-            self.mount(app_dir)?;
-            self.system.write(MARKER, &format!("{APP}\n"))?;
-            self.remove_checkpoint()?;
-            let stopped = self.stop_home(Some(app_dir))?;
+            match method {
+                Method::Executable => {
+                    self.mount(app_dir, id)?;
+                    self.system.write(MARKER, &format!("{APP}\n"))?;
+                    if id != HOME {
+                        self.system.write(TARGET_MARKER, &format!("{id}\n"))?;
+                    }
+                    self.remove_checkpoint(id)?;
+                }
+                Method::Manifest => {
+                    self.mount_stage(app_dir)?;
+                    self.system.write(MARKER, &format!("{APP}\n"))?;
+                    self.reread(true)?;
+                }
+            }
+            let stopped = self.stop_home(Some(app_dir), id)?;
             // Never take the screen from an input or app someone chose: only where the Home
             // just stopped was in front.
-            if open || (front == HOME && stopped > 0) {
-                self.open_home()?;
+            if open || (front == id && stopped > 0) {
+                self.open_home(id)?;
             }
             Ok(())
         })();
@@ -486,9 +880,15 @@ impl<S: System> Home<S> {
         Ok(())
     }
 
-    /// Gives Home back to LG exactly: no mount, no marker, no hook. Works with or without a
-    /// config.
+    /// Gives Home back to LG exactly: no mount, no marker, no hook, sam reading LG's own
+    /// manifest. Works with or without a config, whichever way Lounge was Home.
     fn restore(&self) -> Result<(), String> {
+        let (method, id) = self
+            .config()
+            .ok()
+            .flatten()
+            .and_then(|settings| settings.way().ok())
+            .unwrap_or((Method::Executable, HOME));
         let front = match self.foreground() {
             Ok(front) => Some(front),
             Err(error) => {
@@ -497,19 +897,33 @@ impl<S: System> Home<S> {
                 None
             }
         };
-        let root = self.mount_root(EXE)?;
-        if root.is_some() && !ours(root.as_deref()) {
+        if self.exe_foreign(id)? {
             return Err("Another integration is mounted over LG Home".into());
         }
         self.system.unlink(MARKER)?;
+        self.system.unlink(TARGET_MARKER)?;
         self.remove_hook()?;
-        if root.is_some() {
-            self.unmount()?;
+        // Lounge's mount over either Home; another integration's over the other one stays.
+        for target in TARGETS {
+            let exe = exe_of(target);
+            if ours(self.mount_root(&exe)?.as_deref()) {
+                self.unmount(&exe, ours)?;
+            }
         }
-        self.stop_home(None)?;
+        let was_staged = self.stage_mounted()?;
+        if was_staged {
+            self.unmount(MANIFEST_DIR, staged)?;
+        }
+        if was_staged || method == Method::Manifest {
+            self.reread(false)?;
+        }
+        if let Err(error) = self.remove_stage() {
+            self.system.log(&error);
+        }
+        self.stop_home(None, id)?;
         // Nothing in front means Home itself went away: LG's Home takes its place.
-        if front.is_some_and(|front| front == HOME || front.is_empty()) {
-            self.launch_home()?;
+        if front.is_some_and(|front| front == id || front.is_empty()) {
+            self.launch_home(id)?;
         }
         Ok(())
     }
@@ -626,17 +1040,27 @@ impl<S: System> Home<S> {
         Ok(())
     }
 
-    fn enable(&self, app_dir: Option<&str>) -> Result<(), String> {
-        self.stock_home()?;
+    fn enable(&self, app_dir: Option<&str>, wanted: Option<&str>) -> Result<(), String> {
+        let (method, id) = self.choose(wanted)?;
         let app_dir = self.installation(app_dir)?;
-        self.refuse_foreign()?;
+        self.refuse_foreign(id)?;
         if self.system.exists(HOOK) && !self.hook_owned()? {
             return Err(format!("{HOOK} is already in use"));
         }
+        // Switching Home ways (another Home id, say) goes through LG's own Home.
+        if let Some(saved) = self.config()?.filter(|settings| settings.enabled)
+            && saved.way().ok() != Some((method, id))
+        {
+            return Err(format!(
+                "Lounge is Home in another way here ({}); disable it first",
+                saved.method
+            ));
+        }
         let mut settings = Settings {
             enabled: false,
-            method: "executable".into(),
+            method: method.name().into(),
             app_dir: Some(app_dir),
+            home_id: (id != HOME).then(|| id.to_owned()),
         };
         self.write_json(CONFIG, &settings)?;
         let applied = (|| {
@@ -668,7 +1092,8 @@ impl<S: System> Home<S> {
         self.restore()
     }
 
-    /// At boot, after sam is up and its own CRIU boot work is done (bounded waits).
+    /// At boot: the mount first, where it can go before sam starts Home, then the full apply
+    /// once sam is up and its own CRIU boot work is done (bounded waits).
     fn boot(&self) -> Result<(), String> {
         let Some(settings) = self.config()?.filter(|settings| settings.enabled) else {
             return Ok(());
@@ -677,6 +1102,10 @@ impl<S: System> Home<S> {
         if !self.system.exists(&format!("{app_dir}/lounge")) {
             self.system.log("Lounge is not installed; LG Home stays");
             return Ok(());
+        }
+        let (method, id) = settings.way()?;
+        if method == Method::Executable {
+            self.mount_early(app_dir, id);
         }
         for i in 0..30 {
             match self.foreground() {
@@ -697,15 +1126,52 @@ impl<S: System> Home<S> {
             self.system.pause(2);
         }
         self.apply(&settings, false)?;
-        self.home_after_boot();
+        self.home_after_boot(id);
         Ok(())
+    }
+
+    /// The mount, as early in a cold boot as the hook runs: no sam, no Luna. sam then starts
+    /// Lounge as Home from the first time, and LG's Home never runs. Only where no image of
+    /// LG's Home is left for sam to restore (CRIU refuses it with Lounge mounted, see
+    /// `checkpoint_of`); `apply` then mounts after sam's boot copy, as before. Whatever happens
+    /// here, the boot apply that follows checks and finishes it.
+    fn mount_early(&self, app_dir: &str, id: &str) {
+        let [checkpoint, persistent, _] = checkpoint_of(id);
+        if self.system.exists(&checkpoint)
+            || (self.system.exists(&persistent)
+                && self
+                    .system
+                    .list(&persistent)
+                    .map_or(true, |names| !names.is_empty()))
+        {
+            self.system
+                .log("boot: an image of LG's Home is left; mounting after sam's boot copy");
+            return;
+        }
+        let running = self
+            .home_processes(Some(app_dir), id)
+            .map_or(0, |pids| pids.len());
+        let mounted = (|| {
+            self.refuse_foreign(id)?;
+            self.mount(app_dir, id)?;
+            self.system.write(MARKER, &format!("{APP}\n"))?;
+            if id != HOME {
+                self.system.write(TARGET_MARKER, &format!("{id}\n"))?;
+            }
+            Ok::<(), String>(())
+        })();
+        self.system.log(&match mounted {
+            Ok(()) if running == 0 => "boot: mounted before LG's Home started".to_owned(),
+            Ok(()) => format!("boot: mounted; LG's Home was already running ({running})"),
+            Err(error) => format!("boot: early mount failed: {error}"),
+        });
     }
 
     /// A cold boot shows Home. LG's boot manager opens the last input (or Live TV) and, unlike
     /// a Quick Start wake, never starts Home: once it has, Home is opened over it. Only what the
     /// boot manager opens is replaced; an app someone opened meanwhile stays. Bounded: 60 s at
     /// most.
-    fn home_after_boot(&self) {
+    fn home_after_boot(&self, id: &str) {
         for i in 0..30 {
             // sam is busy with the boot; ask again (and say why on the last try).
             let app = self.foreground().unwrap_or_else(|error| {
@@ -714,7 +1180,7 @@ impl<S: System> Home<S> {
                 }
                 String::new()
             });
-            if app == HOME {
+            if app == id {
                 return;
             }
             if !app.is_empty() && !startup_screen(&app) {
@@ -723,7 +1189,7 @@ impl<S: System> Home<S> {
                 return;
             }
             if !app.is_empty() {
-                match self.launch_home() {
+                match self.launch_home(id) {
                     Ok(()) => self.system.log(&format!("boot: opened Home over {app}")),
                     Err(error) => self.system.log(&error),
                 }
@@ -735,29 +1201,54 @@ impl<S: System> Home<S> {
 
     pub fn status(&self) -> Result<Status, String> {
         let settings = self.config()?;
-        let root = self.mount_root(EXE)?;
+        let (method, id) = match &settings {
+            Some(settings) => settings.way()?,
+            None => (Method::Executable, HOME),
+        };
         let app_dir = settings.as_ref().and_then(|s| s.app_dir.clone());
-        let mounted = app_dir.as_deref().is_some_and(|dir| self.mounted(dir));
+        let (ours_mounted, current) = match method {
+            Method::Executable => (
+                ours(self.mount_root(&exe_of(id))?.as_deref()),
+                app_dir.as_deref().is_some_and(|dir| self.mounted(dir, id)),
+            ),
+            Method::Manifest => (
+                self.stage_mounted()?,
+                match app_dir.as_deref() {
+                    Some(dir) => self.stage_current(dir)?,
+                    None => false,
+                },
+            ),
+        };
+        let [checkpoint, persistent, _] = checkpoint_of(id);
         Ok(Status {
             return_value: true,
-            method: "executable",
+            method: method.name(),
             enabled: settings.is_some_and(|s| s.enabled),
-            mounted: ours(root.as_deref()) && mounted,
-            stale: ours(root.as_deref()) && !mounted,
-            foreign: (root.is_some() && !ours(root.as_deref())) || self.manifest_mounted()?,
+            mounted: ours_mounted && current,
+            stale: ours_mounted && !current,
+            foreign: self.exe_foreign(id)? || self.manifest_foreign(id)?,
             hook: self.hook_owned()?,
             marker: self.system.exists(MARKER),
-            checkpoint: self.system.exists(CHECKPOINT)
-                || (self.system.exists(PERSISTENT_CHECKPOINT)
-                    && !self.system.list(PERSISTENT_CHECKPOINT)?.is_empty()),
+            checkpoint: self.system.exists(&checkpoint)
+                || (self.system.exists(&persistent) && !self.system.list(&persistent)?.is_empty()),
             app_dir,
+            home_id: (id != HOME).then_some(id),
         })
     }
 
-    /// One `home.sh` command; the reply is what is true afterwards.
-    pub fn main(&self, command: &str, app_dir: Option<&str>) -> Result<Status, String> {
+    /// One `home.sh` command; the reply is what is true afterwards. `target`: the Home id
+    /// `enable` stands in for, where not chosen from the TV.
+    pub fn main(
+        &self,
+        command: &str,
+        app_dir: Option<&str>,
+        target: Option<&str>,
+    ) -> Result<Status, String> {
         match command {
-            "enable" => self.enable(app_dir.filter(|dir| !dir.is_empty()))?,
+            "enable" => self.enable(
+                app_dir.filter(|dir| !dir.is_empty()),
+                target.filter(|id| !id.is_empty()),
+            )?,
             "disable" => self.disable()?,
             "boot" => self.boot()?,
             "apply" => {
@@ -774,9 +1265,14 @@ impl<S: System> Home<S> {
     }
 }
 
-/// `lounge --home COMMAND [APP_DIR]`: the reply line and whether it succeeded.
-pub fn command(home: &Home<impl System>, command: &str, app_dir: Option<&str>) -> (String, bool) {
-    match home.main(command, app_dir) {
+/// `lounge --home COMMAND [APP_DIR [HOME_ID]]`: the reply line and whether it succeeded.
+pub fn command(
+    home: &Home<impl System>,
+    command: &str,
+    app_dir: Option<&str>,
+    target: Option<&str>,
+) -> (String, bool) {
+    match home.main(command, app_dir, target) {
         Ok(status) => (serde_json::to_string(&status).unwrap_or_default(), true),
         Err(error) => (failure(&error), false),
     }
@@ -854,6 +1350,16 @@ impl System for Tv {
                     .collect()
             })
             .map_err(|e| format!("{directory}: {e}"))
+    }
+
+    fn make_dir(&self, directory: &str) -> Result<(), String> {
+        use std::os::unix::fs::DirBuilderExt;
+        match std::fs::DirBuilder::new().mode(0o755).create(directory) {
+            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => {
+                Err(format!("{directory}: {error}"))
+            }
+            _ => Ok(()),
+        }
     }
 
     fn remove_dir(&self, directory: &str) -> Result<(), String> {
