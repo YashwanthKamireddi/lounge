@@ -116,7 +116,9 @@ pnpm dev           # desktop preview with sample apps
 ## Privacy and risk
 
 No telemetry. Settings stay in local files on the TV; the only network requests are weather
-(Open-Meteo, OpenStreetMap). Lounge runs on rooted TVs: every change it makes can be undone, but
+(Open-Meteo, OpenStreetMap). As Home, Lounge keeps a short local log of which apps opened and
+closed and when (`/var/lib/lounge/history.log`, the newest 400 lines), so a problem can be
+traced; it never leaves the TV, and deleting the file clears it. Lounge runs on rooted TVs: every change it makes can be undone, but
 rooting is your call, and Lounge comes without warranty (see the [license](license)).
 
 ## Credits
