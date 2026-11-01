@@ -3,7 +3,6 @@
 use serde_json::Value;
 use std::{
     io::{BufRead, BufReader},
-    os::unix::process::CommandExt,
     panic::{AssertUnwindSafe, catch_unwind},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex, mpsc},
@@ -63,20 +62,26 @@ pub fn subscribe(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    // SAFETY: getpid has no preconditions.
-    let parent = unsafe { libc::getpid() };
-    // SAFETY: prctl, getppid and _exit are async-signal-safe and only affect the forked child.
-    unsafe {
-        command.pre_exec(move || {
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            // The parent may have ended before the death signal was armed.
-            if libc::getppid() != parent {
-                libc::_exit(1);
-            }
-            Ok(())
-        });
+    // The death signal is Linux's, through libc: TV builds only (the desktop build has no libc
+    // and never registers a Home).
+    #[cfg(feature = "webos")]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: getpid has no preconditions.
+        let parent = unsafe { libc::getpid() };
+        // SAFETY: prctl, getppid and _exit are async-signal-safe and only affect the forked child.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // The parent may have ended before the death signal was armed.
+                if libc::getppid() != parent {
+                    libc::_exit(1);
+                }
+                Ok(())
+            });
+        }
     }
     let mut child = command
         .spawn()
