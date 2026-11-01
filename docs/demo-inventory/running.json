@@ -1,0 +1,33 @@
+{
+ "running": [
+  {
+   "webprocessid": "",
+   "defaultWindowType": "card",
+   "id": "netflix",
+   "processid": "2045",
+   "appType": "native_mvpd"
+  },
+  {
+   "webprocessid": "5029",
+   "defaultWindowType": "card",
+   "id": "youtube.leanback.v4",
+   "processid": "5029",
+   "appType": "web"
+  },
+  {
+   "webprocessid": "5029",
+   "defaultWindowType": "card",
+   "id": "com.disney.disneyplus-prod",
+   "processid": "5029",
+   "appType": "web"
+  },
+  {
+   "webprocessid": "5029",
+   "defaultWindowType": "card",
+   "id": "amazon",
+   "processid": "5029",
+   "appType": "web"
+  }
+ ],
+ "returnValue": true
+}
