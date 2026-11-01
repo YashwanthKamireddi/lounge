@@ -121,6 +121,15 @@ are waiting for reports. If a TV can't have Lounge as its Home, Settings says wh
 Homebrew Channel needs root, another launcher is already Home, or the webOS version isn't
 supported yet. Lounge then still opens as an app.
 
+## Known limits
+
+- After a cold start, LG's Home shows for a few seconds before Lounge takes over: webOS starts it
+  before any homebrew can run.
+- Verified on webOS 22 only so far. Other versions are covered by tests, not yet by real TVs.
+- English only for now.
+
+Found a problem or tried it on another TV? [Open an issue](https://github.com/YashwanthKamireddi/lounge/issues).
+
 ## Privacy
 
 No telemetry and no accounts. Settings stay on the TV; the only network requests are for the
