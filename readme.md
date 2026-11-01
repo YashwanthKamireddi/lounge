@@ -1,104 +1,93 @@
 <div align="center">
 
-<img src="docs/logo.png" width="128" alt="Lounge logo: a sofa lit by the TV in a dark room">
+<img src="docs/logo.png" width="112" alt="Lounge logo: a sofa lit by the TV in a dark room">
 
 # Lounge
 
-**A tvOS-style home screen for LG TVs. Native, instant, and out of the way.**
+**A calm, tvOS-style home screen for LG TVs. Native, instant, and out of the way.**
 
 [![CI](https://github.com/YashwanthKamireddi/lounge/actions/workflows/ci.yml/badge.svg)](https://github.com/YashwanthKamireddi/lounge/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/YashwanthKamireddi/lounge?color=3b4590)](https://github.com/YashwanthKamireddi/lounge/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3b4590.svg)](license)
-[![webOS](https://img.shields.io/badge/LG%20webOS-7.6%20verified-1a1f45.svg)](#install)
+[![webOS](https://img.shields.io/badge/LG%20webOS-5%20to%2011-1a1f45.svg)](#compatibility)
 
-<img src="docs/readme/home.jpg" alt="Lounge home screen: a glass dock of apps over the northern lights" width="100%">
+<img src="docs/readme/demo.gif" alt="Lounge in motion: the home screen's glass dock, moving through apps on an LG TV" width="100%">
+
+[Install](#install) · [Features](#features) · [Compatibility](#compatibility) · [Build](#build)
 
 </div>
 
-## Why it feels different
+## Why Lounge
 
-Lounge is a native Rust + OpenGL ES program, drawn straight to the TV's graphics plane. It is the
-TV's real Home: power-on, the Home button and Back all land on it. Measured on an LG 65UQ801C0SB
-(webOS 7.6):
+Lounge replaces LG's home screen with one that feels like an Apple TV: a glass dock of your apps,
+nothing else competing for attention, and no ads. It is a native Rust and OpenGL ES program, so it
+opens fast and then stays out of the way of whatever you watch. Measured on an LG 65UQ801C0SB:
 
-|                               |                                                         |
-| ----------------------------- | ------------------------------------------------------- |
-| **Cold start**                | first frame in 0.42 s (shaders kept compiled on the TV) |
-| **Home from an app**          | back in ~0.1 s                                          |
-| **Behind YouTube or Netflix** | draws nothing, keeps ~16 MB: the app gets the TV        |
-| **Every frame**               | repaints only what changed, one pass for all glass      |
+|                      |                                                          |
+| -------------------- | -------------------------------------------------------- |
+| **Cold start**       | first frame in 0.42 s                                    |
+| **Home from an app** | back in about 0.1 s                                      |
+| **Behind YouTube**   | draws nothing and holds about 25 MB; the app gets the TV |
+| **Sitting on Home**  | wakes about once a minute (the clock); nothing polls     |
+
+## Features
 
 <table>
   <tr>
     <td width="50%"><img src="docs/readme/apps.jpg" alt="Home with the Inputs panel open under the Search and Inputs buttons"></td>
-    <td width="50%"><img src="docs/readme/switcher.jpg" alt="The app switcher: open apps as large cards, with what OK, Up and Back do"></td>
+    <td width="50%"><img src="docs/readme/switcher.jpg" alt="The app switcher: open apps as large cards"></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app shows Move, Hide and Uninstall as glass pills under it"></td>
+    <td width="50%"><img src="docs/readme/menu.jpg" alt="Holding OK on an app shows Move, Hide and Uninstall under it"></td>
     <td width="50%"><img src="docs/readme/light-settings.jpg" alt="Settings › General in the Light appearance"></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/readme/grid.jpg" alt="Every app in a grid under the dock, each wearing its card"></td>
+    <td width="50%"><img src="docs/readme/grid.jpg" alt="Every app in a grid under the dock"></td>
     <td width="50%"><img src="docs/readme/search.jpg" alt="Search: a letter grid with results as you type"></td>
   </tr>
 </table>
 
-### On screen
-
-- **Liquid glass throughout:** the dock, the time pill, Search and Inputs, menus, alerts and the
-  switcher are one material, lit the same way in Light, Dark or Automatic.
-- **Inputs one press away:** Up from the dock reaches Search on the left and Inputs on the right.
-  Inputs lists Live TV and every HDMI port, plugged-in ones first, and names them with LG's own
-  names (Set-Top Box, Game Console, …) so LG's menus agree.
-- **Hold OK on any app** to move, hide or uninstall it. Moving glides the others out of the way;
-  a hidden or removed app shrinks away before the gap closes.
-- **An app switcher** for what is open: OK opens, Up closes, Back returns.
-- **Search** on a letter grid: any letter within five presses, results as you type.
-- **Every app wears its card**, LG's system apps their own icons, on white or graphite to match
-  the appearance.
-- **For everyone in the room:** a focus outline and larger app names, one switch each; reduced
-  motion; weather beside the time.
-
-### Underneath
-
-- **Push, never poll:** app installs, plugged-in devices, open apps and the Home key arrive as
-  events from webOS. Nothing wakes up on a timer.
-- **Out of the way:** behind an app Lounge frees its textures and sleeps. An update installed
-  while you watch takes effect at the next Home press, never over the app.
-- **Ready for bad days:** an app that never reached the screen is restarted rather than signalled
-  again; an app slow to open says so; a TV without the time yet shows no wrong date.
-- **Safe as Home:** a bind mount and one Homebrew Channel hook, nothing written to LG's firmware.
-  Three failed starts in a minute hand Home back to LG by themselves.
-- **Tested hard:** 150+ unit tests, a 16 000-press randomised remote test, and native smoke tests of
-  rendering, navigation, weather and every bundled logo on each change.
+- **Liquid glass everywhere:** dock, menus, alerts and the app switcher share one material, in
+  Light, Dark or Automatic.
+- **Inputs one press away:** Up from the dock reaches Search and Inputs. Inputs lists Live TV and
+  every HDMI port, plugged-in ones first, under LG's own names.
+- **Hold OK on any app** to move, hide or uninstall it.
+- **An app switcher** for what's open: OK opens, Up closes, Back returns.
+- **Search** from a letter grid, with results as you type.
+- **For everyone in the room:** a focus outline, larger app names and reduced motion, one switch
+  each.
 
 ## Install
 
-Needs an LG TV rooted with an elevated [Homebrew Channel](https://www.webosbrew.org/).
+You need an LG TV rooted with an elevated [Homebrew Channel](https://www.webosbrew.org/).
 
 1. In Homebrew Channel › Settings › Extra repositories, add
-   `https://github.com/YashwanthKamireddi/lounge/releases/latest/download/repo.json`.
+   `https://github.com/YashwanthKamireddi/lounge/releases/latest/download/repo.json`
 2. Install **Lounge** from Homebrew Channel. Updates arrive there too.
-3. Open Lounge and choose **Make Home** when it asks. It asks once, only on a TV that can
-   have it; later, use **Settings › General › Lounge as Home**, which also says why when a TV
-   can't (Homebrew Channel without root, another launcher already Home, or an unsupported webOS).
+3. Open Lounge and choose **Make Home**. From then on, the Home button opens Lounge.
 
-Or install `io.github.yashwanthkamireddi.lounge_1.1.0_arm.ipk` from
+Prefer a file? Install the `.ipk` from
 [Releases](https://github.com/YashwanthKamireddi/lounge/releases/latest) with
 [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop).
 
-**Back to LG's Home** any time: turn the switch off, or over SSH as root run
-`sh /var/lib/lounge/home.sh disable`. Lounge as Home is a bind mount over LG's Home executable,
-held in memory and put back at boot by one Homebrew Channel hook; nothing writes to LG's firmware.
-If it ever fails to start three times in a minute, it hands Home back to LG by itself.
+**Back to LG's Home, any time:** turn off Settings › General › Lounge as Home, or run
+`sh /var/lib/lounge/home.sh disable` over SSH. Nothing is written to LG's firmware, and if Lounge
+ever fails to start three times in a minute, it hands Home back to LG by itself.
 
-## Make it yours
+## Compatibility
 
-- **Profile picture:** copy JPEG or PNG files into
-  `/media/developer/io.github.yashwanthkamireddi.lounge/avatars/` (owned by that folder's user)
-  and pick one in Settings › General.
-- **App cards and cover art:** `assets/tiles/<app id>.png` and `assets/heroes/<app id>.jpg`;
-  files of the same name in `local/tiles/` or `local/heroes/` override them in your own build.
+Lounge runs on webOS 5 and newer (LG's 2020 models onward) and picks the right way to become Home
+for each version by itself. It is verified on webOS 7.6; the other versions are covered by tests
+and are waiting for reports. If a TV can't have Lounge as its Home, Settings says why: the
+Homebrew Channel needs root, another launcher is already Home, or the webOS version isn't
+supported yet. Lounge then still opens as an app.
+
+## Privacy
+
+No telemetry and no accounts. Settings stay on the TV; the only network requests are for the
+weather (Open-Meteo, OpenStreetMap). Lounge writes no log files unless you switch diagnostics on
+by creating `/var/lib/lounge/debug`. Rooting is your call, and Lounge comes without warranty
+(see the [license](license)).
 
 ## Build
 
@@ -107,21 +96,13 @@ nix develop
 pnpm install --frozen-lockfile
 pnpm sdk
 export WEBOS_NDK="$PWD/.build/toolchain/arm-webos-linux-gnueabi_sdk-buildroot"
-pnpm run package   # dist/io.github.yashwanthkamireddi.lounge_1.1.0_arm.ipk
+pnpm run package   # dist/*.ipk
 pnpm dev           # desktop preview with sample apps
 ```
 
 [development.md](development.md) covers the architecture, tests, diagnostics and releases.
 
-## Privacy and risk
-
-No telemetry. Settings stay in local files on the TV; the only network requests are weather
-(Open-Meteo, OpenStreetMap). As Home, Lounge keeps a short local log of which apps opened and
-closed and when (`/var/lib/lounge/history.log`, the newest 400 lines), so a problem can be
-traced; it never leaves the TV, and deleting the file clears it. Lounge runs on rooted TVs: every change it makes can be undone, but
-rooting is your call, and Lounge comes without warranty (see the [license](license)).
-
 ## Credits
 
-A fork of [lg-luma](https://github.com/ecklf/lg-luma) by ecklf and contributors (MIT, notice kept in
-[license](license)). Not affiliated with LG, Apple or any app brand shown.
+A fork of [lg-luma](https://github.com/ecklf/lg-luma) by ecklf and contributors (MIT, notice kept
+in the [license](license)). Not affiliated with LG, Apple or any app brand shown.
