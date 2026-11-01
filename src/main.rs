@@ -1,4 +1,10 @@
 mod app_artwork;
+#[path = "app-subscription.rs"]
+#[cfg_attr(
+    not(all(feature = "webos", target_os = "linux", target_arch = "arm")),
+    allow(dead_code)
+)]
+mod app_subscription;
 mod avatars;
 mod branding;
 mod clock;
@@ -485,6 +491,43 @@ fn run() -> Result<(), String> {
     } else {
         None
     };
+    // The staged Home (webOS 10 and 11) registers through a root helper that dies with the
+    // thread starting it: from here, the main thread, which lives as long as Lounge.
+    let staged_registration = match (&lifecycle_sender, platform::home_role()) {
+        (Some((lifecycle_type, _)), Some(platform::HomeRole::Staged)) => {
+            let lifecycle_type = *lifecycle_type;
+            let pusher = |sender: sdl2::event::EventSender| {
+                move |event: platform::Lifecycle| {
+                    let _ = sender.push_event(Event::User {
+                        timestamp: 0,
+                        window_id: 0,
+                        type_: lifecycle_type,
+                        code: match event {
+                            platform::Lifecycle::Relaunch => 1,
+                            platform::Lifecycle::Close => 2,
+                        },
+                        data1: std::ptr::null_mut(),
+                        data2: std::ptr::null_mut(),
+                    });
+                }
+            };
+            let on_message = pusher(sdl.event()?.event_sender());
+            let close = pusher(sdl.event()?.event_sender());
+            match platform::register_staged_home(on_message, move || {
+                close(platform::Lifecycle::Close)
+            }) {
+                Ok(subscription) => {
+                    platform::status("home lifecycle (registerNativeApp, staged Home): on");
+                    Some(subscription)
+                }
+                Err(error) => {
+                    platform::status(&format!("home lifecycle (staged Home): {error}"));
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
     // Each stream waits for the bus to take it (~15 ms each, ~75 ms together on the TV): on a
     // worker, so the first frame does not wait for them. Their events reach the loop as SDL
     // events whenever they start.
@@ -592,6 +635,8 @@ fn run() -> Result<(), String> {
         presence,
         home_type,
         lifecycle,
+        staged_registration,
+        foreground: platform::ForegroundCheck::default(),
         healthy_at: None,
         log_events,
         frame_log,
@@ -642,6 +687,10 @@ struct Shell {
     home_type: u32,
     /// The SDL event type sam's lifecycle events arrive as, as Home.
     lifecycle: Option<u32>,
+    /// The staged Home's registration with sam (webOS 10 and 11), and whether its last relaunch
+    /// reached the screen (`platform::ForegroundCheck`).
+    staged_registration: Option<app_subscription::AppSubscription>,
+    foreground: platform::ForegroundCheck,
     /// As Home: when this run counts as healthy (see `crash_guard`), once its first frame is up.
     healthy_at: Option<Instant>,
     log_events: bool,
@@ -855,6 +904,10 @@ impl Shell {
         if script_owns_input && external_input {
             return;
         }
+        // Remote input reached Lounge: a relaunch came to the front.
+        if matches!(event, Event::KeyDown { .. }) {
+            self.foreground.confirmed();
+        }
         let mut pending = vec![];
         // Debug log only (stderr is /dev/null unless /tmp/lounge-debug): which
         // key codes the TV remote really sends.
@@ -907,6 +960,10 @@ impl Shell {
                     // Home opened while this run is resident: to the front at once.
                     // SAFETY: the window outlives the event loop.
                     unsafe { sdl2::sys::SDL_RaiseWindow(self.window.raw()) };
+                    if self.staged_registration.is_some() {
+                        self.foreground
+                            .relaunched(Instant::now(), self.presence.in_front());
+                    }
                     self.remote.press = None;
                     self.presence.raise();
                     self.state.dirty = true;
@@ -974,7 +1031,11 @@ impl Shell {
                         release_memory(&mut self.renderer, &mut self.preload);
                     }
                 }
-                WindowEvent::Shown | WindowEvent::Restored | WindowEvent::FocusGained => {
+                event @ (WindowEvent::Shown | WindowEvent::Restored | WindowEvent::FocusGained) => {
+                    // Only focus proves a relaunch reached the screen (SDL raises Shown itself).
+                    if matches!(event, WindowEvent::FocusGained) {
+                        self.foreground.confirmed();
+                    }
                     // One return fires all three events: act once, on the
                     // hidden-to-shown edge.
                     let returned = self.presence.show();
@@ -1193,6 +1254,17 @@ impl Shell {
                     &self.weather_service,
                 );
             }
+        }
+        // A relaunch of the staged Home never reached the screen: this firmware cannot bring it
+        // forward. Unregister for good (sam then starts Home afresh at each press, which works)
+        // and quit, so the Home press that failed opens a fresh one.
+        if self.foreground.failed(Instant::now()) {
+            platform::status("home lifecycle: a relaunch never reached the screen; unregistering");
+            let _ = std::fs::write(platform::HOME_LIFECYCLE_OFF, b"");
+            if let Some(registration) = self.staged_registration.take() {
+                registration.end();
+            }
+            self.running = false;
         }
         if self.healthy_at.is_some_and(|at| Instant::now() >= at) {
             self.healthy_at = None;
@@ -1415,6 +1487,9 @@ impl Shell {
             }
         }
         if let Some(at) = self.healthy_at {
+            due(after(at));
+        }
+        if let Some(at) = self.foreground.deadline() {
             due(after(at));
         }
         if let Some(at) = self.replies.inventory_retry {

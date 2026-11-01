@@ -255,7 +255,13 @@ impl Lifecycle {
         if reply.get("returnValue").and_then(Value::as_bool) == Some(false) {
             return Some(Self::Close);
         }
-        match reply.get("event").and_then(Value::as_str)? {
+        // Lifecycle v2 (`registerApp`) names the event in `event`, v1 (`registerNativeApp`, the
+        // staged Home's) in `message`.
+        match reply
+            .get("event")
+            .or_else(|| reply.get("message"))
+            .and_then(Value::as_str)?
+        {
             "relaunch" => Some(Self::Relaunch),
             "close" => Some(Self::Close),
             _ => None,
@@ -285,6 +291,98 @@ pub fn register_home(lifecycle: impl Fn(Lifecycle) + Send + 'static) -> Result<(
             }
         },
     )
+}
+
+/// While this file exists the staged Home (webOS 10 and 11) does not register with sam and is
+/// started afresh at each Home press, as before. Lounge writes it when a relaunch never reached
+/// the screen (see `ForegroundCheck`), so a firmware where it cannot come forward keeps a Home
+/// that works; deleting it tries again.
+pub const HOME_LIFECYCLE_OFF: &str = "/var/lib/lounge/no-lifecycle";
+
+/// The staged Home's registration with sam (webOS 10 and 11). Its LS2 role is LG Home's app id,
+/// which Lounge's own connection cannot claim, so a root `luna-send -a com.webos.app.home` holds
+/// it (lifecycle v1) and passes sam's relaunch and close on. Does not wait for sam: until it
+/// answers, Home is unregistered as before. A registration sam accepted and then lost closes
+/// Lounge, so sam starts Home afresh. The helper dies with the thread that starts it: call this
+/// from the main thread.
+#[cfg(all(feature = "webos", target_os = "linux", target_arch = "arm"))]
+pub fn register_staged_home(
+    on_message: impl Fn(Lifecycle) + Send + 'static,
+    on_lost: impl FnOnce() + Send + 'static,
+) -> Result<crate::app_subscription::AppSubscription, String> {
+    if std::path::Path::new(HOME_LIFECYCLE_OFF).exists() {
+        return Err(format!("off ({HOME_LIFECYCLE_OFF} exists)"));
+    }
+    let mut command = std::process::Command::new("/usr/bin/luna-send");
+    command.args([
+        "-a",
+        HOME_ID,
+        "-i",
+        "luna://com.webos.applicationManager/registerNativeApp",
+        "{}",
+    ]);
+    crate::app_subscription::subscribe(
+        command,
+        std::time::Duration::from_secs(10),
+        move |reply| {
+            if let Some(event) = Lifecycle::from_reply(&reply) {
+                status(&format!("home lifecycle: {reply}"));
+                on_message(event);
+            }
+        },
+        move |accepted| {
+            if accepted {
+                on_lost();
+            }
+        },
+        crate::app_subscription::spawn_thread,
+    )
+}
+
+#[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
+pub fn register_staged_home(
+    _on_message: impl Fn(Lifecycle) + Send + 'static,
+    _on_lost: impl FnOnce() + Send + 'static,
+) -> Result<crate::app_subscription::AppSubscription, String> {
+    Err("Lifecycle registration needs an ARM webOS build".into())
+}
+
+/// Whether a relaunch actually brought the staged Home to the front: only the compositor's focus
+/// or remote input counts (SDL's show raises Shown by itself, whether or not the raise reached
+/// the screen).
+#[derive(Debug, Default)]
+pub struct ForegroundCheck {
+    deadline: Option<std::time::Instant>,
+}
+
+impl ForegroundCheck {
+    pub const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+    /// A relaunch arrived; `in_front`: already focused and visible, so nothing to check.
+    pub fn relaunched(&mut self, now: std::time::Instant, in_front: bool) {
+        if !in_front {
+            self.deadline = Some(now + Self::TIMEOUT);
+        }
+    }
+
+    /// Focus or remote input reached Lounge.
+    pub fn confirmed(&mut self) {
+        self.deadline = None;
+    }
+
+    /// When a pending check runs out, for the event loop's timer.
+    pub fn deadline(&self) -> Option<std::time::Instant> {
+        self.deadline
+    }
+
+    /// Whether a pending relaunch has failed by `now`; reported once.
+    pub fn failed(&mut self, now: std::time::Instant) -> bool {
+        let failed = self.deadline.is_some_and(|deadline| now >= deadline);
+        if failed {
+            self.deadline = None;
+        }
+        failed
+    }
 }
 
 #[cfg(not(all(feature = "webos", target_os = "linux", target_arch = "arm")))]
