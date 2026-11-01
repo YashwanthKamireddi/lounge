@@ -79,7 +79,9 @@ Needs an LG TV rooted with an elevated [Homebrew Channel](https://www.webosbrew.
 1. In Homebrew Channel › Settings › Extra repositories, add
    `https://github.com/YashwanthKamireddi/lounge/releases/latest/download/repo.json`.
 2. Install **Lounge** from Homebrew Channel. Updates arrive there too.
-3. In Lounge, turn on **Settings › General › Lounge as Home**.
+3. Open Lounge and choose **Make Home** when it asks. It asks once, only on a TV that can
+   have it; later, use **Settings › General › Lounge as Home**, which also says why when a TV
+   can't (Homebrew Channel without root, another launcher already Home, or an unsupported webOS).
 
 Or install `io.github.yashwanthkamireddi.lounge_1.1.0_arm.ipk` from
 [Releases](https://github.com/YashwanthKamireddi/lounge/releases/latest) with
