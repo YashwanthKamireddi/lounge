@@ -36,32 +36,23 @@ nothing else competing for attention, and no ads. Measured on an LG 65UQ801C0SB:
 
 ### What makes it different
 
-Most home screens for webOS, LG's included, are apps built on a web engine or a UI toolkit that
-stays loaded the whole time. Lounge is one small native program that talks straight to the TV's
-graphics chip, so there is less to load, less to keep in memory, and nothing between your button
-press and the screen. Once you open an app, Lounge lets go of its pictures and goes to sleep, so
-the app you watch has the TV to itself.
+Most home screens for webOS, LG's included, are built on a web engine or a UI toolkit that stays
+loaded the whole time. Lounge is a single native program, written in Rust, that draws straight to
+the TV's graphics chip with OpenGL ES. That one choice is where the speed comes from:
 
-<details>
-<summary><b>Under the hood</b>, for developers</summary>
+- **It answers on the next frame.** There is no browser engine or script runtime between a button
+  press and the screen, and nothing on the drawing thread ever waits for the disk or the network.
+- **It steps aside for what you watch.** Behind an app, Lounge frees its pictures and sleeps; webOS
+  wakes it only when something actually changes, so it never polls in the background.
+- **It is cheap to draw.** The glass is a single pass over pre-blurred pictures, only the parts of
+  the screen that changed are repainted, and every screen has a memory and drawing budget that the
+  build enforces.
+- **It starts in a blink.** Its shaders are kept compiled on the TV, its pictures are compressed
+  for the graphics chip, and everything else loads on background threads.
+- **It can't strand your TV.** It takes over Home with a reversible mount, not by changing LG's
+  firmware, and if it ever fails to start it hands Home back to LG by itself.
 
-- **Native Rust and OpenGL ES 2.0** on SDL, drawn straight to the TV's graphics plane. No web
-  engine, no JavaScript runtime.
-- **Event-driven, never polling:** webOS pushes app, input and window changes; worker threads
-  wake the loop the moment they finish; idle, it sleeps until its next timer.
-- **Cheap to draw:** glass is one shader pass over pre-blurred pictures, opaque tiles mask what
-  lies behind them, frames repaint only what changed, and per-screen fill and memory budgets are
-  checked in CI.
-- **Fast to start:** compiled shaders kept on the TV, ASTC-compressed pictures, decoding and
-  uploads on worker threads, never a file read on the drawing thread.
-- **Safe as Home:** a bind mount and one boot hook (nothing written to LG's firmware), a crash
-  guard that hands Home back to LG, and a plain-shell restore that works even if Lounge can't.
-- **One build for every TV:** a portable ARMv8 binary; how it becomes Home is chosen from what
-  each webOS version has.
-
-[development.md](development.md) has the full architecture.
-
-</details>
+How each part works is in [development.md](development.md).
 
 ## Features
 
