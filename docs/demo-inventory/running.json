@@ -1,33 +1,33 @@
 {
- "running": [
-  {
-   "webprocessid": "",
-   "defaultWindowType": "card",
-   "id": "netflix",
-   "processid": "2045",
-   "appType": "native_mvpd"
-  },
-  {
-   "webprocessid": "5029",
-   "defaultWindowType": "card",
-   "id": "youtube.leanback.v4",
-   "processid": "5029",
-   "appType": "web"
-  },
-  {
-   "webprocessid": "5029",
-   "defaultWindowType": "card",
-   "id": "com.disney.disneyplus-prod",
-   "processid": "5029",
-   "appType": "web"
-  },
-  {
-   "webprocessid": "5029",
-   "defaultWindowType": "card",
-   "id": "amazon",
-   "processid": "5029",
-   "appType": "web"
-  }
- ],
- "returnValue": true
+  "running": [
+    {
+      "webprocessid": "",
+      "defaultWindowType": "card",
+      "id": "com.disney.disneyplus-prod",
+      "processid": "2045",
+      "appType": "native_mvpd"
+    },
+    {
+      "webprocessid": "",
+      "defaultWindowType": "card",
+      "id": "com.spotify.tv.webos",
+      "processid": "2045",
+      "appType": "native_mvpd"
+    },
+    {
+      "webprocessid": "",
+      "defaultWindowType": "card",
+      "id": "tv.twitch.tv.starshot.lg",
+      "processid": "2045",
+      "appType": "native_mvpd"
+    },
+    {
+      "webprocessid": "",
+      "defaultWindowType": "card",
+      "id": "plex",
+      "processid": "2045",
+      "appType": "native_mvpd"
+    }
+  ],
+  "returnValue": true
 }

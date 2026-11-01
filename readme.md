@@ -6,12 +6,17 @@
 
 **A calm, tvOS-style home screen for LG TVs. Native, instant, and out of the way.**
 
-[![CI](https://github.com/YashwanthKamireddi/lounge/actions/workflows/ci.yml/badge.svg)](https://github.com/YashwanthKamireddi/lounge/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/YashwanthKamireddi/lounge?color=3b4590)](https://github.com/YashwanthKamireddi/lounge/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-3b4590.svg)](license)
-[![webOS](https://img.shields.io/badge/LG%20webOS-5%20to%2011-1a1f45.svg)](#compatibility)
+[![CI](https://img.shields.io/github/actions/workflow/status/YashwanthKamireddi/lounge/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/YashwanthKamireddi/lounge/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/YashwanthKamireddi/lounge?label=release&color=3b4590)](https://github.com/YashwanthKamireddi/lounge/releases/latest)
+[![webOS 5 to 11](https://img.shields.io/badge/LG%20webOS-5%20to%2011-a50034?logo=lg&logoColor=white)](#compatibility)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3b4590)](license)
 
-<img src="docs/readme/demo.gif" alt="Lounge in motion: the home screen's glass dock, moving through apps on an LG TV" width="100%">
+[![Rust](https://img.shields.io/badge/Rust-native-000000?logo=rust&logoColor=white)](development.md)
+[![OpenGL ES 2.0](https://img.shields.io/badge/OpenGL%20ES-2.0-5586a4?logo=opengl&logoColor=white)](development.md)
+[![SDL2](https://img.shields.io/badge/SDL-2-1d4979)](https://github.com/webosbrew/SDL-webOS)
+[![Homebrew Channel](https://img.shields.io/badge/Homebrew%20Channel-repo-6f42c1)](#install)
+
+<img src="docs/readme/demo.webp" alt="Lounge in motion: the glass dock, the app grid and the Inputs panel on an LG TV" width="100%">
 
 [Install](#install) · [Features](#features) · [Compatibility](#compatibility) · [Build](#build)
 

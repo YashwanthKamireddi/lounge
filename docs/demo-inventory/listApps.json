@@ -1,1305 +1,1303 @@
 {
- "subscribed": false,
- "returnValue": true,
- "apps": [
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Netflix",
-   "allowWidget": false,
-   "icon": "SMALL_APP_ICON.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/netflix",
-   "miniicon": "SMALL_APP_ICON.png",
-   "appsize": 94487874,
-   "version": "1.1.8",
-   "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
-   "hasPromotion": false,
-   "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
-   "requiredEULA": "generalTerms",
-   "previewMetadata": {
-    "targetEndpoint": "luna://netflix.service/discovery",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
-   },
-   "enableCBSPolicy": false,
-   "bgImage": "122783125938043207_launcher_background_image.png",
-   "imageForRecents": "RECENTS.png",
-   "binId": 1324108,
-   "internalInstallationOnly": true,
-   "main": "bin/netflix.bin",
-   "fileSystemType": "squashfs",
-   "supportPortraitMode": true,
-   "transparent": false,
-   "privilegedJail": true,
-   "inspectable": false,
-   "cloudgame_active": true,
-   "resolution": "1280x720",
-   "defaultWindowType": "card",
-   "trustLevel": "trusted",
-   "vendor": "LG",
-   "splashBackground": "Netflix_Splash.png",
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "type": "native",
-   "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
-   "supportTouchMode": "virtual",
-   "iconColor": "#ffffff",
-   "largeIcon": "LARGE_APP_ICON.png",
-   "lockable": true,
-   "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
-   "id": "netflix",
-   "CPApp": true,
-   "disableBackHistoryAPI": false,
-   "disallowPromotion": true,
-   "virtualTouch": {
-    "horizontalThreshold": 15
-   },
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "visible": true,
-   "removable": true,
-   "unmovable": false,
-   "spinnerOnLaunch": true,
-   "systemApp": false,
-   "supportQuickStart": true,
-   "installTime": 1789915645
-  },
-  {
-   "dialAppName": "YouTube",
-   "checkUpdateOnLaunch": false,
-   "title": "YouTube",
-   "icon": "icon.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "folderPath": "/media/developer/apps/usr/palm/applications/youtube.leanback.v4",
-   "supportGIP": true,
-   "transparent": false,
-   "extraLargeIcon": "extraLargeIcon.png",
-   "version": "0.5.3",
-   "hasPromotion": false,
-   "lockable": true,
-   "enableCBSPolicy": false,
-   "vendorExtension": {
-    "userAgent": "$browserName$/$browserVersion$ ($platformName$-$platformVersion$), _TV_O18/$firmwareVersion$ (LG, $modelName$, $networkMode$)",
-    "allowCrossDomain": true
-   },
-   "trustLevel": "netcast",
-   "bgImage": "bgImage.png",
-   "largeIcon": "largeIcon.png",
-   "inAppVoiceIntent": "{\"target\":{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}}",
-   "mediumLargeIcon": "mediumLargeIcon.png",
-   "main": "index.html",
-   "wolwowlan": true,
-   "imageForRecents": "imageForRecents.png",
-   "privilegedJail": true,
-   "inspectable": true,
-   "systemApp": false,
-   "defaultWindowType": "card",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "deeplinkingParams": "{\"contentTarget\":\"v=$CONTENTID\"}",
-   "type": "web",
-   "vendor": "webosbrew.org",
-   "iconColor": "#ff0000",
-   "visible": true,
-   "support360Content": true,
-   "inAppSearchParams": "{\"target\":\"q=$SEARCH_KEYWORD\"}",
-   "playIcon": "playIcon.png",
-   "disableBackHistoryAPI": true,
-   "id": "youtube.leanback.v4",
-   "spinnerOnLaunch": true,
-   "handlesRelaunch": false,
-   "supportQueryRouting": "{\"amazonAlexa\":true,\"googleAssistant\":true}",
-   "splashBackground": "splashBackground-v1.png",
-   "enablePigScreenSaver": false,
-   "noSplashOnLaunch": false,
-   "CPApp": true,
-   "removable": true,
-   "unmovable": false,
-   "supportQuickStart": true,
-   "installTime": 0
-  },
-  {
-   "title": "Prime Video",
-   "checkUpdateOnLaunch": true,
-   "transparent": false,
-   "icon": "aiv_white_80x80.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": true,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/amazon",
-   "miniicon": "aiv_white_80x80.png",
-   "appsize": 23843884,
-   "version": "7.5.11",
-   "trustLevel": "trusted",
-   "hasPromotion": false,
-   "inAppVoiceIntent": "{\"contentTarget\":{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}}",
-   "internalInstallationOnly": true,
-   "previewMetadata": {
-    "targetEndpoint": "luna://amazon.service/invoke",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
-   },
-   "enableCBSPolicy": false,
-   "bgImage": "amazon_preview.png",
-   "largeIcon": "aiv_white_130x130.png",
-   "binId": 1305325,
-   "requiredEULA": "generalTerms",
-   "fileSystemType": "squashfs",
-   "main": "bin/ignition",
-   "lockable": true,
-   "imageForRecents": "RECENTS.png",
-   "privilegedJail": true,
-   "inspectable": false,
-   "mediumLargeIcon": "112924936954669363_38385022_115x115_webos.png",
-   "resolution": "1920x1080",
-   "defaultWindowType": "card",
-   "discoveryPayloads": {
-    "appDiscoveryPayload": {
-     "capabilities": [
-      {
-       "interface": "Alexa.Matter.0x050A",
-       "version": "1.0",
-       "properties": {
-        "supported": [],
-        "proactivelyReported": true,
-        "retrievable": false
-       },
-       "type": "AlexaInterface",
-       "configurations": {
-        "matterVersion": "1.0",
-        "acceptedCommandList": [
-         "0x00"
-        ],
-        "clusterRevision": "0x01",
-        "featureMap": "0x00"
-       }
-      }
-     ]
-    }
-   },
-   "extraLargeIcon": "112924936982870109_38385022_192x192_webos.png",
-   "vendor": "LG",
-   "systemApp": false,
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "type": "native",
-   "virtualTouchHorizontalThreshold": 40,
-   "supportTouchMode": "virtual",
-   "splashBackground": "amazon_splash.png",
-   "spinnerOnLaunch": true,
-   "installTime": 1779501245,
-   "iconColor": "#0578ff",
-   "id": "amazon",
-   "CPApp": true,
-   "disableBackHistoryAPI": false,
-   "handlesRelaunch": true,
-   "virtualTouch": {
-    "enableFocusOnPress": true,
-    "horizontalThreshold": 40
-   },
-   "enablePigScreenSaver": false,
-   "supportQueryRouting": "{\"amazonAlexa\":true, \"googleAssistant\":false}",
-   "visible": true,
-   "removable": true,
-   "noSplashOnLaunch": false,
-   "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
-   "unmovable": false,
-   "supportQuickStart": true
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Disney+",
-   "allowWidget": false,
-   "icon": "SMALL_APP_ICON.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.disney.disneyplus-prod",
-   "miniicon": "SMALL_APP_ICON.png",
-   "appsize": 94487874,
-   "version": "1.1.8",
-   "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
-   "hasPromotion": false,
-   "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
-   "requiredEULA": "generalTerms",
-   "previewMetadata": {
-    "targetEndpoint": "luna://netflix.service/discovery",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
-   },
-   "enableCBSPolicy": false,
-   "bgImage": "122783125938043207_launcher_background_image.png",
-   "imageForRecents": "RECENTS.png",
-   "binId": 1324108,
-   "internalInstallationOnly": true,
-   "main": "bin/com.disney.disneyplus-prod.bin",
-   "fileSystemType": "squashfs",
-   "supportPortraitMode": true,
-   "transparent": false,
-   "privilegedJail": true,
-   "inspectable": false,
-   "cloudgame_active": true,
-   "resolution": "1280x720",
-   "defaultWindowType": "card",
-   "trustLevel": "trusted",
-   "vendor": "LG",
-   "splashBackground": "Netflix_Splash.png",
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "type": "native",
-   "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
-   "supportTouchMode": "virtual",
-   "iconColor": "#ffffff",
-   "largeIcon": "LARGE_APP_ICON.png",
-   "lockable": true,
-   "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
-   "id": "com.disney.disneyplus-prod",
-   "CPApp": true,
-   "disableBackHistoryAPI": false,
-   "disallowPromotion": true,
-   "virtualTouch": {
-    "horizontalThreshold": 15
-   },
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "visible": true,
-   "removable": true,
-   "unmovable": false,
-   "spinnerOnLaunch": true,
-   "systemApp": false,
-   "supportQuickStart": true,
-   "installTime": 1789915645
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Spotify",
-   "allowWidget": false,
-   "icon": "SMALL_APP_ICON.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.spotify.tv.webos",
-   "miniicon": "SMALL_APP_ICON.png",
-   "appsize": 94487874,
-   "version": "1.1.8",
-   "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
-   "hasPromotion": false,
-   "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
-   "requiredEULA": "generalTerms",
-   "previewMetadata": {
-    "targetEndpoint": "luna://netflix.service/discovery",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
-   },
-   "enableCBSPolicy": false,
-   "bgImage": "122783125938043207_launcher_background_image.png",
-   "imageForRecents": "RECENTS.png",
-   "binId": 1324108,
-   "internalInstallationOnly": true,
-   "main": "bin/com.spotify.tv.webos.bin",
-   "fileSystemType": "squashfs",
-   "supportPortraitMode": true,
-   "transparent": false,
-   "privilegedJail": true,
-   "inspectable": false,
-   "cloudgame_active": true,
-   "resolution": "1280x720",
-   "defaultWindowType": "card",
-   "trustLevel": "trusted",
-   "vendor": "LG",
-   "splashBackground": "Netflix_Splash.png",
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "type": "native",
-   "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
-   "supportTouchMode": "virtual",
-   "iconColor": "#ffffff",
-   "largeIcon": "LARGE_APP_ICON.png",
-   "lockable": true,
-   "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
-   "id": "com.spotify.tv.webos",
-   "CPApp": true,
-   "disableBackHistoryAPI": false,
-   "disallowPromotion": true,
-   "virtualTouch": {
-    "horizontalThreshold": 15
-   },
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "visible": true,
-   "removable": true,
-   "unmovable": false,
-   "spinnerOnLaunch": true,
-   "systemApp": false,
-   "supportQuickStart": true,
-   "installTime": 1789915645
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Twitch",
-   "icon": "TWITCH_APP_ICON.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/tv.twitch.tv.starshot.lg",
-   "transparent": false,
-   "appsize": 7604827,
-   "trustLevel": "default",
-   "hasPromotion": false,
-   "enableCBSPolicy": false,
-   "lockable": true,
-   "requiredEULA": "generalTerms",
-   "version": "11.0.0",
-   "bgImage": "superheroart_1920x1080.png",
-   "largeIcon": "TWITCH_APP_ICON.png",
-   "binId": 1167243,
-   "extraLargeIcon": "88729987682314794_37494902_192x192_webos.png",
-   "mediumLargeIcon": "88729987650747075_37494902_115x115_webos.png",
-   "main": "index.html",
-   "visible": true,
-   "systemApp": false,
-   "privilegedJail": false,
-   "inspectable": false,
-   "resolution": "1920x1080",
-   "defaultWindowType": "card",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "iconColor": "#9146ff",
-   "type": "web",
-   "vendor": "Twitch",
-   "splashBackground": "splash.png",
-   "deeplinkingParams": "",
-   "appDescription": "Live Streaming: watch Fortnite, PUBG & LOL",
-   "spinnerOnLaunch": true,
-   "disableBackHistoryAPI": false,
-   "id": "tv.twitch.tv.starshot.lg",
-   "installTime": 1728487598,
-   "handlesRelaunch": false,
-   "noSplashOnLaunch": false,
-   "CPApp": false,
-   "removable": true,
-   "unmovable": false
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Plex",
-   "allowWidget": false,
-   "icon": "SMALL_APP_ICON.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/plex",
-   "miniicon": "SMALL_APP_ICON.png",
-   "appsize": 94487874,
-   "version": "1.1.8",
-   "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
-   "hasPromotion": false,
-   "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
-   "requiredEULA": "generalTerms",
-   "previewMetadata": {
-    "targetEndpoint": "luna://netflix.service/discovery",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
-   },
-   "enableCBSPolicy": false,
-   "bgImage": "122783125938043207_launcher_background_image.png",
-   "imageForRecents": "RECENTS.png",
-   "binId": 1324108,
-   "internalInstallationOnly": true,
-   "main": "bin/plex.bin",
-   "fileSystemType": "squashfs",
-   "supportPortraitMode": true,
-   "transparent": false,
-   "privilegedJail": true,
-   "inspectable": false,
-   "cloudgame_active": true,
-   "resolution": "1280x720",
-   "defaultWindowType": "card",
-   "trustLevel": "trusted",
-   "vendor": "LG",
-   "splashBackground": "Netflix_Splash.png",
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "type": "native",
-   "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
-   "supportTouchMode": "virtual",
-   "iconColor": "#ffffff",
-   "largeIcon": "LARGE_APP_ICON.png",
-   "lockable": true,
-   "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
-   "id": "plex",
-   "CPApp": true,
-   "disableBackHistoryAPI": false,
-   "disallowPromotion": true,
-   "virtualTouch": {
-    "horizontalThreshold": 15
-   },
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "visible": true,
-   "removable": true,
-   "unmovable": false,
-   "spinnerOnLaunch": true,
-   "systemApp": false,
-   "supportQuickStart": true,
-   "installTime": 1789915645
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Crunchyroll",
-   "allowWidget": false,
-   "icon": "SMALL_APP_ICON.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.crunchyroll.webos",
-   "miniicon": "SMALL_APP_ICON.png",
-   "appsize": 94487874,
-   "version": "1.1.8",
-   "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
-   "hasPromotion": false,
-   "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
-   "requiredEULA": "generalTerms",
-   "previewMetadata": {
-    "targetEndpoint": "luna://netflix.service/discovery",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
-   },
-   "enableCBSPolicy": false,
-   "bgImage": "122783125938043207_launcher_background_image.png",
-   "imageForRecents": "RECENTS.png",
-   "binId": 1324108,
-   "internalInstallationOnly": true,
-   "main": "bin/com.crunchyroll.webos.bin",
-   "fileSystemType": "squashfs",
-   "supportPortraitMode": true,
-   "transparent": false,
-   "privilegedJail": true,
-   "inspectable": false,
-   "cloudgame_active": true,
-   "resolution": "1280x720",
-   "defaultWindowType": "card",
-   "trustLevel": "trusted",
-   "vendor": "LG",
-   "splashBackground": "Netflix_Splash.png",
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "type": "native",
-   "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
-   "supportTouchMode": "virtual",
-   "iconColor": "#ffffff",
-   "largeIcon": "LARGE_APP_ICON.png",
-   "lockable": true,
-   "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
-   "id": "com.crunchyroll.webos",
-   "CPApp": true,
-   "disableBackHistoryAPI": false,
-   "disallowPromotion": true,
-   "virtualTouch": {
-    "horizontalThreshold": 15
-   },
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "visible": true,
-   "removable": true,
-   "unmovable": false,
-   "spinnerOnLaunch": true,
-   "systemApp": false,
-   "supportQuickStart": true,
-   "installTime": 1789915645
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Paramount+",
-   "allowWidget": false,
-   "icon": "SMALL_APP_ICON.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.pplus.webapp.prod-intl",
-   "miniicon": "SMALL_APP_ICON.png",
-   "appsize": 94487874,
-   "version": "1.1.8",
-   "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
-   "hasPromotion": false,
-   "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
-   "requiredEULA": "generalTerms",
-   "previewMetadata": {
-    "targetEndpoint": "luna://netflix.service/discovery",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
-   },
-   "enableCBSPolicy": false,
-   "bgImage": "122783125938043207_launcher_background_image.png",
-   "imageForRecents": "RECENTS.png",
-   "binId": 1324108,
-   "internalInstallationOnly": true,
-   "main": "bin/com.pplus.webapp.prod-intl.bin",
-   "fileSystemType": "squashfs",
-   "supportPortraitMode": true,
-   "transparent": false,
-   "privilegedJail": true,
-   "inspectable": false,
-   "cloudgame_active": true,
-   "resolution": "1280x720",
-   "defaultWindowType": "card",
-   "trustLevel": "trusted",
-   "vendor": "LG",
-   "splashBackground": "Netflix_Splash.png",
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "type": "native",
-   "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
-   "supportTouchMode": "virtual",
-   "iconColor": "#ffffff",
-   "largeIcon": "LARGE_APP_ICON.png",
-   "lockable": true,
-   "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
-   "id": "com.pplus.webapp.prod-intl",
-   "CPApp": true,
-   "disableBackHistoryAPI": false,
-   "disallowPromotion": true,
-   "virtualTouch": {
-    "horizontalThreshold": 15
-   },
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "visible": true,
-   "removable": true,
-   "unmovable": false,
-   "spinnerOnLaunch": true,
-   "systemApp": false,
-   "supportQuickStart": true,
-   "installTime": 1789915645
-  },
-  {
-   "title": "Web Browser",
-   "sysAssetsBasePath": "assets",
-   "checkUpdateOnLaunch": true,
-   "icon": "assets/hd1080/webbrowser_icon.png",
-   "tileSize": "normal",
-   "mimeTypes": [
+  "subscribed": false,
+  "returnValue": true,
+  "apps": [
     {
-     "extension": "html",
-     "mime": "text/html",
-     "stream": true
+      "checkUpdateOnLaunch": true,
+      "title": "Netflix",
+      "allowWidget": false,
+      "icon": "SMALL_APP_ICON.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/netflix",
+      "miniicon": "SMALL_APP_ICON.png",
+      "appsize": 94487874,
+      "version": "1.1.8",
+      "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
+      "hasPromotion": false,
+      "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
+      "requiredEULA": "generalTerms",
+      "previewMetadata": {
+        "targetEndpoint": "luna://netflix.service/discovery",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
+      },
+      "enableCBSPolicy": false,
+      "bgImage": "122783125938043207_launcher_background_image.png",
+      "imageForRecents": "RECENTS.png",
+      "binId": 1324108,
+      "internalInstallationOnly": true,
+      "main": "bin/netflix.bin",
+      "fileSystemType": "squashfs",
+      "supportPortraitMode": true,
+      "transparent": false,
+      "privilegedJail": true,
+      "inspectable": false,
+      "cloudgame_active": true,
+      "resolution": "1280x720",
+      "defaultWindowType": "card",
+      "trustLevel": "trusted",
+      "vendor": "LG",
+      "splashBackground": "Netflix_Splash.png",
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "type": "native",
+      "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
+      "supportTouchMode": "virtual",
+      "iconColor": "#ffffff",
+      "largeIcon": "LARGE_APP_ICON.png",
+      "lockable": true,
+      "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
+      "id": "netflix",
+      "CPApp": true,
+      "disableBackHistoryAPI": false,
+      "disallowPromotion": true,
+      "virtualTouch": {
+        "horizontalThreshold": 15
+      },
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "visible": true,
+      "removable": true,
+      "unmovable": false,
+      "spinnerOnLaunch": true,
+      "systemApp": false,
+      "supportQuickStart": true,
+      "installTime": 1789915645
     },
     {
-     "scheme": "http",
-     "stream": false
+      "dialAppName": "YouTube",
+      "checkUpdateOnLaunch": false,
+      "title": "YouTube",
+      "icon": "icon.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "folderPath": "/media/developer/apps/usr/palm/applications/youtube.leanback.v4",
+      "supportGIP": true,
+      "transparent": false,
+      "extraLargeIcon": "extraLargeIcon.png",
+      "version": "0.5.3",
+      "hasPromotion": false,
+      "lockable": true,
+      "enableCBSPolicy": false,
+      "vendorExtension": {
+        "userAgent": "$browserName$/$browserVersion$ ($platformName$-$platformVersion$), _TV_O18/$firmwareVersion$ (LG, $modelName$, $networkMode$)",
+        "allowCrossDomain": true
+      },
+      "trustLevel": "netcast",
+      "bgImage": "bgImage.png",
+      "largeIcon": "largeIcon.png",
+      "inAppVoiceIntent": "{\"target\":{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}}",
+      "mediumLargeIcon": "mediumLargeIcon.png",
+      "main": "index.html",
+      "wolwowlan": true,
+      "imageForRecents": "imageForRecents.png",
+      "privilegedJail": true,
+      "inspectable": true,
+      "systemApp": false,
+      "defaultWindowType": "card",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "deeplinkingParams": "{\"contentTarget\":\"v=$CONTENTID\"}",
+      "type": "web",
+      "vendor": "webosbrew.org",
+      "iconColor": "#ff0000",
+      "visible": true,
+      "support360Content": true,
+      "inAppSearchParams": "{\"target\":\"q=$SEARCH_KEYWORD\"}",
+      "playIcon": "playIcon.png",
+      "disableBackHistoryAPI": true,
+      "id": "youtube.leanback.v4",
+      "spinnerOnLaunch": true,
+      "handlesRelaunch": false,
+      "supportQueryRouting": "{\"amazonAlexa\":true,\"googleAssistant\":true}",
+      "splashBackground": "splashBackground-v1.png",
+      "enablePigScreenSaver": false,
+      "noSplashOnLaunch": false,
+      "CPApp": true,
+      "removable": true,
+      "unmovable": false,
+      "supportQuickStart": true,
+      "installTime": 0
     },
     {
-     "scheme": "https",
-     "stream": false
-    }
-   ],
-   "inAppSetting": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/mnt/otncabi/usr/palm/applications/com.webos.app.browser",
-   "useAllMouseButtons": true,
-   "requiredMemory": 160,
-   "transparent": false,
-   "closeOnRotation": false,
-   "hasPromotion": false,
-   "enableCBSPolicy": true,
-   "requiredEULA": "generalTerms",
-   "previewMetadata": {
-    "targetEndpoint": "luna://com.webos.service.browser/invoke",
-    "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL"
-   },
-   "version": "7.6.0",
-   "bgImage": "assets/hd1080/webbrowser_splash.png",
-   "systemApp": true,
-   "lockable": true,
-   "extraLargeIcon": "assets/hd1080/webbrowser_extra_large_icon.png",
-   "largeIcon": "assets/hd1080/webbrowser_large_icon.png",
-   "main": "chrome",
-   "supportPortraitMode": true,
-   "privilegedJail": false,
-   "inspectable": false,
-   "visible": true,
-   "defaultWindowType": "card",
-   "handleScreenRemoteKey": true,
-   "vendor": "LG Electronics, Inc.",
-   "deeplinkingParams": "{\"target\": \"$CONTENTID\"}",
-   "type": "native_builtin",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "iconColor": "#FFFFFF",
-   "supportTouchMode": "full",
-   "bootLaunchParams": {
-    "BGMode": "1"
-   },
-   "spinnerOnLaunch": true,
-   "installTime": 0,
-   "disableBackHistoryAPI": false,
-   "id": "com.webos.app.browser",
-   "CPApp": false,
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "splashBackground": "assets/hd1080/webbrowser_splash.png",
-   "removable": false,
-   "unmovable": false,
-   "trustLevel": "default"
-  },
-  {
-   "v8SnapshotFile": "snapshot_blob.bin",
-   "sysAssetsBasePath": "assets",
-   "checkUpdateOnLaunch": true,
-   "class": {
-    "hidden": false
-   },
-   "title": "Media Player",
-   "icon": "icon.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "useNativeScroll": true,
-   "closeOnRotation": false,
-   "folderPath": "/usr/palm/applications/com.webos.app.mediadiscovery",
-   "transparent": false,
-   "extraLargeIcon": "icon_mediadiscovery.png",
-   "trustLevel": "trusted",
-   "hasPromotion": false,
-   "lockable": true,
-   "enableCBSPolicy": false,
-   "version": "1.0.0",
-   "supportPortraitMode": true,
-   "systemApp": true,
-   "mediaExtension": {
-    "disableClearMediaPlayerOnDetach": true,
-    "supportPortraitMode": true,
-    "ums": {
-     "disableMediaPlayerManager": true,
-     "usesLegacyPreload": true
-    }
-   },
-   "bgImage": "assets/hd1080/photovideo_splash.png",
-   "main": "index.multi.html",
-   "visible": true,
-   "splashColor": "#6d6d7f",
-   "privilegedJail": false,
-   "inspectable": false,
-   "voiceControl": "manual",
-   "defaultWindowType": "card",
-   "handleScreenRemoteKey": true,
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "iconColor": "#ffffff",
-   "largeIcon": "icon.png",
-   "vendor": "LGE",
-   "type": "web",
-   "supportTouchMode": "full",
-   "splashBackground": "assets/hd1080/photovideo_splash.png",
-   "support360Content": true,
-   "spinnerOnLaunch": true,
-   "installTime": 0,
-   "disableBackHistoryAPI": true,
-   "CPApp": false,
-   "id": "com.webos.app.mediadiscovery",
-   "handlesRelaunch": true,
-   "noSplashOnLaunch": false,
-   "enablePigScreenSaver": false,
-   "removable": false,
-   "uiRevision": 2,
-   "usePrerendering": true,
-   "deeplinkingParams": "",
-   "unmovable": false,
-   "supportQuickStart": true
-  },
-  {
-   "sysAssetsBasePath": "asset",
-   "checkUpdateOnLaunch": true,
-   "title": "Apps",
-   "icon": "asset/hd1080/lgstore.png",
-   "tileSize": "normal",
-   "mimeTypes": [
+      "title": "Prime Video",
+      "checkUpdateOnLaunch": true,
+      "transparent": false,
+      "icon": "aiv_white_80x80.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": true,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/amazon",
+      "miniicon": "aiv_white_80x80.png",
+      "appsize": 23843884,
+      "version": "7.5.11",
+      "trustLevel": "trusted",
+      "hasPromotion": false,
+      "inAppVoiceIntent": "{\"contentTarget\":{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}}",
+      "internalInstallationOnly": true,
+      "previewMetadata": {
+        "targetEndpoint": "luna://amazon.service/invoke",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
+      },
+      "enableCBSPolicy": false,
+      "bgImage": "amazon_preview.png",
+      "largeIcon": "aiv_white_130x130.png",
+      "binId": 1305325,
+      "requiredEULA": "generalTerms",
+      "fileSystemType": "squashfs",
+      "main": "bin/ignition",
+      "lockable": true,
+      "imageForRecents": "RECENTS.png",
+      "privilegedJail": true,
+      "inspectable": false,
+      "mediumLargeIcon": "112924936954669363_38385022_115x115_webos.png",
+      "resolution": "1920x1080",
+      "defaultWindowType": "card",
+      "discoveryPayloads": {
+        "appDiscoveryPayload": {
+          "capabilities": [
+            {
+              "interface": "Alexa.Matter.0x050A",
+              "version": "1.0",
+              "properties": {
+                "supported": [],
+                "proactivelyReported": true,
+                "retrievable": false
+              },
+              "type": "AlexaInterface",
+              "configurations": {
+                "matterVersion": "1.0",
+                "acceptedCommandList": ["0x00"],
+                "clusterRevision": "0x01",
+                "featureMap": "0x00"
+              }
+            }
+          ]
+        }
+      },
+      "extraLargeIcon": "112924936982870109_38385022_192x192_webos.png",
+      "vendor": "LG",
+      "systemApp": false,
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "type": "native",
+      "virtualTouchHorizontalThreshold": 40,
+      "supportTouchMode": "virtual",
+      "splashBackground": "amazon_splash.png",
+      "spinnerOnLaunch": true,
+      "installTime": 1779501245,
+      "iconColor": "#0578ff",
+      "id": "amazon",
+      "CPApp": true,
+      "disableBackHistoryAPI": false,
+      "handlesRelaunch": true,
+      "virtualTouch": {
+        "enableFocusOnPress": true,
+        "horizontalThreshold": 40
+      },
+      "enablePigScreenSaver": false,
+      "supportQueryRouting": "{\"amazonAlexa\":true, \"googleAssistant\":false}",
+      "visible": true,
+      "removable": true,
+      "noSplashOnLaunch": false,
+      "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
+      "unmovable": false,
+      "supportQuickStart": true
+    },
     {
-     "mime": "application/vnd.lge.appstore",
-     "stream": false
+      "checkUpdateOnLaunch": true,
+      "title": "Disney+",
+      "allowWidget": false,
+      "icon": "SMALL_APP_ICON.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.disney.disneyplus-prod",
+      "miniicon": "SMALL_APP_ICON.png",
+      "appsize": 94487874,
+      "version": "1.1.8",
+      "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
+      "hasPromotion": false,
+      "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
+      "requiredEULA": "generalTerms",
+      "previewMetadata": {
+        "targetEndpoint": "luna://netflix.service/discovery",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
+      },
+      "enableCBSPolicy": false,
+      "bgImage": "122783125938043207_launcher_background_image.png",
+      "imageForRecents": "RECENTS.png",
+      "binId": 1324108,
+      "internalInstallationOnly": true,
+      "main": "bin/com.disney.disneyplus-prod.bin",
+      "fileSystemType": "squashfs",
+      "supportPortraitMode": true,
+      "transparent": false,
+      "privilegedJail": true,
+      "inspectable": false,
+      "cloudgame_active": true,
+      "resolution": "1280x720",
+      "defaultWindowType": "card",
+      "trustLevel": "trusted",
+      "vendor": "LG",
+      "splashBackground": "Netflix_Splash.png",
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "type": "native",
+      "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
+      "supportTouchMode": "virtual",
+      "iconColor": "#ffffff",
+      "largeIcon": "LARGE_APP_ICON.png",
+      "lockable": true,
+      "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
+      "id": "com.disney.disneyplus-prod",
+      "CPApp": true,
+      "disableBackHistoryAPI": false,
+      "disallowPromotion": true,
+      "virtualTouch": {
+        "horizontalThreshold": 15
+      },
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "visible": true,
+      "removable": true,
+      "unmovable": false,
+      "spinnerOnLaunch": true,
+      "systemApp": false,
+      "supportQuickStart": true,
+      "installTime": 1789915645
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "Spotify",
+      "allowWidget": false,
+      "icon": "SMALL_APP_ICON.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.spotify.tv.webos",
+      "miniicon": "SMALL_APP_ICON.png",
+      "appsize": 94487874,
+      "version": "1.1.8",
+      "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
+      "hasPromotion": false,
+      "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
+      "requiredEULA": "generalTerms",
+      "previewMetadata": {
+        "targetEndpoint": "luna://netflix.service/discovery",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
+      },
+      "enableCBSPolicy": false,
+      "bgImage": "122783125938043207_launcher_background_image.png",
+      "imageForRecents": "RECENTS.png",
+      "binId": 1324108,
+      "internalInstallationOnly": true,
+      "main": "bin/com.spotify.tv.webos.bin",
+      "fileSystemType": "squashfs",
+      "supportPortraitMode": true,
+      "transparent": false,
+      "privilegedJail": true,
+      "inspectable": false,
+      "cloudgame_active": true,
+      "resolution": "1280x720",
+      "defaultWindowType": "card",
+      "trustLevel": "trusted",
+      "vendor": "LG",
+      "splashBackground": "Netflix_Splash.png",
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "type": "native",
+      "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
+      "supportTouchMode": "virtual",
+      "iconColor": "#ffffff",
+      "largeIcon": "LARGE_APP_ICON.png",
+      "lockable": true,
+      "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
+      "id": "com.spotify.tv.webos",
+      "CPApp": true,
+      "disableBackHistoryAPI": false,
+      "disallowPromotion": true,
+      "virtualTouch": {
+        "horizontalThreshold": 15
+      },
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "visible": true,
+      "removable": true,
+      "unmovable": false,
+      "spinnerOnLaunch": true,
+      "systemApp": false,
+      "supportQuickStart": true,
+      "installTime": 1789915645
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "Twitch",
+      "icon": "TWITCH_APP_ICON.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/tv.twitch.tv.starshot.lg",
+      "transparent": false,
+      "appsize": 7604827,
+      "trustLevel": "default",
+      "hasPromotion": false,
+      "enableCBSPolicy": false,
+      "lockable": true,
+      "requiredEULA": "generalTerms",
+      "version": "11.0.0",
+      "bgImage": "superheroart_1920x1080.png",
+      "largeIcon": "TWITCH_APP_ICON.png",
+      "binId": 1167243,
+      "extraLargeIcon": "88729987682314794_37494902_192x192_webos.png",
+      "mediumLargeIcon": "88729987650747075_37494902_115x115_webos.png",
+      "main": "index.html",
+      "visible": true,
+      "systemApp": false,
+      "privilegedJail": false,
+      "inspectable": false,
+      "resolution": "1920x1080",
+      "defaultWindowType": "card",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "iconColor": "#9146ff",
+      "type": "web",
+      "vendor": "Twitch",
+      "splashBackground": "splash.png",
+      "deeplinkingParams": "",
+      "appDescription": "Live Streaming: watch Fortnite, PUBG & LOL",
+      "spinnerOnLaunch": true,
+      "disableBackHistoryAPI": false,
+      "id": "tv.twitch.tv.starshot.lg",
+      "installTime": 1728487598,
+      "handlesRelaunch": false,
+      "noSplashOnLaunch": false,
+      "CPApp": false,
+      "removable": true,
+      "unmovable": false
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "Plex",
+      "allowWidget": false,
+      "icon": "SMALL_APP_ICON.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/plex",
+      "miniicon": "SMALL_APP_ICON.png",
+      "appsize": 94487874,
+      "version": "1.1.8",
+      "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
+      "hasPromotion": false,
+      "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
+      "requiredEULA": "generalTerms",
+      "previewMetadata": {
+        "targetEndpoint": "luna://netflix.service/discovery",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
+      },
+      "enableCBSPolicy": false,
+      "bgImage": "122783125938043207_launcher_background_image.png",
+      "imageForRecents": "RECENTS.png",
+      "binId": 1324108,
+      "internalInstallationOnly": true,
+      "main": "bin/plex.bin",
+      "fileSystemType": "squashfs",
+      "supportPortraitMode": true,
+      "transparent": false,
+      "privilegedJail": true,
+      "inspectable": false,
+      "cloudgame_active": true,
+      "resolution": "1280x720",
+      "defaultWindowType": "card",
+      "trustLevel": "trusted",
+      "vendor": "LG",
+      "splashBackground": "Netflix_Splash.png",
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "type": "native",
+      "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
+      "supportTouchMode": "virtual",
+      "iconColor": "#ffffff",
+      "largeIcon": "LARGE_APP_ICON.png",
+      "lockable": true,
+      "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
+      "id": "plex",
+      "CPApp": true,
+      "disableBackHistoryAPI": false,
+      "disallowPromotion": true,
+      "virtualTouch": {
+        "horizontalThreshold": 15
+      },
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "visible": true,
+      "removable": true,
+      "unmovable": false,
+      "spinnerOnLaunch": true,
+      "systemApp": false,
+      "supportQuickStart": true,
+      "installTime": 1789915645
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "Crunchyroll",
+      "allowWidget": false,
+      "icon": "SMALL_APP_ICON.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.crunchyroll.webos",
+      "miniicon": "SMALL_APP_ICON.png",
+      "appsize": 94487874,
+      "version": "1.1.8",
+      "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
+      "hasPromotion": false,
+      "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
+      "requiredEULA": "generalTerms",
+      "previewMetadata": {
+        "targetEndpoint": "luna://netflix.service/discovery",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
+      },
+      "enableCBSPolicy": false,
+      "bgImage": "122783125938043207_launcher_background_image.png",
+      "imageForRecents": "RECENTS.png",
+      "binId": 1324108,
+      "internalInstallationOnly": true,
+      "main": "bin/com.crunchyroll.webos.bin",
+      "fileSystemType": "squashfs",
+      "supportPortraitMode": true,
+      "transparent": false,
+      "privilegedJail": true,
+      "inspectable": false,
+      "cloudgame_active": true,
+      "resolution": "1280x720",
+      "defaultWindowType": "card",
+      "trustLevel": "trusted",
+      "vendor": "LG",
+      "splashBackground": "Netflix_Splash.png",
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "type": "native",
+      "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
+      "supportTouchMode": "virtual",
+      "iconColor": "#ffffff",
+      "largeIcon": "LARGE_APP_ICON.png",
+      "lockable": true,
+      "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
+      "id": "com.crunchyroll.webos",
+      "CPApp": true,
+      "disableBackHistoryAPI": false,
+      "disallowPromotion": true,
+      "virtualTouch": {
+        "horizontalThreshold": 15
+      },
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "visible": true,
+      "removable": true,
+      "unmovable": false,
+      "spinnerOnLaunch": true,
+      "systemApp": false,
+      "supportQuickStart": true,
+      "installTime": 1789915645
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "Paramount+",
+      "allowWidget": false,
+      "icon": "SMALL_APP_ICON.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/media/cryptofs/apps/usr/palm/applications/com.pplus.webapp.prod-intl",
+      "miniicon": "SMALL_APP_ICON.png",
+      "appsize": 94487874,
+      "version": "1.1.8",
+      "extraLargeIcon": "122783125893124149_21790820472215287large_app_icon_192x192.png",
+      "hasPromotion": false,
+      "inAppVoiceIntent": "{\"intent\":\"$INTENT\",\"intentParam\":\"$INTENT_PARAM\",\"languageCode\":\"$LANG_CODE\"}",
+      "requiredEULA": "generalTerms",
+      "previewMetadata": {
+        "targetEndpoint": "luna://netflix.service/discovery",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL_STOREAPP"
+      },
+      "enableCBSPolicy": false,
+      "bgImage": "122783125938043207_launcher_background_image.png",
+      "imageForRecents": "RECENTS.png",
+      "binId": 1324108,
+      "internalInstallationOnly": true,
+      "main": "bin/com.pplus.webapp.prod-intl.bin",
+      "fileSystemType": "squashfs",
+      "supportPortraitMode": true,
+      "transparent": false,
+      "privilegedJail": true,
+      "inspectable": false,
+      "cloudgame_active": true,
+      "resolution": "1280x720",
+      "defaultWindowType": "card",
+      "trustLevel": "trusted",
+      "vendor": "LG",
+      "splashBackground": "Netflix_Splash.png",
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "type": "native",
+      "mediumLargeIcon": "122783125869035153_21790820472215287large_app_icon_115x115.png",
+      "supportTouchMode": "virtual",
+      "iconColor": "#ffffff",
+      "largeIcon": "LARGE_APP_ICON.png",
+      "lockable": true,
+      "deeplinkingParams": "{\"contentTarget\":\"$CONTENTID\"}",
+      "id": "com.pplus.webapp.prod-intl",
+      "CPApp": true,
+      "disableBackHistoryAPI": false,
+      "disallowPromotion": true,
+      "virtualTouch": {
+        "horizontalThreshold": 15
+      },
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "visible": true,
+      "removable": true,
+      "unmovable": false,
+      "spinnerOnLaunch": true,
+      "systemApp": false,
+      "supportQuickStart": true,
+      "installTime": 1789915645
+    },
+    {
+      "title": "Web Browser",
+      "sysAssetsBasePath": "assets",
+      "checkUpdateOnLaunch": true,
+      "icon": "assets/hd1080/webbrowser_icon.png",
+      "tileSize": "normal",
+      "mimeTypes": [
+        {
+          "extension": "html",
+          "mime": "text/html",
+          "stream": true
+        },
+        {
+          "scheme": "http",
+          "stream": false
+        },
+        {
+          "scheme": "https",
+          "stream": false
+        }
+      ],
+      "inAppSetting": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/mnt/otncabi/usr/palm/applications/com.webos.app.browser",
+      "useAllMouseButtons": true,
+      "requiredMemory": 160,
+      "transparent": false,
+      "closeOnRotation": false,
+      "hasPromotion": false,
+      "enableCBSPolicy": true,
+      "requiredEULA": "generalTerms",
+      "previewMetadata": {
+        "targetEndpoint": "luna://com.webos.service.browser/invoke",
+        "sourceEndpoint": "@PREVIEW.ENDPOINT.SOURCE_LOCAL"
+      },
+      "version": "7.6.0",
+      "bgImage": "assets/hd1080/webbrowser_splash.png",
+      "systemApp": true,
+      "lockable": true,
+      "extraLargeIcon": "assets/hd1080/webbrowser_extra_large_icon.png",
+      "largeIcon": "assets/hd1080/webbrowser_large_icon.png",
+      "main": "chrome",
+      "supportPortraitMode": true,
+      "privilegedJail": false,
+      "inspectable": false,
+      "visible": true,
+      "defaultWindowType": "card",
+      "handleScreenRemoteKey": true,
+      "vendor": "LG Electronics, Inc.",
+      "deeplinkingParams": "{\"target\": \"$CONTENTID\"}",
+      "type": "native_builtin",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "iconColor": "#FFFFFF",
+      "supportTouchMode": "full",
+      "bootLaunchParams": {
+        "BGMode": "1"
+      },
+      "spinnerOnLaunch": true,
+      "installTime": 0,
+      "disableBackHistoryAPI": false,
+      "id": "com.webos.app.browser",
+      "CPApp": false,
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "splashBackground": "assets/hd1080/webbrowser_splash.png",
+      "removable": false,
+      "unmovable": false,
+      "trustLevel": "default"
+    },
+    {
+      "v8SnapshotFile": "snapshot_blob.bin",
+      "sysAssetsBasePath": "assets",
+      "checkUpdateOnLaunch": true,
+      "class": {
+        "hidden": false
+      },
+      "title": "Media Player",
+      "icon": "icon.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "useNativeScroll": true,
+      "closeOnRotation": false,
+      "folderPath": "/usr/palm/applications/com.webos.app.mediadiscovery",
+      "transparent": false,
+      "extraLargeIcon": "icon_mediadiscovery.png",
+      "trustLevel": "trusted",
+      "hasPromotion": false,
+      "lockable": true,
+      "enableCBSPolicy": false,
+      "version": "1.0.0",
+      "supportPortraitMode": true,
+      "systemApp": true,
+      "mediaExtension": {
+        "disableClearMediaPlayerOnDetach": true,
+        "supportPortraitMode": true,
+        "ums": {
+          "disableMediaPlayerManager": true,
+          "usesLegacyPreload": true
+        }
+      },
+      "bgImage": "assets/hd1080/photovideo_splash.png",
+      "main": "index.multi.html",
+      "visible": true,
+      "splashColor": "#6d6d7f",
+      "privilegedJail": false,
+      "inspectable": false,
+      "voiceControl": "manual",
+      "defaultWindowType": "card",
+      "handleScreenRemoteKey": true,
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "iconColor": "#ffffff",
+      "largeIcon": "icon.png",
+      "vendor": "LGE",
+      "type": "web",
+      "supportTouchMode": "full",
+      "splashBackground": "assets/hd1080/photovideo_splash.png",
+      "support360Content": true,
+      "spinnerOnLaunch": true,
+      "installTime": 0,
+      "disableBackHistoryAPI": true,
+      "CPApp": false,
+      "id": "com.webos.app.mediadiscovery",
+      "handlesRelaunch": true,
+      "noSplashOnLaunch": false,
+      "enablePigScreenSaver": false,
+      "removable": false,
+      "uiRevision": 2,
+      "usePrerendering": true,
+      "deeplinkingParams": "",
+      "unmovable": false,
+      "supportQuickStart": true
+    },
+    {
+      "sysAssetsBasePath": "asset",
+      "checkUpdateOnLaunch": true,
+      "title": "Apps",
+      "icon": "asset/hd1080/lgstore.png",
+      "tileSize": "normal",
+      "mimeTypes": [
+        {
+          "mime": "application/vnd.lge.appstore",
+          "stream": false
+        }
+      ],
+      "closeOnRotation": false,
+      "inAppSetting": false,
+      "folderPath": "/mnt/otncabi/usr/palm/applications/com.webos.app.discovery",
+      "transparent": false,
+      "trustLevel": "trusted",
+      "version": "7.0.22",
+      "titleVisible": false,
+      "enableCBSPolicy": true,
+      "requiredEULA": "generalTerms",
+      "vendorExtension": {
+        "allowCrossDomain": true
+      },
+      "lockable": true,
+      "bgImage": "asset/hd1080/lgstore_preview.png",
+      "systemApp": true,
+      "largeIcon": "asset/hd1080/lgstore_130x130.png",
+      "main": "index.html",
+      "hasPromotion": false,
+      "visible": true,
+      "privilegedJail": false,
+      "inspectable": false,
+      "voiceControl": "manual",
+      "defaultWindowType": "card",
+      "handleScreenRemoteKey": true,
+      "vendor": "LGE",
+      "type": "web",
+      "iconColor": "#ffffff",
+      "accessibility": {
+        "supportsAudioGuidance": false
+      },
+      "splashBackground": "asset/hd1080/lgstore_splash.png",
+      "supportTouchMode": "full",
+      "bgColor": "#ffffff",
+      "spinnerOnLaunch": true,
+      "mediumIcon": "asset/hd1080/lgstore_80x80.png",
+      "disableBackHistoryAPI": true,
+      "id": "com.webos.app.discovery",
+      "installTime": 0,
+      "handlesRelaunch": false,
+      "noSplashOnLaunch": false,
+      "deeplinkingParams": "",
+      "enablePigScreenSaver": false,
+      "removable": false,
+      "CPApp": false,
+      "unmovable": false,
+      "uiRevision": 2,
+      "supportQuickStart": true
+    },
+    {
+      "v8SnapshotFile": "snapshot_blob.bin",
+      "sysAssetsBasePath": "assets",
+      "checkUpdateOnLaunch": true,
+      "title": "Settings",
+      "icon": "icon.png",
+      "tileSize": "normal",
+      "inAppSetting": false,
+      "useNativeScroll": true,
+      "closeOnRotation": false,
+      "folderPath": "/usr/palm/applications/com.palm.app.settings",
+      "transparent": true,
+      "version": "4.0.1",
+      "trustLevel": "trusted",
+      "hasPromotion": false,
+      "lockable": false,
+      "enableCBSPolicy": false,
+      "supportPortraitMode": true,
+      "systemApp": true,
+      "main": "index.multi.html",
+      "visible": false,
+      "privilegedJail": false,
+      "inspectable": false,
+      "voiceControl": "manual",
+      "defaultWindowType": "overlay",
+      "vendor": "Palm",
+      "deeplinkingParams": "",
+      "type": "web",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "supportTouchMode": "full",
+      "spinnerOnLaunch": true,
+      "installTime": 0,
+      "disableBackHistoryAPI": true,
+      "id": "com.palm.app.settings",
+      "CPApp": false,
+      "handlesRelaunch": false,
+      "noSplashOnLaunch": true,
+      "removable": false,
+      "usePrerendering": true,
+      "uiRevision": 2,
+      "unmovable": false,
+      "supportQuickStart": false
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "Live TV",
+      "icon": "assets/icon_livetv_80.png",
+      "tileSize": "normal",
+      "inAppSetting": true,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/usr/palm/applications/com.webos.app.livetv",
+      "miniicon": "assets/icon_livetv_80.png",
+      "transparent": true,
+      "version": "1.0.0",
+      "trustLevel": "default",
+      "windowGroup": {
+        "name": "com.webos.app.livetv",
+        "owner": true,
+        "ownerInfo": {
+          "allowAnonymous": false,
+          "layers": [
+            {
+              "z": 1,
+              "name": "layer1"
+            },
+            {
+              "z": -2,
+              "name": "jcapLayer"
+            },
+            {
+              "z": -2,
+              "name": "jcap4kLayer"
+            },
+            {
+              "z": -5,
+              "name": "dataLayer0"
+            },
+            {
+              "z": -6,
+              "name": "dataLayer1"
+            },
+            {
+              "z": -7,
+              "name": "dataLayer2"
+            },
+            {
+              "z": -8,
+              "name": "dataLayer3"
+            },
+            {
+              "z": -9,
+              "name": "acrLayer"
+            },
+            {
+              "z": -10,
+              "name": "dmostLayer"
+            },
+            {
+              "z": -10,
+              "name": "teletextLayer"
+            },
+            {
+              "z": -15,
+              "name": "shoppingLayer"
+            },
+            {
+              "z": -16,
+              "name": "foodLayer"
+            },
+            {
+              "z": -17,
+              "name": "videoAcrLayer"
+            },
+            {
+              "z": -19,
+              "name": "ttxSubtitleLayer"
+            },
+            {
+              "z": -20,
+              "name": "subtitleLayer"
+            },
+            {
+              "z": -21,
+              "name": "ttmlSubtitleLayer"
+            }
+          ]
+        }
+      },
+      "lockable": false,
+      "enableCBSPolicy": false,
+      "hasPromotion": false,
+      "bgImage": "assets/livetv_splash.png",
+      "systemApp": true,
+      "largeIcon": "assets/icon_livetv_130.png",
+      "mediumLargeIcon": "assets/icon_antenna.png",
+      "main": "file:///usr/bin/com.webos.app.inputcommon",
+      "visible": false,
+      "privilegedJail": false,
+      "inspectable": false,
+      "defaultWindowType": "card",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "type": "native",
+      "splashBackground": "assets/livetv_splash.png",
+      "vendor": "LG Electronics",
+      "iconColor": "#6a7c73",
+      "bootLaunchParams": {
+        "boot": true
+      },
+      "spinnerOnLaunch": true,
+      "installTime": 0,
+      "disableBackHistoryAPI": true,
+      "id": "com.webos.app.livetv",
+      "CPApp": false,
+      "handlesRelaunch": false,
+      "noSplashOnLaunch": false,
+      "deeplinkingParams": "",
+      "removable": false,
+      "uiRevision": "2",
+      "unmovable": false,
+      "supportQuickStart": true
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "HDMI1",
+      "icon": "icon.png",
+      "tileSize": "normal",
+      "inAppSetting": true,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/usr/palm/applications/com.webos.app.hdmi1",
+      "miniicon": "assets/icon_HDMI_1_80.png",
+      "transparent": true,
+      "version": "1.0.0",
+      "trustLevel": "default",
+      "windowGroup": {
+        "name": "com.webos.app.hdmi1",
+        "owner": true,
+        "ownerInfo": {
+          "allowAnonymous": false,
+          "layers": [
+            {
+              "z": 1,
+              "name": "layer1"
+            },
+            {
+              "z": -2,
+              "name": "jcapLayer"
+            },
+            {
+              "z": -2,
+              "name": "jcap4kLayer"
+            },
+            {
+              "z": -5,
+              "name": "dataLayer0"
+            },
+            {
+              "z": -6,
+              "name": "dataLayer1"
+            },
+            {
+              "z": -7,
+              "name": "dataLayer2"
+            },
+            {
+              "z": -8,
+              "name": "dataLayer3"
+            },
+            {
+              "z": -9,
+              "name": "acrLayer"
+            },
+            {
+              "z": -10,
+              "name": "teletextLayer"
+            },
+            {
+              "z": -15,
+              "name": "shoppingLayer"
+            },
+            {
+              "z": -16,
+              "name": "foodLayer"
+            },
+            {
+              "z": -17,
+              "name": "videoAcrLayer"
+            },
+            {
+              "z": -19,
+              "name": "ttxSubtitleLayer"
+            },
+            {
+              "z": -20,
+              "name": "subtitleLayer"
+            },
+            {
+              "z": -21,
+              "name": "ttmlSubtitleLayer"
+            }
+          ]
+        }
+      },
+      "lockable": false,
+      "enableCBSPolicy": false,
+      "hasPromotion": false,
+      "bgImage": "assets/HDMI-1_splash.png",
+      "systemApp": true,
+      "largeIcon": "assets/icon_HDMI_1_130.png",
+      "mediumLargeIcon": "assets/icon_input_hdmi1.png",
+      "main": "file:///usr/bin/com.webos.app.inputcommon",
+      "visible": false,
+      "privilegedJail": false,
+      "inspectable": false,
+      "defaultWindowType": "card",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "type": "native",
+      "splashBackground": "assets/HDMI-1_splash.png",
+      "vendor": "LG Electronics",
+      "iconColor": "#6d757f",
+      "bootLaunchParams": {
+        "boot": true
+      },
+      "spinnerOnLaunch": true,
+      "installTime": 0,
+      "disableBackHistoryAPI": true,
+      "id": "com.webos.app.hdmi1",
+      "CPApp": false,
+      "handlesRelaunch": false,
+      "noSplashOnLaunch": false,
+      "deeplinkingParams": "",
+      "removable": false,
+      "supportTouchInputDevice": true,
+      "uiRevision": "2",
+      "unmovable": false,
+      "supportQuickStart": true
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "HDMI2",
+      "icon": "icon.png",
+      "tileSize": "normal",
+      "inAppSetting": true,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/usr/palm/applications/com.webos.app.hdmi2",
+      "miniicon": "assets/icon_HDMI_2_80.png",
+      "transparent": true,
+      "version": "1.0.0",
+      "trustLevel": "default",
+      "windowGroup": {
+        "name": "com.webos.app.hdmi2",
+        "owner": true,
+        "ownerInfo": {
+          "allowAnonymous": false,
+          "layers": [
+            {
+              "z": 1,
+              "name": "layer1"
+            },
+            {
+              "z": -2,
+              "name": "jcapLayer"
+            },
+            {
+              "z": -2,
+              "name": "jcap4kLayer"
+            },
+            {
+              "z": -5,
+              "name": "dataLayer0"
+            },
+            {
+              "z": -6,
+              "name": "dataLayer1"
+            },
+            {
+              "z": -7,
+              "name": "dataLayer2"
+            },
+            {
+              "z": -8,
+              "name": "dataLayer3"
+            },
+            {
+              "z": -9,
+              "name": "acrLayer"
+            },
+            {
+              "z": -10,
+              "name": "teletextLayer"
+            },
+            {
+              "z": -15,
+              "name": "shoppingLayer"
+            },
+            {
+              "z": -16,
+              "name": "foodLayer"
+            },
+            {
+              "z": -17,
+              "name": "videoAcrLayer"
+            },
+            {
+              "z": -19,
+              "name": "ttxSubtitleLayer"
+            },
+            {
+              "z": -20,
+              "name": "subtitleLayer"
+            },
+            {
+              "z": -21,
+              "name": "ttmlSubtitleLayer"
+            }
+          ]
+        }
+      },
+      "lockable": false,
+      "enableCBSPolicy": false,
+      "hasPromotion": false,
+      "bgImage": "assets/HDMI-2_splash.png",
+      "systemApp": true,
+      "largeIcon": "assets/icon_HDMI_2_130.png",
+      "mediumLargeIcon": "assets/icon_input_hdmi2.png",
+      "main": "file:///usr/bin/com.webos.app.inputcommon",
+      "visible": false,
+      "privilegedJail": false,
+      "inspectable": false,
+      "defaultWindowType": "card",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "type": "native",
+      "splashBackground": "assets/HDMI-2_splash.png",
+      "vendor": "LG Electronics",
+      "iconColor": "#6d757f",
+      "bootLaunchParams": {
+        "boot": true
+      },
+      "spinnerOnLaunch": true,
+      "installTime": 0,
+      "disableBackHistoryAPI": true,
+      "id": "com.webos.app.hdmi2",
+      "CPApp": false,
+      "handlesRelaunch": false,
+      "noSplashOnLaunch": false,
+      "deeplinkingParams": "",
+      "removable": false,
+      "supportTouchInputDevice": true,
+      "uiRevision": "2",
+      "unmovable": false,
+      "supportQuickStart": true
+    },
+    {
+      "checkUpdateOnLaunch": true,
+      "title": "HDMI3",
+      "icon": "icon.png",
+      "tileSize": "normal",
+      "inAppSetting": true,
+      "closeOnRotation": false,
+      "nativeLifeCycleInterfaceVersion": 2,
+      "folderPath": "/usr/palm/applications/com.webos.app.hdmi3",
+      "miniicon": "assets/icon_HDMI_3_80.png",
+      "transparent": true,
+      "version": "1.0.0",
+      "trustLevel": "default",
+      "windowGroup": {
+        "name": "com.webos.app.hdmi3",
+        "owner": true,
+        "ownerInfo": {
+          "allowAnonymous": false,
+          "layers": [
+            {
+              "z": 1,
+              "name": "layer1"
+            },
+            {
+              "z": -2,
+              "name": "jcapLayer"
+            },
+            {
+              "z": -2,
+              "name": "jcap4kLayer"
+            },
+            {
+              "z": -5,
+              "name": "dataLayer0"
+            },
+            {
+              "z": -6,
+              "name": "dataLayer1"
+            },
+            {
+              "z": -7,
+              "name": "dataLayer2"
+            },
+            {
+              "z": -8,
+              "name": "dataLayer3"
+            },
+            {
+              "z": -9,
+              "name": "acrLayer"
+            },
+            {
+              "z": -10,
+              "name": "teletextLayer"
+            },
+            {
+              "z": -15,
+              "name": "shoppingLayer"
+            },
+            {
+              "z": -16,
+              "name": "foodLayer"
+            },
+            {
+              "z": -17,
+              "name": "videoAcrLayer"
+            },
+            {
+              "z": -19,
+              "name": "ttxSubtitleLayer"
+            },
+            {
+              "z": -20,
+              "name": "subtitleLayer"
+            },
+            {
+              "z": -21,
+              "name": "ttmlSubtitleLayer"
+            }
+          ]
+        }
+      },
+      "lockable": false,
+      "enableCBSPolicy": false,
+      "hasPromotion": false,
+      "bgImage": "assets/HDMI-3_splash.png",
+      "systemApp": true,
+      "largeIcon": "assets/icon_HDMI_3_130.png",
+      "mediumLargeIcon": "assets/icon_input_hdmi3.png",
+      "main": "file:///usr/bin/com.webos.app.inputcommon",
+      "visible": false,
+      "privilegedJail": false,
+      "inspectable": false,
+      "defaultWindowType": "card",
+      "accessibility": {
+        "supportsAudioGuidance": true
+      },
+      "type": "native",
+      "splashBackground": "assets/HDMI-3_splash.png",
+      "vendor": "LG Electronics",
+      "iconColor": "#6d757f",
+      "bootLaunchParams": {
+        "boot": true
+      },
+      "spinnerOnLaunch": true,
+      "installTime": 0,
+      "disableBackHistoryAPI": true,
+      "id": "com.webos.app.hdmi3",
+      "CPApp": false,
+      "handlesRelaunch": false,
+      "noSplashOnLaunch": false,
+      "deeplinkingParams": "",
+      "removable": false,
+      "supportTouchInputDevice": true,
+      "uiRevision": "2",
+      "unmovable": false,
+      "supportQuickStart": true
     }
-   ],
-   "closeOnRotation": false,
-   "inAppSetting": false,
-   "folderPath": "/mnt/otncabi/usr/palm/applications/com.webos.app.discovery",
-   "transparent": false,
-   "trustLevel": "trusted",
-   "version": "7.0.22",
-   "titleVisible": false,
-   "enableCBSPolicy": true,
-   "requiredEULA": "generalTerms",
-   "vendorExtension": {
-    "allowCrossDomain": true
-   },
-   "lockable": true,
-   "bgImage": "asset/hd1080/lgstore_preview.png",
-   "systemApp": true,
-   "largeIcon": "asset/hd1080/lgstore_130x130.png",
-   "main": "index.html",
-   "hasPromotion": false,
-   "visible": true,
-   "privilegedJail": false,
-   "inspectable": false,
-   "voiceControl": "manual",
-   "defaultWindowType": "card",
-   "handleScreenRemoteKey": true,
-   "vendor": "LGE",
-   "type": "web",
-   "iconColor": "#ffffff",
-   "accessibility": {
-    "supportsAudioGuidance": false
-   },
-   "splashBackground": "asset/hd1080/lgstore_splash.png",
-   "supportTouchMode": "full",
-   "bgColor": "#ffffff",
-   "spinnerOnLaunch": true,
-   "mediumIcon": "asset/hd1080/lgstore_80x80.png",
-   "disableBackHistoryAPI": true,
-   "id": "com.webos.app.discovery",
-   "installTime": 0,
-   "handlesRelaunch": false,
-   "noSplashOnLaunch": false,
-   "deeplinkingParams": "",
-   "enablePigScreenSaver": false,
-   "removable": false,
-   "CPApp": false,
-   "unmovable": false,
-   "uiRevision": 2,
-   "supportQuickStart": true
-  },
-  {
-   "v8SnapshotFile": "snapshot_blob.bin",
-   "sysAssetsBasePath": "assets",
-   "checkUpdateOnLaunch": true,
-   "title": "Settings",
-   "icon": "icon.png",
-   "tileSize": "normal",
-   "inAppSetting": false,
-   "useNativeScroll": true,
-   "closeOnRotation": false,
-   "folderPath": "/usr/palm/applications/com.palm.app.settings",
-   "transparent": true,
-   "version": "4.0.1",
-   "trustLevel": "trusted",
-   "hasPromotion": false,
-   "lockable": false,
-   "enableCBSPolicy": false,
-   "supportPortraitMode": true,
-   "systemApp": true,
-   "main": "index.multi.html",
-   "visible": false,
-   "privilegedJail": false,
-   "inspectable": false,
-   "voiceControl": "manual",
-   "defaultWindowType": "overlay",
-   "vendor": "Palm",
-   "deeplinkingParams": "",
-   "type": "web",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "supportTouchMode": "full",
-   "spinnerOnLaunch": true,
-   "installTime": 0,
-   "disableBackHistoryAPI": true,
-   "id": "com.palm.app.settings",
-   "CPApp": false,
-   "handlesRelaunch": false,
-   "noSplashOnLaunch": true,
-   "removable": false,
-   "usePrerendering": true,
-   "uiRevision": 2,
-   "unmovable": false,
-   "supportQuickStart": false
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "Live TV",
-   "icon": "assets/icon_livetv_80.png",
-   "tileSize": "normal",
-   "inAppSetting": true,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/usr/palm/applications/com.webos.app.livetv",
-   "miniicon": "assets/icon_livetv_80.png",
-   "transparent": true,
-   "version": "1.0.0",
-   "trustLevel": "default",
-   "windowGroup": {
-    "name": "com.webos.app.livetv",
-    "owner": true,
-    "ownerInfo": {
-     "allowAnonymous": false,
-     "layers": [
-      {
-       "z": 1,
-       "name": "layer1"
-      },
-      {
-       "z": -2,
-       "name": "jcapLayer"
-      },
-      {
-       "z": -2,
-       "name": "jcap4kLayer"
-      },
-      {
-       "z": -5,
-       "name": "dataLayer0"
-      },
-      {
-       "z": -6,
-       "name": "dataLayer1"
-      },
-      {
-       "z": -7,
-       "name": "dataLayer2"
-      },
-      {
-       "z": -8,
-       "name": "dataLayer3"
-      },
-      {
-       "z": -9,
-       "name": "acrLayer"
-      },
-      {
-       "z": -10,
-       "name": "dmostLayer"
-      },
-      {
-       "z": -10,
-       "name": "teletextLayer"
-      },
-      {
-       "z": -15,
-       "name": "shoppingLayer"
-      },
-      {
-       "z": -16,
-       "name": "foodLayer"
-      },
-      {
-       "z": -17,
-       "name": "videoAcrLayer"
-      },
-      {
-       "z": -19,
-       "name": "ttxSubtitleLayer"
-      },
-      {
-       "z": -20,
-       "name": "subtitleLayer"
-      },
-      {
-       "z": -21,
-       "name": "ttmlSubtitleLayer"
-      }
-     ]
-    }
-   },
-   "lockable": false,
-   "enableCBSPolicy": false,
-   "hasPromotion": false,
-   "bgImage": "assets/livetv_splash.png",
-   "systemApp": true,
-   "largeIcon": "assets/icon_livetv_130.png",
-   "mediumLargeIcon": "assets/icon_antenna.png",
-   "main": "file:///usr/bin/com.webos.app.inputcommon",
-   "visible": false,
-   "privilegedJail": false,
-   "inspectable": false,
-   "defaultWindowType": "card",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "type": "native",
-   "splashBackground": "assets/livetv_splash.png",
-   "vendor": "LG Electronics",
-   "iconColor": "#6a7c73",
-   "bootLaunchParams": {
-    "boot": true
-   },
-   "spinnerOnLaunch": true,
-   "installTime": 0,
-   "disableBackHistoryAPI": true,
-   "id": "com.webos.app.livetv",
-   "CPApp": false,
-   "handlesRelaunch": false,
-   "noSplashOnLaunch": false,
-   "deeplinkingParams": "",
-   "removable": false,
-   "uiRevision": "2",
-   "unmovable": false,
-   "supportQuickStart": true
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "HDMI1",
-   "icon": "icon.png",
-   "tileSize": "normal",
-   "inAppSetting": true,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/usr/palm/applications/com.webos.app.hdmi1",
-   "miniicon": "assets/icon_HDMI_1_80.png",
-   "transparent": true,
-   "version": "1.0.0",
-   "trustLevel": "default",
-   "windowGroup": {
-    "name": "com.webos.app.hdmi1",
-    "owner": true,
-    "ownerInfo": {
-     "allowAnonymous": false,
-     "layers": [
-      {
-       "z": 1,
-       "name": "layer1"
-      },
-      {
-       "z": -2,
-       "name": "jcapLayer"
-      },
-      {
-       "z": -2,
-       "name": "jcap4kLayer"
-      },
-      {
-       "z": -5,
-       "name": "dataLayer0"
-      },
-      {
-       "z": -6,
-       "name": "dataLayer1"
-      },
-      {
-       "z": -7,
-       "name": "dataLayer2"
-      },
-      {
-       "z": -8,
-       "name": "dataLayer3"
-      },
-      {
-       "z": -9,
-       "name": "acrLayer"
-      },
-      {
-       "z": -10,
-       "name": "teletextLayer"
-      },
-      {
-       "z": -15,
-       "name": "shoppingLayer"
-      },
-      {
-       "z": -16,
-       "name": "foodLayer"
-      },
-      {
-       "z": -17,
-       "name": "videoAcrLayer"
-      },
-      {
-       "z": -19,
-       "name": "ttxSubtitleLayer"
-      },
-      {
-       "z": -20,
-       "name": "subtitleLayer"
-      },
-      {
-       "z": -21,
-       "name": "ttmlSubtitleLayer"
-      }
-     ]
-    }
-   },
-   "lockable": false,
-   "enableCBSPolicy": false,
-   "hasPromotion": false,
-   "bgImage": "assets/HDMI-1_splash.png",
-   "systemApp": true,
-   "largeIcon": "assets/icon_HDMI_1_130.png",
-   "mediumLargeIcon": "assets/icon_input_hdmi1.png",
-   "main": "file:///usr/bin/com.webos.app.inputcommon",
-   "visible": false,
-   "privilegedJail": false,
-   "inspectable": false,
-   "defaultWindowType": "card",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "type": "native",
-   "splashBackground": "assets/HDMI-1_splash.png",
-   "vendor": "LG Electronics",
-   "iconColor": "#6d757f",
-   "bootLaunchParams": {
-    "boot": true
-   },
-   "spinnerOnLaunch": true,
-   "installTime": 0,
-   "disableBackHistoryAPI": true,
-   "id": "com.webos.app.hdmi1",
-   "CPApp": false,
-   "handlesRelaunch": false,
-   "noSplashOnLaunch": false,
-   "deeplinkingParams": "",
-   "removable": false,
-   "supportTouchInputDevice": true,
-   "uiRevision": "2",
-   "unmovable": false,
-   "supportQuickStart": true
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "HDMI2",
-   "icon": "icon.png",
-   "tileSize": "normal",
-   "inAppSetting": true,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/usr/palm/applications/com.webos.app.hdmi2",
-   "miniicon": "assets/icon_HDMI_2_80.png",
-   "transparent": true,
-   "version": "1.0.0",
-   "trustLevel": "default",
-   "windowGroup": {
-    "name": "com.webos.app.hdmi2",
-    "owner": true,
-    "ownerInfo": {
-     "allowAnonymous": false,
-     "layers": [
-      {
-       "z": 1,
-       "name": "layer1"
-      },
-      {
-       "z": -2,
-       "name": "jcapLayer"
-      },
-      {
-       "z": -2,
-       "name": "jcap4kLayer"
-      },
-      {
-       "z": -5,
-       "name": "dataLayer0"
-      },
-      {
-       "z": -6,
-       "name": "dataLayer1"
-      },
-      {
-       "z": -7,
-       "name": "dataLayer2"
-      },
-      {
-       "z": -8,
-       "name": "dataLayer3"
-      },
-      {
-       "z": -9,
-       "name": "acrLayer"
-      },
-      {
-       "z": -10,
-       "name": "teletextLayer"
-      },
-      {
-       "z": -15,
-       "name": "shoppingLayer"
-      },
-      {
-       "z": -16,
-       "name": "foodLayer"
-      },
-      {
-       "z": -17,
-       "name": "videoAcrLayer"
-      },
-      {
-       "z": -19,
-       "name": "ttxSubtitleLayer"
-      },
-      {
-       "z": -20,
-       "name": "subtitleLayer"
-      },
-      {
-       "z": -21,
-       "name": "ttmlSubtitleLayer"
-      }
-     ]
-    }
-   },
-   "lockable": false,
-   "enableCBSPolicy": false,
-   "hasPromotion": false,
-   "bgImage": "assets/HDMI-2_splash.png",
-   "systemApp": true,
-   "largeIcon": "assets/icon_HDMI_2_130.png",
-   "mediumLargeIcon": "assets/icon_input_hdmi2.png",
-   "main": "file:///usr/bin/com.webos.app.inputcommon",
-   "visible": false,
-   "privilegedJail": false,
-   "inspectable": false,
-   "defaultWindowType": "card",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "type": "native",
-   "splashBackground": "assets/HDMI-2_splash.png",
-   "vendor": "LG Electronics",
-   "iconColor": "#6d757f",
-   "bootLaunchParams": {
-    "boot": true
-   },
-   "spinnerOnLaunch": true,
-   "installTime": 0,
-   "disableBackHistoryAPI": true,
-   "id": "com.webos.app.hdmi2",
-   "CPApp": false,
-   "handlesRelaunch": false,
-   "noSplashOnLaunch": false,
-   "deeplinkingParams": "",
-   "removable": false,
-   "supportTouchInputDevice": true,
-   "uiRevision": "2",
-   "unmovable": false,
-   "supportQuickStart": true
-  },
-  {
-   "checkUpdateOnLaunch": true,
-   "title": "HDMI3",
-   "icon": "icon.png",
-   "tileSize": "normal",
-   "inAppSetting": true,
-   "closeOnRotation": false,
-   "nativeLifeCycleInterfaceVersion": 2,
-   "folderPath": "/usr/palm/applications/com.webos.app.hdmi3",
-   "miniicon": "assets/icon_HDMI_3_80.png",
-   "transparent": true,
-   "version": "1.0.0",
-   "trustLevel": "default",
-   "windowGroup": {
-    "name": "com.webos.app.hdmi3",
-    "owner": true,
-    "ownerInfo": {
-     "allowAnonymous": false,
-     "layers": [
-      {
-       "z": 1,
-       "name": "layer1"
-      },
-      {
-       "z": -2,
-       "name": "jcapLayer"
-      },
-      {
-       "z": -2,
-       "name": "jcap4kLayer"
-      },
-      {
-       "z": -5,
-       "name": "dataLayer0"
-      },
-      {
-       "z": -6,
-       "name": "dataLayer1"
-      },
-      {
-       "z": -7,
-       "name": "dataLayer2"
-      },
-      {
-       "z": -8,
-       "name": "dataLayer3"
-      },
-      {
-       "z": -9,
-       "name": "acrLayer"
-      },
-      {
-       "z": -10,
-       "name": "teletextLayer"
-      },
-      {
-       "z": -15,
-       "name": "shoppingLayer"
-      },
-      {
-       "z": -16,
-       "name": "foodLayer"
-      },
-      {
-       "z": -17,
-       "name": "videoAcrLayer"
-      },
-      {
-       "z": -19,
-       "name": "ttxSubtitleLayer"
-      },
-      {
-       "z": -20,
-       "name": "subtitleLayer"
-      },
-      {
-       "z": -21,
-       "name": "ttmlSubtitleLayer"
-      }
-     ]
-    }
-   },
-   "lockable": false,
-   "enableCBSPolicy": false,
-   "hasPromotion": false,
-   "bgImage": "assets/HDMI-3_splash.png",
-   "systemApp": true,
-   "largeIcon": "assets/icon_HDMI_3_130.png",
-   "mediumLargeIcon": "assets/icon_input_hdmi3.png",
-   "main": "file:///usr/bin/com.webos.app.inputcommon",
-   "visible": false,
-   "privilegedJail": false,
-   "inspectable": false,
-   "defaultWindowType": "card",
-   "accessibility": {
-    "supportsAudioGuidance": true
-   },
-   "type": "native",
-   "splashBackground": "assets/HDMI-3_splash.png",
-   "vendor": "LG Electronics",
-   "iconColor": "#6d757f",
-   "bootLaunchParams": {
-    "boot": true
-   },
-   "spinnerOnLaunch": true,
-   "installTime": 0,
-   "disableBackHistoryAPI": true,
-   "id": "com.webos.app.hdmi3",
-   "CPApp": false,
-   "handlesRelaunch": false,
-   "noSplashOnLaunch": false,
-   "deeplinkingParams": "",
-   "removable": false,
-   "supportTouchInputDevice": true,
-   "uiRevision": "2",
-   "unmovable": false,
-   "supportQuickStart": true
-  }
- ]
+  ]
 }
