@@ -46,11 +46,16 @@ impl Replies {
                 self.prefetched = false;
                 scroll_preview::append(&mut inventory, test_extra_apps);
                 state.set_inventory(inventory, warning);
-                if self.initial_focus
-                    && state.focus == Target::Nav(0)
-                    && state.page == state::Page::Apps
-                {
-                    state.focus = state.first_content();
+                if self.initial_focus && state.page == state::Page::Apps {
+                    let first = state.first_content();
+                    if state.focus == Target::Nav(0) {
+                        state.focus = first;
+                    } else if let Some(state::Overlay::OfferHome { restore }) = &mut state.overlay
+                        && *restore == Target::Nav(0)
+                    {
+                        // The Make Home question came first: closing it lands on the first app.
+                        *restore = first;
+                    }
                 }
                 self.initial_focus = false;
             }
