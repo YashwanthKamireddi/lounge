@@ -280,10 +280,14 @@ for (const [brand, [top, bottom]] of Object.entries(surfaces)) {
 await generateVectorAssets();
 // LG's app list rounds an app's icon itself and expects it full-bleed and opaque, as the
 // store apps ship theirs: the icon drops the logo's own rounded tile (rounded twice, it read as a
-// smaller square inside LG's card) and the sofa fills more of it, as other apps' marks do.
+// smaller square inside LG's card) and the sofa fills more of it, as other apps' marks do. Its
+// room is the flat colour LG paints the card in (appinfo.json `iconColor`): the logo's gradient
+// darkens to near black at the edges, which showed as a dark square framed inside LG's card.
+const iconColor = JSON.parse(await fs.readFile(path.join(root, 'appinfo.json'), 'utf8')).iconColor;
 const appIcon = Buffer.from(
   (await fs.readFile(path.join(source, 'app-icon.svg'), 'utf8'))
     .replace('<g clip-path="url(#tile)">', '<g>')
+    .replace('fill="url(#room)"', `fill="${iconColor}"`)
     .replace('scale(1.1)', 'scale(1.32)'),
 );
 await sharp(appIcon, { density: 300 }).resize(80, 80).png().toFile(path.join(out, 'app-icon.png'));
