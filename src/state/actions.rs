@@ -263,15 +263,15 @@ impl State {
                 return vec![Effect::Save];
             }
             Target::Background(index) => {
-                // The cross-fade starts once the new pictures are on the GPU,
-                // from what shows now; a running fade finishes first.
-                let fading = matches!(self.previous_background, Some((_, Some(_))));
-                if self.preferences.background != BACKGROUNDS[index].0 && !fading {
-                    let shown = self.wallpaper().to_owned();
-                    self.previous_background = Some((shown, None));
-                }
-                self.preferences.background = BACKGROUNDS[index].0.into();
+                // The tile after the wallpapers sends one from the phone.
+                let Some(id) = self.backgrounds().get(index).map(|id| (*id).to_owned()) else {
+                    return self.open_phone(crate::companion::Kind::Wallpaper);
+                };
+                self.pick_background(&id);
                 return vec![Effect::Save];
+            }
+            Target::Alert(_) if matches!(self.overlay, Some(Overlay::Phone { .. })) => {
+                return self.close_phone();
             }
             Target::Choice(index) => {
                 match self.subpage.clone() {
@@ -293,10 +293,12 @@ impl State {
                         }
                     }
                     Some(Subpage::Avatar) => {
-                        if let Some(choice) = self.avatar_choices().get(index).cloned() {
-                            self.preferences.avatar = Some(choice);
-                            self.show_avatar(true);
-                        }
+                        // The row after the pictures adds one from the phone.
+                        let Some(choice) = self.avatar_choices().get(index).cloned() else {
+                            return self.open_phone(crate::companion::Kind::Avatar);
+                        };
+                        self.preferences.avatar = Some(choice);
+                        self.show_avatar(true);
                     }
                     Some(Subpage::Hidden) => {
                         // Showing an app puts it back where it was; the list
@@ -547,6 +549,9 @@ impl State {
             self.notice = None;
             return vec![];
         }
+        if matches!(self.overlay, Some(Overlay::Phone { .. })) {
+            return self.close_phone();
+        }
         if let Some(overlay) = self.overlay.take() {
             self.panel_started = None;
             if let Overlay::Options { id, .. } = &overlay
@@ -560,7 +565,8 @@ impl State {
             self.focus = match overlay {
                 Overlay::Options { restore, .. }
                 | Overlay::Uninstall { restore, .. }
-                | Overlay::OfferHome { restore } => restore,
+                | Overlay::OfferHome { restore }
+                | Overlay::Phone { restore } => restore,
                 Overlay::Inputs => Target::InputsButton,
                 Overlay::InputName(id) => {
                     // Back from the names returns to the input's row, the panel still open.

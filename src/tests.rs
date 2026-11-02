@@ -22,6 +22,7 @@ fn test_assets() -> view::Assets {
         metrics: BTreeMap::new(),
         tiles: Default::default(),
         heroes: Default::default(),
+        storage: Default::default(),
         artwork: crate::app_artwork::Service::new(false),
     }
 }

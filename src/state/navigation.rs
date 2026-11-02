@@ -42,9 +42,9 @@ impl State {
     pub(super) fn section_entry(&self) -> Target {
         match self.section {
             1 => Target::Background(
-                BACKGROUNDS
+                self.backgrounds()
                     .iter()
-                    .position(|(id, _)| *id == self.preferences.background)
+                    .position(|id| *id == self.preferences.background)
                     .unwrap_or(3),
             ),
             WEATHER_SECTION => Target::WeatherToggle,
@@ -250,7 +250,8 @@ impl State {
                     Some(Subpage::Clock | Subpage::Temperature) => 2,
                     Some(Subpage::Appearance) => APPEARANCES.len(),
                     Some(Subpage::Hidden) => self.hidden_count().max(1),
-                    Some(Subpage::Avatar) => self.avatar_choices().len().max(1),
+                    // The pictures, then "From your phone".
+                    Some(Subpage::Avatar) => self.avatar_choices().len() + 1,
                     _ => 3,
                 };
                 match direction {
@@ -440,7 +441,8 @@ impl State {
             }
             if let Target::Background(index) = self.focus {
                 match direction {
-                    Direction::Right if index + 1 < BACKGROUNDS.len() => {
+                    // The wallpapers, then the tile that sends one from the phone.
+                    Direction::Right if index < self.backgrounds().len() => {
                         self.focus(Target::Background(index + 1), controls);
                         return vec![];
                     }

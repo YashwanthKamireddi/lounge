@@ -5,6 +5,7 @@ mod actions;
 mod focus;
 mod looks;
 mod navigation;
+mod phone;
 mod rearrange;
 mod switcher;
 mod text;
@@ -166,6 +167,10 @@ pub enum Overlay {
     },
     /// The sources under the Inputs button: Live TV and every input not switched Off.
     Inputs,
+    /// A QR code for sending a photo from the phone (see `State::phone`). Back closes it.
+    Phone {
+        restore: Target,
+    },
     /// The Inputs panel naming one input (by app id): the port's name, then LG's names.
     InputName(String),
 }
@@ -213,6 +218,31 @@ pub enum Effect {
     ClockFormat(bool),
     /// Name an input as LG does (its device id, LG's name, LG's icon file).
     NameInput(String, String, String),
+    /// Show a QR code to send a photo from the phone for this (None: stop listening).
+    Phone(Option<crate::companion::Kind>),
+}
+
+/// The QR code on screen for a photo from the phone.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Phone {
+    pub kind: crate::companion::Kind,
+    pub url: String,
+    pub size: usize,
+    #[serde(skip)]
+    pub modules: Vec<bool>,
+    pub step: PhoneStep,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub enum PhoneStep {
+    /// Waiting for the code to be scanned.
+    Waiting,
+    /// The page is open on the phone.
+    Opened,
+    /// A photo is arriving or being prepared.
+    Receiving,
+    /// It failed; the message key says why. The page can send again.
+    Failed(&'static str),
 }
 
 pub const KEYS: [&str; 40] = [
@@ -246,6 +276,10 @@ pub struct State {
     /// A check of the TV whose failure is said out loud: after a change came back as an
     /// error, or the row pressed while the TV could not be read.
     pub tv_home_rechecking: bool,
+    /// The owner's photo wallpaper saved on the TV (crate::photo), if any.
+    pub photo_wallpaper: Option<String>,
+    /// A photo coming from the phone: the QR code on screen and how far it got.
+    pub phone: Option<Phone>,
     /// Where the focused tile sits in the grid, so focus can go to the tile
     /// that takes its place if it disappears.
     pub focus_slot: usize,
@@ -451,6 +485,8 @@ impl State {
             tv_home_blocked: None,
             tv_home_wanted: None,
             tv_home_rechecking: false,
+            photo_wallpaper: None,
+            phone: None,
             focus_slot: 0,
             avatar_index: 0,
             avatar_since: crate::clock::now(),
@@ -1029,14 +1065,16 @@ impl State {
         if let Some(
             Overlay::Options { restore, .. }
             | Overlay::Uninstall { restore, .. }
-            | Overlay::OfferHome { restore },
+            | Overlay::OfferHome { restore }
+            | Overlay::Phone { restore },
         ) = &self.overlay
         {
             let reconciled = self.reconciled(restore.clone());
             if let Some(
                 Overlay::Options { restore, .. }
                 | Overlay::Uninstall { restore, .. }
-                | Overlay::OfferHome { restore },
+                | Overlay::OfferHome { restore }
+                | Overlay::Phone { restore },
             ) = &mut self.overlay
             {
                 *restore = reconciled;

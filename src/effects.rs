@@ -12,6 +12,7 @@ pub(crate) fn effects(
     platform: &Platform,
     writer: &storage::Writer,
     weather: &weather_service::Service,
+    phone: &crate::companion::Service,
 ) -> bool {
     for effect in effects {
         match effect {
@@ -82,6 +83,25 @@ pub(crate) fn effects(
                 return false;
             }
             Effect::Weather(command) => weather.send(command),
+            Effect::Phone(Some(kind)) => match phone.start(kind) {
+                Ok((url, size, modules)) => {
+                    // The desktop preview says where it listens, for a browser on the same
+                    // computer (the TV only shows its QR code).
+                    if !platform.webos {
+                        eprintln!("Lounge photo from phone: {url}");
+                    }
+                    state.phone_ready(kind, url, size, modules)
+                }
+                Err(error) => {
+                    eprintln!("Lounge photo from phone: {error}");
+                    state.phone_unavailable(if error == "noNetwork" {
+                        "phoneNoNetwork"
+                    } else {
+                        "phoneServerFailed"
+                    });
+                }
+            },
+            Effect::Phone(None) => phone.stop(),
         }
     }
     if state.moving.is_none() {

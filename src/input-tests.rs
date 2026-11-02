@@ -42,6 +42,7 @@ fn assets() -> view::Assets {
         metrics: BTreeMap::new(),
         tiles: Default::default(),
         heroes: Default::default(),
+        storage: Default::default(),
         artwork: crate::app_artwork::Service::new(false),
     }
 }
@@ -211,7 +212,8 @@ impl Harness {
                     self.state.tv_home_busy = false;
                     self.state.tv_home = Some(self.random.chance(50));
                 }
-                Effect::Save
+                Effect::Phone(_)
+                | Effect::Save
                 | Effect::Close(_)
                 | Effect::Quit
                 | Effect::Weather(_)

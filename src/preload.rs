@@ -3,7 +3,7 @@
 //! (wallpaper, tiles, Settings thumbnails) and once the app list is known
 //! (each app's brand card).
 use crate::{
-    background_priority, branding, model, renderer,
+    background_priority, branding, renderer,
     state::{self, State},
     view::Assets,
 };
@@ -335,8 +335,8 @@ pub fn request_home(preload: &mut Preload, state: &State, assets: &Assets) {
     for id in order.iter().filter(|id| assets.tiles.contains_key(*id)) {
         preload.request(assets.path(format!("tiles/{id}.png")));
     }
-    for (id, _) in model::BACKGROUNDS {
-        preload.request(assets.path(format!("thumbnails/{id}.jpg")));
+    for id in state.backgrounds() {
+        preload.request(assets.wallpaper_thumbnail(id));
     }
 }
 
@@ -356,7 +356,7 @@ pub fn wallpaper(
     let id = if picked {
         state.preferences.background.clone()
     } else if let state::Target::Background(index) = state.focus
-        && let Some((id, _)) = model::BACKGROUNDS.get(index)
+        && let Some(id) = state.backgrounds().get(index)
     {
         (*id).to_owned()
     } else {
@@ -385,12 +385,7 @@ pub fn wallpaper(
 /// Everything a wallpaper shows as: the photo, Settings' and the grid's
 /// blurred backdrop, and the home glass's.
 pub fn wallpaper_pictures(assets: &Assets, id: &str) -> [String; 3] {
-    [
-        format!("wallpapers/{id}.jpg"),
-        format!("wallpapers/{id}-glass.png"),
-        format!("wallpapers/{id}-home-glass.png"),
-    ]
-    .map(|name| assets.path(name))
+    [".jpg", "-glass.png", "-home-glass.png"].map(|suffix| assets.wallpaper(id, suffix))
 }
 
 /// Back from an app: the tiles freed while it was in front

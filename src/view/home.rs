@@ -432,7 +432,7 @@ pub(super) fn library(out: &mut Scene, state: &State, assets: &Assets) {
     // the drawn scroll exactly as the screen behind it does: one pane mixing
     // both backdrops, not the grid's glass laid over the dock's.
     let grid = (spread > 0.).then(|| GlassBlend {
-        to: assets.path(format!("wallpapers/{}-glass.png", state.wallpaper())),
+        to: assets.wallpaper(state.wallpaper(), "-glass.png"),
         mix: spread,
         shade: [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02],
     });

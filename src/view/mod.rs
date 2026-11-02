@@ -65,6 +65,8 @@ pub struct Assets {
     pub artwork: crate::app_artwork::Service,
     pub tiles: BTreeMap<String, [u8; 3]>,
     pub heroes: Vec<String>,
+    /// The folder beside the preferences: the owner's photo wallpaper lives there.
+    pub storage: PathBuf,
 }
 impl Assets {
     pub fn load(root: PathBuf, webos: bool) -> Result<Self, String> {
@@ -104,7 +106,31 @@ impl Assets {
             metrics,
             artwork: crate::app_artwork::Service::new(webos),
             tiles,
+            storage: PathBuf::new(),
         })
+    }
+
+    /// A wallpaper's picture: `suffix` ".jpg" (the photo as Home shows it), "-glass.png" or
+    /// "-home-glass.png" (its blurred backdrops). Bundled ones ship with Lounge; the owner's
+    /// photo is beside the preferences.
+    pub fn wallpaper(&self, id: &str, suffix: &str) -> String {
+        if crate::photo::is_photo(id) {
+            crate::photo::wallpapers(&self.storage)
+                .join(format!("{id}{suffix}"))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            self.path(format!("wallpapers/{id}{suffix}"))
+        }
+    }
+
+    /// A wallpaper's thumbnail for the gallery.
+    pub fn wallpaper_thumbnail(&self, id: &str) -> String {
+        if crate::photo::is_photo(id) {
+            self.wallpaper(id, "-thumb.jpg")
+        } else {
+            self.path(format!("thumbnails/{id}.jpg"))
+        }
     }
     pub fn path(&self, path: impl AsRef<Path>) -> String {
         self.root.join(path).to_string_lossy().into_owned()
@@ -178,7 +204,7 @@ const GRID_TINT: Color = [GRID_VEIL, GRID_VEIL, GRID_VEIL + 0.02, 1.];
 
 /// A wallpaper's blurred backdrop (Settings, the grid, the switcher).
 fn blurred(assets: &Assets, wallpaper: &str) -> String {
-    assets.path(format!("wallpapers/{wallpaper}-glass.png"))
+    assets.wallpaper(wallpaper, "-glass.png")
 }
 
 /// The apps page's background with the grid `grid` of the way up (0 Top
@@ -217,7 +243,7 @@ fn apps_backdrop(state: &State, assets: &Assets, grid: f32) -> Backdrop {
             }
         };
     }
-    let photo = |id: &str| assets.path(format!("wallpapers/{id}.jpg"));
+    let photo = |id: &str| assets.wallpaper(id, ".jpg");
     match (shelf_dissolve(state), change) {
         (Some((previous, t)), _) => {
             Backdrop::between(shelf_art(state, assets, previous).0, current, t)
@@ -501,6 +527,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
         | Overlay::Keyboard
         | Overlay::Uninstall { .. }
         | Overlay::OfferHome { .. }
+        | Overlay::Phone { .. }
         | Overlay::Inputs
         | Overlay::InputName(_)),
     ) = &state.overlay
@@ -541,6 +568,7 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             }
             Overlay::Uninstall { id, .. } => alert::uninstall(&mut out, state, assets, id),
             Overlay::OfferHome { .. } => alert::offer_home(&mut out, state, assets),
+            Overlay::Phone { .. } => alert::phone(&mut out, state, assets),
             Overlay::Inputs | Overlay::InputName(_) => inputs_panel(&mut out, state, assets),
             Overlay::SystemKeyboard => {}
         }

@@ -7,7 +7,7 @@ use super::{
 use crate::{
     i18n,
     renderer::{Draw, WHITE},
-    state::{Rect, State, Target},
+    state::{PhoneStep, Rect, State, Target},
 };
 
 /// The panel's width, and the inset of everything inside it.
@@ -35,10 +35,13 @@ pub(super) fn uninstall(out: &mut Scene, state: &State, assets: &Assets, id: &st
         out,
         state,
         assets,
-        &i18n::format("uninstallTitle", &[("app", title)]),
-        i18n::t("uninstallMessage"),
-        &buttons,
-        Some(0),
+        Alert {
+            title: &i18n::format("uninstallTitle", &[("app", title)]),
+            message: i18n::t("uninstallMessage"),
+            buttons: &buttons,
+            destructive: Some(0),
+            figure: None,
+        },
     );
 }
 
@@ -50,24 +53,127 @@ pub(super) fn offer_home(out: &mut Scene, state: &State, assets: &Assets) {
         out,
         state,
         assets,
-        i18n::t("offerHomeTitle"),
-        i18n::t("offerHomeMessage"),
-        &buttons,
-        None,
+        Alert {
+            title: i18n::t("offerHomeTitle"),
+            message: i18n::t("offerHomeMessage"),
+            buttons: &buttons,
+            destructive: None,
+            figure: None,
+        },
     );
 }
 
-/// An alert: `title` (at most two lines), `message`, then `buttons` top to
-/// bottom; `destructive` is the index drawn in red.
-fn alert(
-    out: &mut Scene,
-    state: &State,
-    assets: &Assets,
-    title: &str,
-    message: &str,
-    buttons: &[&str],
+/// The QR code for a photo from the phone: what to do, the code (with its address under it,
+/// for typing), how far it got, then Done.
+pub(super) fn phone(out: &mut Scene, state: &State, assets: &Assets) {
+    let kind = state.phone.as_ref().map(|phone| phone.kind);
+    let title = match kind {
+        Some(crate::companion::Kind::Avatar) => i18n::t("phoneAvatarTvTitle"),
+        _ => i18n::t("phoneWallpaperTvTitle"),
+    };
+    let message = match state.phone.as_ref().map(|phone| &phone.step) {
+        None => i18n::t("phoneStarting"),
+        Some(PhoneStep::Waiting) => i18n::t("phoneScan"),
+        Some(PhoneStep::Opened) => i18n::t("phoneOpened"),
+        Some(PhoneStep::Receiving) => i18n::t("phoneReceiving"),
+        Some(PhoneStep::Failed(reason)) => i18n::t(reason),
+    };
+    let buttons = [i18n::t("done")];
+    let draw = |out: &mut Scene, area: Rect| {
+        let Some(phone) = &state.phone else { return };
+        // A white card with a quiet zone of two modules, the modules in near-black runs.
+        let card = Rect::new(area.x + (area.w - QR) / 2., area.y, QR, QR);
+        out.shape(card, 24., c(0xffffff, 1.));
+        // Whole pixels per module, so neighbours meet without a seam a camera reads as white;
+        // each run also reaches a little into the next row for the same reason.
+        let module = (QR / (phone.size + 4) as f32).floor();
+        let side = module * phone.size as f32;
+        let origin = (
+            (card.x + (QR - side) / 2.).round(),
+            (card.y + (QR - side) / 2.).round(),
+        );
+        // Runs both across and down: where two dark modules meet, one run covers the join, so
+        // no hairline seam (which a camera reads as white) is left between them.
+        let dark = |x: usize, y: usize| phone.modules[y * phone.size + x];
+        let ink = c(0x111111, 1.);
+        for line in 0..phone.size {
+            for across in [true, false] {
+                let at = |step: usize| if across { (step, line) } else { (line, step) };
+                let mut step = 0;
+                while step < phone.size {
+                    let (x, y) = at(step);
+                    if !dark(x, y) {
+                        step += 1;
+                        continue;
+                    }
+                    let run = (step..phone.size)
+                        .take_while(|next| {
+                            let (x, y) = at(*next);
+                            dark(x, y)
+                        })
+                        .count();
+                    let (w, h) = if across { (run, 1) } else { (1, run) };
+                    out.shape(
+                        Rect::new(
+                            origin.0 + x as f32 * module,
+                            origin.1 + y as f32 * module,
+                            w as f32 * module,
+                            h as f32 * module,
+                        ),
+                        0.,
+                        ink,
+                    );
+                    step += run;
+                }
+            }
+        }
+        out.text(
+            &phone.url,
+            Rect::new(area.x, card.y + QR + 18., area.w, 32.),
+            text(24., 500, 0.),
+            c(0xffffff, 0.6),
+            true,
+        );
+    };
+    alert(
+        out,
+        state,
+        assets,
+        Alert {
+            title,
+            message,
+            buttons: &buttons,
+            destructive: None,
+            figure: Some((QR + 18. + 32. + 8., &draw)),
+        },
+    );
+}
+
+/// The QR card's side.
+const QR: f32 = 340.;
+
+/// Drawn under an alert's message, in the height given.
+type Figure<'a> = (f32, &'a dyn Fn(&mut Scene, Rect));
+
+/// An alert's content: `title` (at most two lines), `message`, an optional `figure`, then
+/// `buttons` top to bottom; `destructive` is the index drawn in red.
+struct Alert<'a> {
+    title: &'a str,
+    message: &'a str,
+    buttons: &'a [&'a str],
     destructive: Option<usize>,
-) {
+    figure: Option<Figure<'a>>,
+}
+
+fn alert(out: &mut Scene, state: &State, assets: &Assets, content: Alert) {
+    let Alert {
+        title,
+        message,
+        buttons,
+        destructive,
+        figure,
+    } = content;
+    let figure_height = figure.map_or(0., |(height, _)| height + 36.);
     let inner = WIDTH - 2. * PAD;
     let title_style = text(38., 650, 0.).leading(46. / 38.);
     let message_style = text(27., 500, 0.).leading(35. / 27.);
@@ -78,6 +184,7 @@ fn alert(
         + 14.
         + message_lines * 35.
         + 44.
+        + figure_height
         + buttons.len() as f32 * (BUTTON + BUTTON_GAP)
         - BUTTON_GAP
         + PAD;
@@ -112,6 +219,10 @@ fn alert(
         true,
     );
     y += message_lines * 35. + 44.;
+    if let Some((height, draw)) = figure {
+        draw(out, Rect::new(panel.x + PAD, y, inner, height));
+        y += figure_height;
+    }
     let label = text(29., 600, 0.);
     for (index, name) in buttons.iter().enumerate() {
         let target = Target::Alert(index);

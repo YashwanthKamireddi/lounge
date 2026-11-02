@@ -90,10 +90,10 @@ try {
   assert.ok(hidden.focus.App && !hidden.preferences.hidden.includes(hidden.focus.App));
   // Reload from disk and show it again from Settings › General › Hidden apps,
   // one row up from the end (Quit app, on the desktop): rows above it (cover art) depend on
-  // local art.
+  // local art, so the path goes past the end (Down stops at the last row) and back up.
   const restored = await scenario(
     'restored',
-    'settings,wait,right,down,down,down,down,down,down,down,down,up,enter,enter',
+    'settings,wait,right,down,down,down,down,down,down,down,down,down,down,down,down,up,enter,enter',
   );
   assert.deepEqual(restored.preferences.hidden, []);
   const searched = await scenario('search', 'apps,type:YouTube');

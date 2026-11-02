@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     i18n,
-    model::{Appearance, BACKGROUNDS},
+    model::Appearance,
     renderer::Draw,
     state::{
         APPEARANCES, AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target,
@@ -559,7 +559,7 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
     if glyph.is_empty() {
         let frame = Rect::new(110., 310., 640., 360.);
         out.shadow(frame, 36., 40., 18., 0.35);
-        let photo = |id: &str| assets.path(format!("wallpapers/{id}.jpg"));
+        let photo = |id: &str| assets.wallpaper(id, ".jpg");
         // A wallpaper just picked fades in over the last, with the backdrop.
         match state.wallpaper_change() {
             Some((previous, t)) => {
@@ -682,6 +682,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                         };
                         (title, None, chosen.as_ref() == Some(choice))
                     })
+                    .chain(std::iter::once((i18n::t("fromPhone"), None, false)))
                     .collect()
             }
             Subpage::WeatherLocation => unreachable!(),
@@ -835,9 +836,10 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
             }
             // The rows after the switches start below the last one shown.
             let mut below = (shown as f32 - 5.) * 84.;
-            // The profile picture, when the owner keeps any.
-            if !state.avatars.is_empty() {
+            // The profile picture: the owner's pictures, or one sent from the phone.
+            {
                 let shown = match state.preferences.avatar.as_deref() {
+                    _ if state.avatars.is_empty() => i18n::t("avatarNone"),
                     Some(AVATAR_ROTATE) => i18n::t("rotateAll"),
                     chosen => state
                         .avatars
@@ -906,7 +908,9 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
             }
         }
         1 => {
-            for (index, (id, _title)) in BACKGROUNDS.iter().enumerate() {
+            let backgrounds = state.backgrounds();
+            // The wallpapers, then a tile that sends one from the phone.
+            for index in 0..=backgrounds.len() {
                 let w = (LIST_W - 40.) / 3.;
                 let rect = Rect::new(
                     LIST_X + (index % 3) as f32 * (w + 20.),
@@ -915,14 +919,29 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     w * 9. / 16.,
                 );
                 out.shadow(rect, 16., 15., 3., 0.13);
-                out.image(
-                    assets.path(format!("thumbnails/{id}.jpg")),
-                    rect,
-                    16.,
-                    false,
-                );
+                let title = match backgrounds.get(index) {
+                    Some(id) => {
+                        out.image(assets.wallpaper_thumbnail(id), rect, 16., false);
+                        if crate::photo::is_photo(id) {
+                            i18n::t("yourPhoto")
+                        } else {
+                            i18n::wallpaper(id)
+                        }
+                    }
+                    None => {
+                        out.shape(rect, 16., out.theme.wash(0.12));
+                        let glyph = Rect::new(
+                            rect.x + rect.w / 2. - 30.,
+                            rect.y + rect.h / 2. - 30.,
+                            60.,
+                            60.,
+                        );
+                        out.icon(assets, "smartphone", glyph, out.theme.ink(0.8));
+                        i18n::t("fromPhone")
+                    }
+                };
                 out.border(rect, 16., 1., out.theme.wash(0.086));
-                if state.preferences.background == *id {
+                if backgrounds.get(index) == Some(&state.preferences.background.as_str()) {
                     out.border(
                         rect.inset(-2.),
                         18.,
@@ -938,7 +957,7 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                     out.ring(rect, 16.);
                 }
                 out.text(
-                    i18n::wallpaper(id),
+                    title,
                     Rect::new(rect.x + 4., rect.y + rect.h + 12., rect.w - 8., 30.),
                     detail_style(),
                     out.theme.ink(0.87),

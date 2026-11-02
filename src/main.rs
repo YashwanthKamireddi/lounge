@@ -8,6 +8,7 @@ mod app_subscription;
 mod avatars;
 mod branding;
 mod clock;
+mod companion;
 mod crash_guard;
 mod damage;
 mod debug;
@@ -26,6 +27,7 @@ mod input;
 mod luna;
 mod model;
 mod options;
+mod photo;
 mod platform;
 mod preload;
 mod presence;
@@ -322,7 +324,7 @@ fn run() -> Result<(), String> {
         None if webos => platform::install_dir()?.join("assets"),
         None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".build/assets"),
     };
-    let assets = view::Assets::load(root, webos)?;
+    let mut assets = view::Assets::load(root, webos)?;
     // The image decoder starts now, so the home's images decode while SDL,
     // EGL and the shaders start (uploads still wait for the renderer).
     let mut preload = preload::Preload::start();
@@ -349,15 +351,25 @@ fn run() -> Result<(), String> {
     };
     let mut state = State::new(initial_preferences);
     state.heroes = assets.heroes.clone();
+    // The owner's photo wallpaper (crate::photo) lives beside the preferences; a choice whose
+    // pictures are gone falls back to the default.
+    let storage = preferences_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    assets.storage = storage.clone();
+    state.photo_wallpaper = photo::saved_wallpaper(&storage);
+    if photo::is_photo(&state.preferences.background)
+        && state.photo_wallpaper.as_deref() != Some(state.preferences.background.as_str())
+    {
+        state.preferences.background = model::Preferences::default().background;
+    }
+    let phone = companion::Service::new(storage.clone(), !webos);
     preload::request_home(&mut preload, &state, &assets);
     // The owner's profile pictures, prepared once (crate::avatars). A changed
     // picture is decoded (up to 4096²), scaled and blurred: on a worker, off
     // the way to the first frame; the picture shows when ready. Captures and
     // scripted runs wait for it, so every frame they record is the same.
-    let storage = preferences_path
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_default();
     let shader_cache = storage.join("shaders");
     let avatars = if options.frames.is_some()
         || options.record.is_some()
@@ -367,7 +379,7 @@ fn run() -> Result<(), String> {
         state.set_avatars(avatars::load(&storage));
         None
     } else {
-        Some(avatars::load_in_background(storage))
+        Some(avatars::load_in_background(storage.clone()))
     };
     if options.test_extra_apps > 0 {
         eprintln!(
@@ -401,6 +413,7 @@ fn run() -> Result<(), String> {
         &platform,
         &writer,
         &weather_service,
+        &phone,
     );
     startup_stage("preferences and workers");
 
@@ -615,6 +628,8 @@ fn run() -> Result<(), String> {
         assets,
         state,
         weather_service,
+        phone,
+        storage,
         platform,
         snapshots,
         writer,
@@ -669,6 +684,10 @@ struct Shell {
     assets: view::Assets,
     state: State,
     weather_service: weather_service::Service,
+    /// A photo from the phone (crate::companion), while its QR code is on screen.
+    phone: companion::Service,
+    /// The folder beside the preferences.
+    storage: PathBuf,
     platform: Platform,
     snapshots: snapshots::Service,
     writer: storage::Writer,
@@ -788,6 +807,7 @@ impl Shell {
             self.state.clock_set = clock_set;
             self.state.dirty = true;
         }
+        self.phone_tick();
         if let Some(pictures) = &self.avatars {
             match pictures.try_recv() {
                 Ok(pictures) => {
@@ -876,6 +896,7 @@ impl Shell {
                 &self.platform,
                 &self.writer,
                 &self.weather_service,
+                &self.phone,
             );
         }
     }
@@ -1217,6 +1238,7 @@ impl Shell {
             &self.platform,
             &self.writer,
             &self.weather_service,
+            &self.phone,
         );
         self.remote.settle(&mut self.state);
         // SDL may deliver several navigation events in a single poll.
@@ -1238,6 +1260,7 @@ impl Shell {
                 &self.platform,
                 &self.writer,
                 &self.weather_service,
+                &self.phone,
             );
         }
         if !self.state.loading
@@ -1265,6 +1288,7 @@ impl Shell {
                     &self.platform,
                     &self.writer,
                     &self.weather_service,
+                    &self.phone,
                 );
             }
         }
@@ -1446,6 +1470,35 @@ impl Shell {
             self.state.dirty = false;
         }
         Ok(())
+    }
+
+    /// What the phone's session reported. The QR code closes when Lounge leaves the screen:
+    /// the server never listens behind an app.
+    fn phone_tick(&mut self) {
+        if !self.presence.visible && self.state.phone.is_some() {
+            let effects = self.state.close_phone();
+            self.dispatch(effects);
+        }
+        while let Ok(event) = self.phone.receiver.try_recv() {
+            if matches!(event, companion::Event::Saved(companion::Kind::Avatar, _)) {
+                self.avatars = Some(avatars::load_in_background(self.storage.clone()));
+            }
+            let effects = self.state.phone_event(event);
+            self.dispatch(effects);
+        }
+    }
+
+    fn dispatch(&mut self, pending: Vec<Effect>) {
+        if !pending.is_empty() {
+            self.running &= effects(
+                pending,
+                &mut self.state,
+                &self.platform,
+                &self.writer,
+                &self.weather_service,
+                &self.phone,
+            );
+        }
     }
 
     /// Sleeps until something can change the screen: input, a worker's result (`wake`), or the

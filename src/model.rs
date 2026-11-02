@@ -268,7 +268,10 @@ impl Preferences {
     }
 
     pub fn sanitize(&mut self) {
-        if !BACKGROUNDS.iter().any(|(id, _)| *id == self.background) {
+        // A photo wallpaper (crate::photo) is checked against the files once they are known.
+        if !BACKGROUNDS.iter().any(|(id, _)| *id == self.background)
+            && !crate::photo::is_photo(&self.background)
+        {
             self.background = "dunes".into();
         }
         fn clean(ids: &mut Vec<String>) {

@@ -180,7 +180,7 @@ impl Scene {
         veil: Color,
     ) {
         self.glass_over(
-            assets.path(format!("wallpapers/{background}-glass.png")),
+            assets.wallpaper(background, "-glass.png"),
             rect,
             radius,
             veil,

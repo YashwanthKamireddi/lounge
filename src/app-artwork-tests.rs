@@ -370,6 +370,7 @@ fn visible_cards_switch_from_fallback_to_installed_artwork_without_an_icon_map()
         metrics: Default::default(),
         tiles: Default::default(),
         heroes: Default::default(),
+        storage: Default::default(),
         artwork: Service::with_loader(true, |_| {
             decode(&encoded(ImageFormat::Png, 32, 32, [24, 40, 56, 255]))
         }),

@@ -50,6 +50,7 @@ keeps about 113 MB), so the app you're in gets the rest. Your TV will have its o
 - **Hold OK on an app** to move, hide or uninstall it.
 - **An app switcher** for what's open: OK opens, Up closes, Back returns.
 - **Search** from a letter grid, with results as you type.
+- **Your own wallpaper and profile picture,** sent from your phone with a QR code.
 - **Light, Dark or Automatic,** plus a focus outline, larger names and reduced motion.
 
 ## Install
