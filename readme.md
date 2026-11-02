@@ -72,29 +72,25 @@ itself. (Over SSH: `sh /var/lib/lounge/home.sh disable`.)
 
 ## How it works
 
-Most webOS home screens, LG's included, sit on a web engine (Chromium, through LG's WebAppMgr)
-or a UI toolkit (Qt/QML) that stays loaded the whole time. Lounge is one Rust binary of about
-4.5 MB that draws straight to the TV's graphics plane with OpenGL ES 2.0 through SDL2. That's
-where the speed comes from.
+Lounge started from [Luma](https://github.com/ecklf/lg-luma), which already drew natively with
+SDL2 and OpenGL ES, with vector text and partial redraws. Since the fork about 27,000 of its
+30,000 lines of Rust have been added or rewritten. What I built on top:
 
-- **Drawing.** Each frame is a draw list turned into batched GL calls. The glass is one shader
-  sampling a pre-blurred backdrop, so a glass panel costs one pass. Opaque tiles go into the
-  stencil buffer first, so nothing hidden behind them is shaded, and with EGL partial update only
-  the part of the screen that changed is redrawn.
-- **Text and icons** are vector outlines turned into triangles (lyon) and drawn on the GPU, sharp
-  at any size.
+- **Liquid glass.** One shader samples a pre-blurred backdrop, with refraction at the rim, so a
+  glass panel costs a single pass. Opaque tiles are written to the stencil buffer first, so
+  nothing hidden behind them is shaded.
+- **Sleeping when nothing happens.** The loop waits until there's input or news from webOS
+  (app, input and window changes on its Luna bus). On Home it wakes about once a minute, for
+  the clock. Behind an app it frees its textures and gives the memory back.
 - **Starting fast.** Compiled shaders are cached on the TV, pictures ship ASTC-compressed for the
   GPU, and decoding runs on worker threads. The drawing thread never reads a file or waits on the
   network.
-- **Doing nothing when nothing happens.** The loop sleeps until there's input or news from webOS
-  (app, input and window changes arrive over its Luna bus). Behind an app, Lounge frees its
-  textures and gives the memory back.
-- **Becoming Home.** Lounge's binary is bind-mounted over LG Home's (webOS 5, 6 and 22 to 24), or
-  a Home manifest pointing at Lounge is mounted (webOS 25 and 26). It registers with webOS's app
-  manager, so pressing Home brings back the running Lounge instead of starting a new one.
-- **Kept honest by CI.** Every screen is rendered headless in CI, and a change that paints more
-  than 3.25 screens per frame, or holds more than 64 MB of artwork or 8 MB of text, fails the
-  build.
+- **Becoming Home, rewritten.** Lounge's binary is bind-mounted over LG Home's (webOS 5, 6 and 22
+  to 24), or a Home manifest pointing at Lounge is mounted (webOS 25 and 26). Pressing Home brings
+  back the running Lounge instead of starting a new one. A crash loop gives Home back to LG, and
+  turning it off only ever needs the remote.
+- **Kept honest by CI.** Every screen is rendered headless, and a change that paints more than
+  3.25 screens per frame, or holds more than 64 MB of artwork or 8 MB of text, fails the build.
 
 [development.md](development.md) goes deeper into each part.
 
@@ -137,5 +133,5 @@ pnpm dev           # desktop preview with sample apps
 
 ## Credits
 
-Started as a fork of [lg-luma](https://github.com/ecklf/lg-luma) by ecklf and contributors (MIT,
+Started as a fork of [Luma](https://github.com/ecklf/lg-luma) by ecklf and contributors (MIT,
 notice kept in the [license](license)). Not affiliated with LG, Apple or any app brand shown.
