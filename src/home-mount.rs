@@ -1201,11 +1201,17 @@ impl<S: System> Home<S> {
         mounted.is_ok()
     }
 
-    /// A cold boot shows Home. LG's boot manager opens the last input (or Live TV) and, unlike
-    /// a Quick Start wake, never starts Home: once it has, Home is opened over it. Only what the
-    /// boot manager opens is replaced; an app someone opened meanwhile stays. Bounded: 60 s at
-    /// most.
+    /// A cold boot shows Home when the TV's own setting asks for it (General › Home Settings ›
+    /// Home Auto Launch), as LG's Home does. LG's boot manager opens the last input (or Live
+    /// TV), sometimes well after Home is already up: Home is opened over it once it has. Only
+    /// what the boot manager opens is replaced; an app someone opened meanwhile stays.
+    /// Bounded: 60 s at most.
     fn home_after_boot(&self, id: &str) {
+        if self.home_auto_launch() == Some(false) {
+            self.system
+                .log("boot: Home Auto Launch is off; the TV's input stays in front");
+            return;
+        }
         for i in 0..30 {
             // sam is busy with the boot; ask again (and say why on the last try).
             let app = self.foreground().unwrap_or_else(|error| {
@@ -1214,22 +1220,39 @@ impl<S: System> Home<S> {
                 }
                 String::new()
             });
-            if app == id {
-                return;
+            // Home in front (or nothing yet): the boot manager may still open the input over
+            // it, so keep watching.
+            if app.is_empty() || app == id {
+                self.system.pause(2);
+                continue;
             }
-            if !app.is_empty() && !startup_screen(&app) {
-                self.system
-                    .log(&format!("boot: {app} is in front; Home stays behind it"));
-                return;
-            }
-            if !app.is_empty() {
+            if startup_screen(&app) {
                 match self.launch_home(id) {
                     Ok(()) => self.system.log(&format!("boot: opened Home over {app}")),
                     Err(error) => self.system.log(&error),
                 }
-                return;
+            } else {
+                self.system
+                    .log(&format!("boot: {app} is in front; Home stays behind it"));
             }
-            self.system.pause(2);
+            return;
+        }
+    }
+
+    /// The TV's Home Auto Launch setting; None when it can't be read (then Home opens, as it
+    /// always did).
+    fn home_auto_launch(&self) -> Option<bool> {
+        let reply = self
+            .accepted(
+                "luna://com.webos.service.settings/getSystemSettings",
+                json!({"category": "general", "keys": ["homeAutoLaunch"]}),
+                "Read Home Auto Launch",
+            )
+            .ok()?;
+        match reply["settings"]["homeAutoLaunch"].as_str()? {
+            "off" => Some(false),
+            "on" => Some(true),
+            _ => None,
         }
     }
 

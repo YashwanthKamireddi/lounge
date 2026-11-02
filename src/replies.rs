@@ -110,21 +110,9 @@ impl Replies {
                         state.tv_home = Some(on);
                         state.tv_home_blocked = None;
                         // A TV that can have Lounge as its Home, and does not yet: asked once,
-                        // the first time nothing else is open.
-                        if wanted.is_none()
-                            && !on
-                            && !state.preferences.home_offered
-                            && state.overlay.is_none()
-                        {
-                            state.preferences.home_offered = true;
-                            state.overlay = Some(state::Overlay::OfferHome {
-                                restore: state.focus.clone(),
-                            });
-                            state.focus = Target::Alert(0);
-                            state.panel_started =
-                                (!state.preferences.reduced_motion).then(crate::clock::now);
-                            state.queued.push(state::Effect::Save);
-                        }
+                        // once the screen has settled (see `State::offer_home`).
+                        state.home_offer_due =
+                            wanted.is_none() && !on && !state.preferences.home_offered;
                     }
                     Err(error) => {
                         eprintln!("Lounge as Home: {error}");

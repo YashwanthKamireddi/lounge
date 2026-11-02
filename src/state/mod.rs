@@ -276,6 +276,9 @@ pub struct State {
     /// A check of the TV whose failure is said out loud: after a change came back as an
     /// error, or the row pressed while the TV could not be read.
     pub tv_home_rechecking: bool,
+    /// Lounge can become this TV's Home and has not asked yet: the question waits for a quiet
+    /// screen (`offer_home`).
+    pub home_offer_due: bool,
     /// The owner's photo wallpaper saved on the TV (crate::photo), if any.
     pub photo_wallpaper: Option<String>,
     /// A photo coming from the phone: the QR code on screen and how far it got.
@@ -485,6 +488,7 @@ impl State {
             tv_home_blocked: None,
             tv_home_wanted: None,
             tv_home_rechecking: false,
+            home_offer_due: false,
             photo_wallpaper: None,
             phone: None,
             focus_slot: 0,

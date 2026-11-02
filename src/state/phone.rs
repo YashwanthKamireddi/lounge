@@ -4,6 +4,27 @@ use super::*;
 use crate::companion::{Event, Kind};
 
 impl State {
+    /// Asks once whether Lounge should be the TV's Home. Called only when the screen is quiet
+    /// (nothing animating, pictures and text ready): opened in the middle of start-up's
+    /// uploads, its fade lost frames and read as a stutter.
+    pub fn offer_home(&mut self) {
+        if !std::mem::take(&mut self.home_offer_due)
+            || self.preferences.home_offered
+            || self.overlay.is_some()
+            || self.switcher.is_some()
+        {
+            return;
+        }
+        self.preferences.home_offered = true;
+        self.overlay = Some(Overlay::OfferHome {
+            restore: self.focus.clone(),
+        });
+        self.focus = Target::Alert(0);
+        self.panel_started = (!self.preferences.reduced_motion).then(crate::clock::now);
+        self.queued.push(Effect::Save);
+        self.dirty = true;
+    }
+
     /// The gallery's wallpapers: the bundled ones, then the owner's photo. The tile after them
     /// sends a new photo from the phone.
     pub fn backgrounds(&self) -> Vec<&str> {

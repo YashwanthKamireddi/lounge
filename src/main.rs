@@ -858,6 +858,14 @@ impl Shell {
                 self.options.test_extra_apps,
             );
         }
+        if self.state.home_offer_due
+            && self.presence.visible
+            && !self.uploads_pending
+            && !self.glyphs_warming
+            && !self.state.animating()
+        {
+            self.state.offer_home();
+        }
         self.extras();
         weather_tick(
             &mut self.state,

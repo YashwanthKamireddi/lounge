@@ -49,7 +49,13 @@ impl State {
             // already settled: webOS is animating Lounge's window in, and a
             // tile growing at the same time read as a second opening.
             let first = matches!(previous, Target::Nav(_)) && self.page == Page::Apps;
-            let now = (!self.preferences.reduced_motion && !first).then(crate::clock::now);
+            // Focus arriving with an alert or a menu is settled too: the panel is already fading
+            // in, and its button growing (and the tile behind shrinking) at the same time read as
+            // the panel shaking.
+            let opened = matches!(self.focus, Target::Alert(_) | Target::Option(_))
+                && !matches!(previous, Target::Alert(_) | Target::Option(_));
+            let now =
+                (!self.preferences.reduced_motion && !first && !opened).then(crate::clock::now);
             self.focus_from = now.map(|now| (previous, now, level));
             self.focus_since = now;
             self.dirty = true;

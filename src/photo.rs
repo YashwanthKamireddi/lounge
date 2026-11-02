@@ -18,9 +18,11 @@ const GLASS_SIGMA: f32 = 12.;
 
 fn decode(bytes: &[u8]) -> Result<image::DynamicImage, String> {
     let mut limits = image::Limits::default();
-    limits.max_image_width = Some(8192);
-    limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(160 * 1024 * 1024);
+    // The phone's page sends exactly the size needed; anything far larger is refused rather
+    // than allowed to take tens of MB from a TV with little memory to spare.
+    limits.max_image_width = Some(4096);
+    limits.max_image_height = Some(4096);
+    limits.max_alloc = Some(64 * 1024 * 1024);
     let mut reader = ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|error| error.to_string())?;
@@ -30,6 +32,10 @@ fn decode(bytes: &[u8]) -> Result<image::DynamicImage, String> {
 
 /// Scaled to cover `width` × `height`, centred.
 fn cover(image: &image::DynamicImage, width: u32, height: u32) -> RgbImage {
+    // What the page sends is already this size: used as is, with no resampling pass.
+    if (image.width(), image.height()) == (width, height) {
+        return image.to_rgb8();
+    }
     image
         .resize_to_fill(width, height, FilterType::Lanczos3)
         .to_rgb8()

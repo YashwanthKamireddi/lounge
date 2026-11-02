@@ -85,6 +85,11 @@ struct State {
     blocked: bool,
     /// sam reads Home's manifest again on a release (else it keeps what it read).
     sam_rereads: bool,
+    /// The TV's Home Auto Launch setting.
+    home_auto_launch: &'static str,
+    /// The boot manager opens this input in front after this many pauses (late, over Home).
+    late_input: Option<(u32, &'static str)>,
+    pauses: u32,
 }
 
 /// A process started as `argv0` with sam's launch argument.
@@ -136,6 +141,9 @@ impl Fake {
         let method = uri.rsplit('/').next().unwrap();
         if method == "getForegroundAppInfo" {
             return json!({"returnValue": true, "appId": state.front});
+        }
+        if method == "getSystemSettings" && payload["keys"] == json!(["homeAutoLaunch"]) {
+            return json!({"returnValue": true, "settings": {"homeAutoLaunch": state.home_auto_launch}});
         }
         if method == "getAppInfo" {
             let main = if state.sam_reads_lounge {
@@ -356,7 +364,15 @@ impl System for Fake {
         }
     }
 
-    fn pause(&self, _seconds: u64) {}
+    fn pause(&self, _seconds: u64) {
+        let mut state = self.0.borrow_mut();
+        state.pauses += 1;
+        if let Some((after, input)) = state.late_input
+            && state.pauses == after
+        {
+            state.front = input.into();
+        }
+    }
 
     fn pids(&self) -> Result<Vec<u32>, String> {
         Ok(self.0.borrow().processes.keys().copied().collect())
@@ -449,6 +465,9 @@ fn tv(options: Options) -> Home<Fake> {
     }
     let old = options.old_home;
     Home::new(Fake(RefCell::new(State {
+        home_auto_launch: "on",
+        late_input: None,
+        pauses: 0,
         front: options.front.into(),
         files,
         directories: [
@@ -1602,4 +1621,32 @@ fn a_program_runs_to_its_end_or_is_stopped_at_its_deadline() {
     );
     assert!(started.elapsed() < Duration::from_secs(5));
     assert!(run_bounded("/nonexistent/luna-send", &[], second).is_err());
+}
+
+#[test]
+fn a_cold_boot_opens_lounge_over_an_input_the_boot_manager_opens_late_unless_auto_launch_is_off() {
+    // The boot manager opened the last input well after Home was up (seen on webOS 22: Home at
+    // 43 s, HDMI 2 at 66 s): Home opens over it.
+    let home = tv(Options {
+        config: Some(enabled()),
+        front: HOME,
+        ..Options::default()
+    });
+    home.state().late_input = Some((5, "com.webos.app.hdmi2"));
+    home.run("boot").unwrap();
+    assert_eq!(home.calls().last().unwrap(), "launch com.webos.app.home");
+    assert_eq!(home.state().front, HOME);
+    // With the TV's Home Auto Launch off, the input it opens stays, as with LG's Home.
+    let off = tv(Options {
+        config: Some(enabled()),
+        front: "com.webos.app.hdmi2",
+        ..Options::default()
+    });
+    off.state().home_auto_launch = "off";
+    off.run("boot").unwrap();
+    assert!(
+        !off.calls()
+            .iter()
+            .any(|call| call == "launch com.webos.app.home")
+    );
 }
