@@ -8,7 +8,8 @@ use crate::{
     model::Appearance,
     renderer::Draw,
     state::{
-        APPEARANCES, AVATAR_ROTATE, Page, Rect, SETTINGS_PUSH_MS, State, Subpage, Target,
+        ACCESS_SECTION, APPEARANCES, AVATAR_ROTATE, BACKGROUND_SECTION, GENERAL_SECTION,
+        HOME_SECTION, Page, Rect, SECTION_COUNT, SETTINGS_PUSH_MS, State, Subpage, Target,
         WEATHER_SECTION,
     },
     weather::Unit,
@@ -17,6 +18,17 @@ use crate::{
 /// tvOS Settings: the list owns the right half; the left shows the section.
 const LIST_X: f32 = 860.;
 const LIST_W: f32 = 920.;
+/// A list row, and the step from one row to the next: room between rows, so a long list
+/// reads as separate choices rather than one block.
+const ROW_H: f32 = 72.;
+const ROW_GAP: f32 = 20.;
+const ROW_PITCH: f32 = ROW_H + ROW_GAP;
+/// Where a list's first row sits.
+const LIST_TOP: f32 = 164.8;
+/// Where the Settings list ends, and how far above that it fades out. A focused row is always
+/// scrolled clear of the fade (`crate::state::SETTINGS_LIST_END`).
+const LIST_BOTTOM: f32 = 968.;
+const LIST_FADE: f32 = 64.;
 
 struct Row<'a> {
     target: Target,
@@ -211,14 +223,14 @@ fn weather_settings(out: &mut Scene, state: &State, assets: &Assets) {
             false,
         );
     }
-    let y = rect.y + height + 12.;
+    let y = rect.y + height + ROW_GAP;
     row(
         out,
         state,
         assets,
         Row {
             target: Target::WeatherTemperature,
-            rect: Rect::new(LIST_X, y, LIST_W, 72.),
+            rect: Rect::new(LIST_X, y, LIST_W, ROW_H),
             title: i18n::t("temperature"),
             icon: Some("thermometer"),
             value: Some(state.preferences.temperature_unit.symbol()),
@@ -320,7 +332,7 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
         out.border(search.inset(-7.), 39., 2., out.theme.ink(0.95));
     }
     out.control(Target::WeatherSearch, search, true);
-    y += 84.;
+    y += ROW_PITCH;
     if state.weather.searching || state.weather.message.is_some() {
         out.text(
             if state.weather.searching {
@@ -374,7 +386,7 @@ fn location_settings(out: &mut Scene, state: &State, assets: &Assets) {
                 },
             );
         }
-        y += height + 12.;
+        y += height + ROW_GAP;
     }
 }
 
@@ -387,9 +399,127 @@ fn appearance_label(appearance: Appearance) -> (&'static str, Option<&'static st
     }
 }
 
+/// One row of a Settings list: its setting, its name, what it is set to, and whether it opens a
+/// page of its own.
+struct RowSpec {
+    id: usize,
+    key: &'static str,
+    value: Option<String>,
+    chevron: bool,
+}
+
+/// The rows of a list section, in order. Rows that would change nothing are left out (cover
+/// art with none installed, Lounge as Home before the TV has said, Hidden apps with none
+/// hidden, Quit as the TV's Home).
+fn section_rows(state: &State, section: usize) -> Vec<RowSpec> {
+    let on_off = |on: bool| Some(i18n::t(if on { "stateOn" } else { "stateOff" }).to_owned());
+    let spec = |id, key, value, chevron| RowSpec {
+        id,
+        key,
+        value,
+        chevron,
+    };
+    crate::state::section_settings(section)
+        .iter()
+        .filter_map(|id| {
+            Some(match id {
+                0 => spec(
+                    0,
+                    "showAppNames",
+                    on_off(state.preferences.show_names),
+                    false,
+                ),
+                1 => spec(
+                    1,
+                    "clockFormat",
+                    Some(i18n::t(if state.hour_24 { "hour24" } else { "hour12" }).to_owned()),
+                    true,
+                ),
+                2 => spec(
+                    2,
+                    "reducedMotion",
+                    on_off(state.preferences.reduced_motion),
+                    false,
+                ),
+                5 if !crate::platform::is_home() => spec(5, "quitApp", None, false),
+                6 if !state.heroes.is_empty() => spec(
+                    6,
+                    "topShelfArt",
+                    on_off(state.preferences.top_shelf_art),
+                    false,
+                ),
+                7 if state.hidden_count() > 0 => spec(
+                    7,
+                    "hiddenApps",
+                    Some(state.hidden_count().to_string()),
+                    true,
+                ),
+                8 => spec(
+                    8,
+                    "profilePicture",
+                    Some(
+                        match state.preferences.avatar.as_deref() {
+                            _ if state.avatars.is_empty() => i18n::t("avatarNone"),
+                            Some(AVATAR_ROTATE) => i18n::t("rotateAll"),
+                            chosen => state
+                                .avatars
+                                .iter()
+                                .find(|picture| Some(picture.file.as_str()) == chosen)
+                                .or(state.avatars.first())
+                                .map_or("", |picture| picture.title.as_str()),
+                        }
+                        .to_owned(),
+                    ),
+                    true,
+                ),
+                9 => spec(
+                    9,
+                    "appearance",
+                    Some(i18n::t(appearance_label(state.preferences.appearance).0).to_owned()),
+                    true,
+                ),
+                10 if state.tv_home.is_some() || state.tv_home_blocked.is_some() => spec(
+                    10,
+                    "tvHome",
+                    Some(
+                        if state.tv_home_busy {
+                            "…"
+                        } else if state.tv_home_blocked.is_some() {
+                            i18n::t("stateUnavailable")
+                        } else {
+                            i18n::t(if state.tv_home == Some(true) {
+                                "stateOn"
+                            } else {
+                                "stateOff"
+                            })
+                        }
+                        .to_owned(),
+                    ),
+                    false,
+                ),
+                11 => spec(
+                    11,
+                    "focusOutline",
+                    on_off(state.preferences.focus_outline),
+                    false,
+                ),
+                12 => spec(
+                    12,
+                    "largeNames",
+                    on_off(state.preferences.large_names),
+                    false,
+                ),
+                _ => return None,
+            })
+        })
+        .collect()
+}
+
 /// Settings' sections and their symbols.
-const SECTIONS: [(&str, &str); 3] = [
+const SECTIONS: [(&str, &str); SECTION_COUNT] = [
     ("interface", "settings"),
+    ("homeScreen", "grid"),
+    ("accessibility", "eye"),
     ("background", "tv"),
     ("weather", "weather-partly-cloudy"),
 ];
@@ -476,10 +606,23 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
         0.,
         MAIN_TOP,
         1920.,
-        968. - MAIN_TOP,
+        LIST_BOTTOM - MAIN_TOP,
     ))));
+    // The list fades out into the bottom edge (and, scrolled, into the top), as tvOS's
+    // lists do, instead of being cut mid-row.
+    // Scrolled, a row leaving the top is gone before it reaches the title.
+    out.draw.push(Draw::EdgeFade(Some([
+        LIST_TOP - 44.,
+        LIST_TOP - 4.,
+        LIST_BOTTOM - LIST_FADE,
+        LIST_BOTTOM,
+    ])));
     let list = out.draw.len();
     settings_list(out, state, assets);
+    // Only the list scrolls: its eased scroll moves it alone. The left panel and the title
+    // stay put (moved with it, they jumped and slid back on every scroll).
+    out.translate(list, 0., state.scroll - state.shown_scroll);
+    out.draw.push(Draw::EdgeFade(None));
     out.settings_range = Some(page..out.draw.len());
     if let Some((t, eased, direction)) = push {
         out.translate(list, direction * 48. * (1. - eased), 0.);
@@ -498,7 +641,8 @@ pub(super) fn settings(out: &mut Scene, state: &State, assets: &Assets) {
 /// Whether `section`'s left panel is the frosted card with a glyph (not the
 /// wallpaper picture or a profile picture).
 fn glyph_card(state: &State, section: Option<usize>) -> bool {
-    section != Some(1) && !(section == Some(0) && state.subpage == Some(Subpage::Avatar))
+    section != Some(BACKGROUND_SECTION)
+        && !(section == Some(HOME_SECTION) && state.subpage == Some(Subpage::Avatar))
 }
 
 const ABOUT_CARD: Rect = Rect::new(190., 250., 480., 480.);
@@ -509,12 +653,14 @@ fn about_card(out: &mut Scene) {
 
 fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>, card: bool) {
     // Choosing a profile picture: the focused one, large and round.
-    if section == Some(0) && state.subpage == Some(Subpage::Avatar) {
+    if section == Some(HOME_SECTION) && state.subpage == Some(Subpage::Avatar) {
         let choices = state.avatar_choices();
         let focused = match state.focus {
             Target::Choice(index) => choices.get(index),
             _ => None,
         };
+        // "From your phone" focused (the row after the pictures) shows what it does.
+        let phone_row = matches!(state.focus, Target::Choice(index) if index == choices.len());
         let picture = focused
             .and_then(|choice| state.avatars.iter().find(|picture| &picture.file == choice))
             .or_else(|| {
@@ -523,14 +669,25 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
                     .iter()
                     .find(|picture| Some(&picture.small) == state.avatar.as_ref())
             })
-            .or(state.avatars.first());
-        if let Some(picture) = picture {
-            let circle = Rect::new(230., 250., 400., 400.);
-            out.shadow(circle, 200., 40., 18., 0.35);
-            out.draw.push(Draw::Soft(Some(0.8)));
-            out.image(picture.large.clone(), circle, 200., false);
-            out.draw.push(Draw::Soft(None));
+            .or(state.avatars.first())
+            .filter(|_| !phone_row);
+        let circle = Rect::new(230., 250., 400., 400.);
+        out.shadow(circle, 200., 40., 18., 0.35);
+        out.draw.push(Draw::Soft(Some(0.8)));
+        match picture {
+            Some(picture) => out.image(picture.large.clone(), circle, 200., false),
+            // No picture yet, or about to send one: the frosted circle with a phone in it.
+            None => {
+                out.shape(circle, 200., out.theme.wash(0.2));
+                out.icon(
+                    assets,
+                    "smartphone",
+                    circle.inset(130.),
+                    [0.15, 0.16, 0.19, 1.],
+                );
+            }
         }
+        out.draw.push(Draw::Soft(None));
         out.text(
             i18n::t("aboutAvatar"),
             Rect::new(110., 780., 640., 120.),
@@ -541,20 +698,20 @@ fn about(out: &mut Scene, state: &State, assets: &Assets, section: Option<usize>
         return;
     }
     let (about, glyph) = match section {
-        Some(0) if state.subpage == Some(Subpage::Hidden) => ("aboutHidden", "gear"),
+        Some(GENERAL_SECTION) if state.subpage == Some(Subpage::Hidden) => ("aboutHidden", "gear"),
         None => ("aboutSettings", "tv-bold"),
-        Some(section) => [
-            (
-                if state.heroes.is_empty() {
-                    "aboutInterfaceNoArt"
-                } else {
-                    "aboutInterface"
-                },
-                "gear",
-            ),
-            ("aboutBackground", ""),
-            ("aboutWeather", "weather-partly-cloudy"),
-        ][section],
+        Some(GENERAL_SECTION) => ("aboutGeneral", "gear"),
+        Some(HOME_SECTION) => (
+            if state.heroes.is_empty() {
+                "aboutHomeScreenNoArt"
+            } else {
+                "aboutHomeScreen"
+            },
+            "grid-bold",
+        ),
+        Some(ACCESS_SECTION) => ("aboutAccessibility", "eye-bold"),
+        Some(BACKGROUND_SECTION) => ("aboutBackground", ""),
+        Some(_) => ("aboutWeather", "weather-partly-cloudy"),
     };
     if glyph.is_empty() {
         let frame = Rect::new(110., 310., 640., 360.);
@@ -607,7 +764,12 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 assets,
                 Row {
                     target: Target::Sidebar(index),
-                    rect: Rect::new(LIST_X, 164.8 + index as f32 * 84. - s, LIST_W, 72.),
+                    rect: Rect::new(
+                        LIST_X,
+                        LIST_TOP + index as f32 * ROW_PITCH - s,
+                        LIST_W,
+                        ROW_H,
+                    ),
                     title: i18n::t(key),
                     icon: Some(icon),
                     value: None,
@@ -695,7 +857,12 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
                 assets,
                 Row {
                     target: Target::Choice(index),
-                    rect: Rect::new(LIST_X, 164.8 + index as f32 * (h + 12.) - s, LIST_W, h),
+                    rect: Rect::new(
+                        LIST_X,
+                        LIST_TOP + index as f32 * (h + ROW_GAP) - s,
+                        LIST_W,
+                        h,
+                    ),
                     title,
                     icon: None,
                     value: None,
@@ -715,199 +882,31 @@ fn settings_list(out: &mut Scene, state: &State, assets: &Assets) {
         return;
     }
     match state.section {
-        0 => {
-            let mut shown = 0;
-            for (position, (index, key, icon, value, chevron)) in [
-                (
-                    0,
-                    "showAppNames",
-                    "type",
-                    if state.preferences.show_names {
-                        i18n::t("stateOn")
-                    } else {
-                        i18n::t("stateOff")
-                    },
-                    false,
-                ),
-                (
-                    1,
-                    "clockFormat",
-                    "clock",
-                    if state.hour_24 {
-                        i18n::t("hour24")
-                    } else {
-                        i18n::t("hour12")
-                    },
-                    true,
-                ),
-                (
-                    9,
-                    "appearance",
-                    "moon",
-                    i18n::t(appearance_label(state.preferences.appearance).0),
-                    true,
-                ),
-                (
-                    2,
-                    "reducedMotion",
-                    "motion",
-                    if state.preferences.reduced_motion {
-                        i18n::t("stateOn")
-                    } else {
-                        i18n::t("stateOff")
-                    },
-                    false,
-                ),
-                (
-                    11,
-                    "focusOutline",
-                    "eye-bold",
-                    if state.preferences.focus_outline {
-                        i18n::t("stateOn")
-                    } else {
-                        i18n::t("stateOff")
-                    },
-                    false,
-                ),
-                (
-                    12,
-                    "largeNames",
-                    "type",
-                    if state.preferences.large_names {
-                        i18n::t("stateOn")
-                    } else {
-                        i18n::t("stateOff")
-                    },
-                    false,
-                ),
-                (
-                    10,
-                    "tvHome",
-                    "tv",
-                    if state.tv_home_busy {
-                        "…"
-                    } else if state.tv_home_blocked.is_some() {
-                        i18n::t("stateUnavailable")
-                    } else if state.tv_home == Some(true) {
-                        i18n::t("stateOn")
-                    } else {
-                        i18n::t("stateOff")
-                    },
-                    false,
-                ),
-                (
-                    6,
-                    "topShelfArt",
-                    "sparkles",
-                    if state.preferences.top_shelf_art {
-                        i18n::t("stateOn")
-                    } else {
-                        i18n::t("stateOff")
-                    },
-                    false,
-                ),
-            ]
-            .into_iter()
-            // Top Shelf art is pictures the owner adds; with none installed
-            // the switch would change nothing, so it is not offered.
-            .filter(|(index, ..)| *index != 6 || !state.heroes.is_empty())
-            // Home is set on the TV, once it has said which it is.
-            .filter(|(index, ..)| {
-                *index != 10 || state.tv_home.is_some() || state.tv_home_blocked.is_some()
-            })
-            .enumerate()
-            {
-                shown += 1;
+        GENERAL_SECTION | HOME_SECTION | ACCESS_SECTION => {
+            for (position, spec) in section_rows(state, state.section).into_iter().enumerate() {
                 row(
                     out,
                     state,
                     assets,
                     Row {
-                        target: Target::Setting(index),
-                        rect: Rect::new(LIST_X, 164.8 + position as f32 * 84. - s, LIST_W, 72.),
-                        title: i18n::t(key),
-                        icon: Some(icon),
-                        value: Some(value),
-                        description: None,
-                        selected: false,
-                        chevron,
-                    },
-                );
-            }
-            // The rows after the switches start below the last one shown.
-            let mut below = (shown as f32 - 5.) * 84.;
-            // The profile picture: the owner's pictures, or one sent from the phone.
-            {
-                let shown = match state.preferences.avatar.as_deref() {
-                    _ if state.avatars.is_empty() => i18n::t("avatarNone"),
-                    Some(AVATAR_ROTATE) => i18n::t("rotateAll"),
-                    chosen => state
-                        .avatars
-                        .iter()
-                        .find(|picture| Some(picture.file.as_str()) == chosen)
-                        .or(state.avatars.first())
-                        .map_or("", |picture| picture.title.as_str()),
-                };
-                row(
-                    out,
-                    state,
-                    assets,
-                    Row {
-                        target: Target::Setting(8),
-                        rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
-                        title: i18n::t("profilePicture"),
+                        target: Target::Setting(spec.id),
+                        rect: Rect::new(
+                            LIST_X,
+                            LIST_TOP + position as f32 * ROW_PITCH - s,
+                            LIST_W,
+                            ROW_H,
+                        ),
+                        title: i18n::t(spec.key),
                         icon: None,
-                        value: Some(shown),
+                        value: spec.value.as_deref(),
                         description: None,
                         selected: false,
-                        chevron: true,
-                    },
-                );
-                below += 84.;
-            }
-            // Hidden apps come back from here; the row shows only while any are.
-            let hidden = state.hidden_count();
-            if hidden > 0 {
-                let count = hidden.to_string();
-                row(
-                    out,
-                    state,
-                    assets,
-                    Row {
-                        target: Target::Setting(7),
-                        rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
-                        title: i18n::t("hiddenApps"),
-                        icon: Some("eye-off-bold"),
-                        value: Some(&count),
-                        description: None,
-                        selected: false,
-                        chevron: true,
-                    },
-                );
-                below += 84.;
-            }
-            // No refresh row: installs, removals and plugged-in devices update the grid by
-            // themselves (platform::watch_apps, watch_inputs). As the TV's Home there is no Quit
-            // either: it left the screen empty until Home was pressed again.
-            if !crate::platform::is_home() {
-                row(
-                    out,
-                    state,
-                    assets,
-                    Row {
-                        target: Target::Setting(5),
-                        rect: Rect::new(LIST_X, 600.8 + below - s, LIST_W, 72.),
-                        title: i18n::t("quitApp"),
-                        icon: Some("power"),
-                        value: None,
-                        description: None,
-                        selected: false,
-                        chevron: false,
+                        chevron: spec.chevron,
                     },
                 );
             }
         }
-        1 => {
+        BACKGROUND_SECTION => {
             let backgrounds = state.backgrounds();
             // The wallpapers, then a tile that sends one from the phone.
             for index in 0..=backgrounds.len() {

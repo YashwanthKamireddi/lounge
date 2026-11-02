@@ -16,9 +16,31 @@ use crate::weather::{self, Unit};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
-pub const WEATHER_SECTION: usize = 2;
-pub const SECTION_COUNT: usize = 3;
+/// Settings' sections, in the order the section list shows them.
+pub const GENERAL_SECTION: usize = 0;
+pub const HOME_SECTION: usize = 1;
+pub const ACCESS_SECTION: usize = 2;
+pub const BACKGROUND_SECTION: usize = 3;
+pub const WEATHER_SECTION: usize = 4;
+pub const SECTION_COUNT: usize = 5;
+
+/// The settings (`Target::Setting` ids) each list section shows, top to bottom; a row that would
+/// change nothing on this TV is left out when drawn (`view::settings`). The first of each is
+/// always shown.
+pub fn section_settings(section: usize) -> &'static [usize] {
+    match section {
+        // Clock format, Lounge as Home, Hidden apps, Quit.
+        GENERAL_SECTION => &[1, 10, 7, 5],
+        // Appearance, app names, cover art, profile picture.
+        HOME_SECTION => &[9, 0, 6, 8],
+        // Larger names, focus outline, reduced motion.
+        ACCESS_SECTION => &[12, 11, 2],
+        _ => &[],
+    }
+}
 pub const APPS_COLUMNS: usize = 5;
+/// The lowest a focused Settings row reaches: above the list's fade into its bottom edge.
+pub const SETTINGS_LIST_END: f32 = 968. - 64. - 8.;
 pub const HOME_STRIP_LEFT: f32 = 84.;
 pub const HOME_STRIP_RIGHT: f32 = 1836.;
 pub const HOME_TILE_WIDTH: f32 = 324.;

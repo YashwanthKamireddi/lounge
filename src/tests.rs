@@ -83,7 +83,8 @@ fn remote_routes_through_the_tvos_home_and_settings() {
     assert_eq!(state.page, Page::Settings);
     assert_eq!(state.focus, Target::Sidebar(0));
     state.activate();
-    assert_eq!(state.focus, Target::Setting(0));
+    // General opens on its first row, the clock.
+    assert_eq!(state.focus, Target::Setting(1));
     assert!(state.back().is_empty());
     assert_eq!(state.focus, Target::Sidebar(0));
     // Up at the top of Settings stays put rather than reaching a removed tab bar.
@@ -330,7 +331,7 @@ fn preferences_round_trip_and_corrupt_data_is_not_silently_overwritten() {
 fn gallery_and_grid_navigation_scroll_to_keep_focus_visible() {
     let mut state = ready();
     state.open(2);
-    state.section = 1;
+    state.section = crate::state::BACKGROUND_SECTION;
     state.focus = Target::Background(0);
     state.direction(Direction::Down, &controls(&state));
     assert_eq!(state.focus, Target::Background(3));
@@ -341,7 +342,10 @@ fn gallery_and_grid_navigation_scroll_to_keep_focus_visible() {
         "the web-sized gallery fits all three rows"
     );
     state.direction(Direction::Left, &controls(&state));
-    assert_eq!(state.focus, Target::Sidebar(1));
+    assert_eq!(
+        state.focus,
+        Target::Sidebar(crate::state::BACKGROUND_SECTION)
+    );
     state.open(1);
     let last = state.apps().last().unwrap().id.clone();
     state.focus(Target::App(last), &controls(&state));
@@ -552,8 +556,8 @@ fn background_entry_restores_the_applied_background() {
     let mut state = ready();
     state.open(2);
     state.preferences.background = "forest".into();
-    state.focus = Target::Sidebar(1);
-    state.section = 1;
+    state.focus = Target::Sidebar(crate::state::BACKGROUND_SECTION);
+    state.section = crate::state::BACKGROUND_SECTION;
     state.direction(Direction::Right, &controls(&state));
     assert_eq!(state.focus, Target::Background(6));
     state.back();

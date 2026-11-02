@@ -233,13 +233,17 @@ impl State {
                 let top = if self.page == Page::Apps {
                     DOCK_TOP
                 } else {
-                    120.8
+                    // Where the first row sits: a focused row never enters the top fade.
+                    164.8
                 };
                 if control.rect.y < top {
                     self.scroll = (self.scroll + control.rect.y - top).max(0.);
                 }
                 let bottom = if self.page == Page::Home && self.moving.is_none() {
                     1041.6
+                } else if self.page == Page::Settings {
+                    // Clear of the list's fade at the bottom (view::settings).
+                    SETTINGS_LIST_END
                 } else {
                     982.4
                 };

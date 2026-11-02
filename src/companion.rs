@@ -387,30 +387,71 @@ fn page_html(kind: Kind) -> Vec<u8> {
 <meta name="color-scheme" content="dark">
 <title>Lounge</title>
 <style>
-*{{box-sizing:border-box}}
-body{{margin:0;min-height:100svh;display:flex;flex-direction:column;gap:20px;padding:max(28px,env(safe-area-inset-top)) 22px 28px;
-font:17px/1.4 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;background:#0d0f1a;color:#f2f3f7}}
-h1{{margin:8px 0 0;font-size:28px;font-weight:650;letter-spacing:-.4px}}
-p{{margin:0;color:#a7abc4}}
-.frame{{width:100%;aspect-ratio:{width}/{height};border-radius:{radius};overflow:hidden;background:#1a1d2e;
-display:grid;place-items:center;color:#6d7192;border:1px solid #ffffff14}}
-.frame img{{width:100%;height:100%;object-fit:cover;display:block}}
-.round{{max-width:240px;margin:0 auto}}
-button,label{{appearance:none;border:0;border-radius:14px;padding:16px;font:inherit;font-weight:600;text-align:center;
-width:100%;display:block;cursor:pointer}}
-label{{background:#262a40;color:#f2f3f7}}
-button{{background:#f2f3f7;color:#0d0f1a}}
-button:disabled{{opacity:.35}}
-input{{display:none}}
-#status{{min-height:1.4em;text-align:center}}
+*{{box-sizing:border-box;-webkit-tap-highlight-color:transparent}}
+html{{background:#07080f}}
+body{{margin:0;min-height:100svh;color:#f5f6fa;font:17px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+-webkit-font-smoothing:antialiased;overflow-x:hidden}}
+/* The page sits on the photo itself, blurred, as iOS sheets sit on what is behind them; before a
+   photo, on soft light. */
+.backdrop{{position:fixed;inset:-12%;z-index:-1;background:
+radial-gradient(60% 50% at 20% 15%,#4a3f9a 0,transparent 70%),
+radial-gradient(55% 45% at 85% 30%,#1f6f8b 0,transparent 70%),
+radial-gradient(70% 60% at 50% 100%,#6b2f5e 0,transparent 70%),#0b0c18;
+background-size:cover;background-position:center;filter:blur(48px) saturate(1.5);transform:translateZ(0);
+transition:opacity .5s ease}}
+.backdrop::after{{content:"";position:absolute;inset:0;background:rgba(6,7,14,.45)}}
+main{{max-width:520px;margin:0 auto;padding:max(24px,env(safe-area-inset-top)) 20px max(28px,env(safe-area-inset-bottom));
+display:flex;flex-direction:column;gap:18px}}
+h1{{margin:6px 4px 0;font:700 34px/1.15 -apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;letter-spacing:-.6px}}
+.hint{{margin:0 4px;color:rgba(235,236,245,.72);font-size:16px}}
+/* Liquid Glass: a clear pane that bends what is behind it, with a bright rim on its upper edge. */
+.glass{{background:rgba(255,255,255,.08);-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);
+border:1px solid rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -1px 0 rgba(255,255,255,.06),0 18px 50px rgba(0,0,0,.35)}}
+.card{{border-radius:30px;padding:14px;display:flex;flex-direction:column;gap:14px}}
+.frame{{width:100%;aspect-ratio:{width}/{height};border-radius:{radius};overflow:hidden;background:rgba(255,255,255,.05);
+touch-action:none;cursor:grab;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}}
+.frame:active{{cursor:grabbing}}
+.frame canvas{{width:100%;height:100%;display:block}}
+.round{{width:min(72%,280px);margin:6px auto 0}}
+.empty{{display:grid;place-items:center;color:rgba(235,236,245,.5);font-size:15px}}
+.tools{{display:flex;flex-direction:column;gap:10px;padding:0 6px 4px}}
+.tools[hidden]{{display:none}}
+#tip{{margin:0;text-align:center;font-size:14px;color:rgba(235,236,245,.62)}}
+input[type=range]{{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:transparent;margin:0}}
+input[type=range]::-webkit-slider-runnable-track{{height:6px;border-radius:3px;background:rgba(255,255,255,.22)}}
+input[type=range]::-moz-range-track{{height:6px;border-radius:3px;background:rgba(255,255,255,.22)}}
+input[type=range]::-webkit-slider-thumb{{-webkit-appearance:none;width:28px;height:28px;margin-top:-11px;border-radius:50%;
+background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35),inset 0 0 0 .5px rgba(0,0,0,.08)}}
+input[type=range]::-moz-range-thumb{{width:28px;height:28px;border:0;border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35)}}
+.actions{{display:flex;flex-direction:column;gap:12px}}
+.button{{appearance:none;border:0;border-radius:999px;min-height:56px;padding:16px 22px;font-family:inherit;font-size:17px;font-weight:600;line-height:1.2;text-align:center;width:100%;display:block;cursor:pointer;color:#f5f6fa;
+transition:transform .18s cubic-bezier(.2,.8,.2,1),opacity .2s ease,background-color .2s ease}}
+.button:active{{transform:scale(.97)}}
+.primary{{background:rgba(255,255,255,.92);color:#0b0c18;border:1px solid rgba(255,255,255,.6);
+box-shadow:inset 0 1px 0 #fff,0 10px 30px rgba(0,0,0,.3)}}
+.button:disabled{{opacity:.38;transform:none}}
+#status{{min-height:1.4em;margin:2px 0 0;text-align:center;color:rgba(235,236,245,.8);transition:opacity .25s ease}}
+@media (prefers-reduced-motion:reduce){{*{{transition:none!important}}}}
+@media (prefers-reduced-transparency:reduce){{.glass{{background:rgba(40,42,58,.96);-webkit-backdrop-filter:none;backdrop-filter:none}}}}
 </style></head><body>
+<div class="backdrop" id="backdrop"></div>
+<main>
 <h1>{title}</h1>
-<p>{hint}</p>
-<div class="frame{round}" id="frame">…</div>
-<label for="file">{choose}</label>
-<input id="file" type="file" accept="image/*">
-<button id="send" disabled>{send}</button>
-<p id="status" data-sending="{sending}" data-done="{done}" data-failed="{failed}" data-width="{width}" data-height="{height}"></p>
+<p class="hint">{hint}</p>
+<section class="glass card">
+<div class="frame{round}" id="frame"><canvas id="canvas"></canvas></div>
+<div class="tools" id="tools" hidden>
+<input id="zoom" type="range" min="1" max="4" step="0.01" value="1" aria-label="{zoom}">
+<p id="tip">{tip}</p>
+</div>
+</section>
+<div class="actions">
+<label class="button glass" for="file">{choose}</label>
+<input id="file" type="file" accept="image/*" style="display:none">
+<button class="button primary" id="send" disabled>{send}</button>
+</div>
+<p id="status" role="status" data-sending="{sending}" data-done="{done}" data-failed="{failed}" data-closed="{closed}" data-width="{width}" data-height="{height}"></p>
+</main>
 <script src="app.js"></script>
 </body></html>"#,
         title = escape(title),
@@ -420,6 +461,9 @@ input{{display:none}}
         sending = escape(crate::i18n::t("phoneSending")),
         done = escape(crate::i18n::t("phoneDone")),
         failed = escape(crate::i18n::t("phoneFailed")),
+        closed = escape(crate::i18n::t("phoneClosed")),
+        tip = escape(crate::i18n::t("phoneTip")),
+        zoom = escape(crate::i18n::t("phoneZoom")),
         radius = if kind == Kind::Avatar { "50%" } else { "14px" },
         round = if kind == Kind::Avatar { " round" } else { "" },
     )
@@ -427,51 +471,90 @@ input{{display:none}}
 }
 
 /// Fits the chosen photo on the phone (cover, centred) and sends it as a JPEG.
-const PAGE_SCRIPT: &str = r#"const status = document.getElementById('status');
-const frame = document.getElementById('frame');
-const send = document.getElementById('send');
+const PAGE_SCRIPT: &str = r#"const $ = (id) => document.getElementById(id);
+const status = $('status'), canvas = $('canvas'), zoom = $('zoom'), send = $('send'), tools = $('tools');
 const width = +status.dataset.width, height = +status.dataset.height;
-let blob = null;
-document.getElementById('file').addEventListener('change', async (event) => {
+const context = canvas.getContext('2d');
+// The photo, and where it sits: `scale` × the size that just covers the frame, centred at
+// (`x`, `y`) in the photo's own pixels. What the frame shows is exactly what the TV gets.
+let photo = null, cover = 1, x = 0, y = 0;
+const size = () => {
+  const box = canvas.getBoundingClientRect();
+  canvas.width = Math.round(box.width * devicePixelRatio);
+  canvas.height = Math.round(box.height * devicePixelRatio);
+};
+// Kept inside the photo: the frame never shows past its edge.
+const clamp = () => {
+  const s = cover * +zoom.value, halfW = width / s / 2, halfH = height / s / 2;
+  x = Math.min(Math.max(x, halfW), photo.width - halfW);
+  y = Math.min(Math.max(y, halfH), photo.height - halfH);
+};
+const draw = (target, w, h) => {
+  const s = cover * +zoom.value * (w / width);
+  const ctx = target.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(photo, w / 2 - x * s, h / 2 - y * s, photo.width * s, photo.height * s);
+};
+const show = () => { if (photo) { clamp(); draw(canvas, canvas.width, canvas.height); } };
+addEventListener('resize', () => { size(); show(); });
+size();
+$('file').addEventListener('change', async (event) => {
   const file = event.target.files[0];
   if (!file) return;
-  send.disabled = true;
   status.textContent = '';
   try {
     // Older Safari can't make a bitmap of every photo it can show: then through an image.
-    const bitmap = await createImageBitmap(file).catch(() => new Promise((resolve, reject) => {
+    photo = await createImageBitmap(file).catch(() => new Promise((resolve, reject) => {
       const image = new Image();
       image.onload = () => resolve(image);
       image.onerror = reject;
       image.src = URL.createObjectURL(file);
     }));
-    const scale = Math.max(width / bitmap.width, height / bitmap.height);
-    const w = width / scale, h = height / scale;
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    context.imageSmoothingQuality = 'high';
-    context.drawImage(bitmap, (bitmap.width - w) / 2, (bitmap.height - h) / 2, w, h, 0, 0, width, height);
-    blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-    const img = document.createElement('img');
-    img.src = URL.createObjectURL(blob);
-    frame.replaceChildren(img);
-    send.disabled = !blob;
+    cover = Math.max(width / photo.width, height / photo.height);
+    x = photo.width / 2; y = photo.height / 2; zoom.value = 1;
+    tools.hidden = false;
+    // The page takes on the photo, blurred behind the glass.
+    $('backdrop').style.background = `center / cover no-repeat url(${URL.createObjectURL(file)})`;
+    size(); show();
+    send.disabled = false;
   } catch {
     status.textContent = status.dataset.failed;
   }
 });
+zoom.addEventListener('input', show);
+// Drag to move the photo in the frame.
+let drag = null;
+canvas.addEventListener('pointerdown', (event) => {
+  if (!photo) return;
+  drag = { id: event.pointerId, px: event.clientX, py: event.clientY, x, y };
+  canvas.setPointerCapture(event.pointerId);
+});
+canvas.addEventListener('pointermove', (event) => {
+  if (!drag || event.pointerId !== drag.id) return;
+  const s = cover * +zoom.value * (canvas.getBoundingClientRect().width / width);
+  x = drag.x - (event.clientX - drag.px) / s;
+  y = drag.y - (event.clientY - drag.py) / s;
+  show();
+});
+const release = () => { drag = null; };
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
 send.addEventListener('click', async () => {
-  if (!blob) return;
+  if (!photo) return;
   send.disabled = true;
   status.textContent = status.dataset.sending;
+  const out = document.createElement('canvas');
+  out.width = width; out.height = height;
+  draw(out, width, height);
+  const blob = await new Promise((resolve) => out.toBlob(resolve, 'image/jpeg', 0.92));
   try {
     const response = await fetch('photo', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
     const reply = await response.json();
     status.textContent = reply.ok ? status.dataset.done : status.dataset.failed;
   } catch {
-    status.textContent = status.dataset.failed;
+    // No answer at all: the TV stopped listening (its code was closed).
+    status.textContent = status.dataset.closed;
   }
   send.disabled = false;
 });

@@ -85,8 +85,8 @@ pub(crate) fn effects(
             Effect::Weather(command) => weather.send(command),
             Effect::Phone(Some(kind)) => match phone.start(kind) {
                 Ok((url, size, modules)) => {
-                    // The desktop preview says where it listens, for a browser on the same
-                    // computer (the TV only shows its QR code).
+                    // The desktop preview also says where it listens (the TV only shows its
+                    // QR code).
                     if !platform.webos {
                         eprintln!("Lounge photo from phone: {url}");
                     }

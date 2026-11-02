@@ -110,12 +110,12 @@ try {
     assert.deepEqual(koreanApp.apps, [id]);
     assert.ok(koreanApp.ui_text.includes(title));
   }
-  const settings = await scenario('settings', 'settings,down,enter,down,enter');
+  const settings = await scenario('settings', 'settings,down,down,down,enter,down,enter');
   assert.equal(settings.preferences.background, 'forest');
   const saved = await scenario('saved', 'hold,enter,right,back');
   assert.equal(saved.preferences.background, 'forest');
   assert.deepEqual(saved.preferences.favorites.slice(0, 2), ['youtube.leanback.v4', 'netflix']);
-  const clock = await scenario('clock', 'settings,click:1300:200,click:1300:284');
+  const clock = await scenario('clock', 'settings,click:1300:200,click:1300:200');
   assert.equal(clock.subpage, 'Clock');
   // Up from the dock's right half reaches Inputs; OK opens its panel on Live TV.
   const input = await scenario('inputs', 'apps,right,right,right,right,up,enter');

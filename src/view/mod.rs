@@ -400,7 +400,10 @@ pub fn scene(state: &State, assets: &Assets, now: OffsetDateTime) -> Scene {
             Page::Apps => library(&mut out, state, assets),
             Page::Settings => settings(&mut out, state, assets),
         }
-        out.translate(content, 0., state.scroll - state.shown_scroll);
+        // Settings eases its list alone (see settings::settings).
+        if state.page != Page::Settings {
+            out.translate(content, 0., state.scroll - state.shown_scroll);
+        }
         // tvOS tab switch: the new page dissolves in, drifting from the travel direction.
         if let Some((_, eased, direction)) = page_t {
             out.translate(content, direction * 40. * (1. - eased), 0.);

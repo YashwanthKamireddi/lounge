@@ -18,6 +18,8 @@ const INSET: f32 = 0.74;
 /// Names the cached cuts; a change in how they are made changes it, so old
 /// cuts are made again (and cleared away).
 const CUT: &str = "fit4";
+/// Pictures sent from the phone (crate::photo) are named with this.
+pub const PHONE_PREFIX: &str = "phone-";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Picture {
@@ -119,8 +121,16 @@ fn prepare(source: &Path, cache: &Path) -> Option<Picture> {
         .to_image();
         std::fs::create_dir_all(cache).ok()?;
         crate::storage::give_to_folder_owner(cache).ok()?;
+        // A picture framed on the phone (crate::companion) fills the circle exactly as it was
+        // framed there; any other is fitted whole inside it.
+        let framed = file.starts_with(PHONE_PREFIX);
         for (size, path) in [(SMALL, &small), (LARGE, &large)] {
-            fit_circle(&square, size).save(path).ok()?;
+            let cut = if framed {
+                image::imageops::resize(&square, size, size, FilterType::Lanczos3)
+            } else {
+                fit_circle(&square, size)
+            };
+            cut.save(path).ok()?;
             crate::storage::give_to_folder_owner(path).ok()?;
         }
     }

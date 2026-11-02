@@ -41,14 +41,14 @@ impl State {
 
     pub(super) fn section_entry(&self) -> Target {
         match self.section {
-            1 => Target::Background(
+            BACKGROUND_SECTION => Target::Background(
                 self.backgrounds()
                     .iter()
                     .position(|id| *id == self.preferences.background)
                     .unwrap_or(3),
             ),
             WEATHER_SECTION => Target::WeatherToggle,
-            _ => Target::Setting(0),
+            section => Target::Setting(section_settings(section).first().copied().unwrap_or(0)),
         }
     }
 
@@ -65,12 +65,10 @@ impl State {
             // Its row goes once nothing is hidden; focus takes the row above it.
             Some(Subpage::Hidden) => Target::Setting(if self.hidden_count() > 0 {
                 7
-            } else if !self.heroes.is_empty() {
-                6
-            } else if self.tv_home.is_some() {
+            } else if self.tv_home.is_some() || self.tv_home_blocked.is_some() {
                 10
             } else {
-                2
+                1
             }),
             Some(Subpage::Avatar) => Target::Setting(8),
             Some(Subpage::Appearance) => Target::Setting(9),

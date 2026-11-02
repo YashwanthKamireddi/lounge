@@ -153,10 +153,11 @@ pub fn save_avatar(bytes: &[u8], storage: &Path) -> Result<String, String> {
     let folder = storage.join("avatars");
     std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
     let mut stamp = seconds();
-    while folder.join(format!("phone-{stamp}.jpg")).exists() {
+    let prefix = crate::avatars::PHONE_PREFIX;
+    while folder.join(format!("{prefix}{stamp}.jpg")).exists() {
         stamp += 1;
     }
-    let name = format!("phone-{stamp}.jpg");
+    let name = format!("{prefix}{stamp}.jpg");
     save_jpeg(&square, &folder.join(&name), 92)?;
     Ok(name)
 }

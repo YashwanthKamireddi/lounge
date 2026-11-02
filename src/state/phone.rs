@@ -126,7 +126,7 @@ impl State {
                 let mut effects = self.close_phone();
                 if let Some(restore) = restore
                     && self.page == Page::Settings
-                    && self.section == 1
+                    && self.section == BACKGROUND_SECTION
                 {
                     self.focus = restore;
                 }

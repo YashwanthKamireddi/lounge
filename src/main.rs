@@ -364,7 +364,8 @@ fn run() -> Result<(), String> {
     {
         state.preferences.background = model::Preferences::default().background;
     }
-    let phone = companion::Service::new(storage.clone(), !webos);
+    // On the desktop preview too, the phone reaches it over the network, as on the TV.
+    let phone = companion::Service::new(storage.clone(), false);
     preload::request_home(&mut preload, &state, &assets);
     // The owner's profile pictures, prepared once (crate::avatars). A changed
     // picture is decoded (up to 4096²), scaled and blurred: on a worker, off
