@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0
+
+### Minor Changes
+
+- e547610: Settings is organised into General, Home Screen, Accessibility, Background and Weather, with more room between rows. The phone page is redesigned in Apple's Liquid Glass style: it takes on your photo behind frosted glass, and you can drag and zoom the photo to frame it exactly as the TV will show it. A profile picture framed on the phone fills its circle as framed.
+
+### Patch Changes
+
+- d4cae2f: Start-up decodes only the cards of your own apps, in the appearance on screen, instead of every bundled card: less start-up work and less GPU memory. Measuring runs (tools/tv-bench.sh) work again while Lounge is the TV's Home.
+- e547610: Settings lists fade into the bottom edge instead of being cut mid-row, and a focused row always stays clear of the fade. Scrolling a list no longer moves the picture beside it. Netflix and YouTube wear their dark logos in the Dark appearance. The profile picture page shows what From your phone does, and the desktop preview takes photos from a phone on the same network.
+- 1babf82: An update installed while a TV input (HDMI, Live TV) is on screen now takes effect at the next Home press, as it already did behind an app.
+
 ## 1.3.0
 
 ### Minor Changes
