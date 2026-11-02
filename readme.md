@@ -19,18 +19,14 @@
 
 ## Why I made it
 
-My LG TV's home screen was slow, full of ads and rows I never used, and it stayed in memory
-behind every app I watched. I wanted something closer to an Apple TV: my apps, a nice wallpaper,
-and nothing else. So I wrote one for my own TV, and it's what I use every day.
+I wanted my TV to work like an Apple TV: press Home, see my apps, pick one. LG's Home put a lot
+between me and that, and it took a moment every time I pressed Home. So I built Lounge for my own
+TV, and it's been my Home every day since.
 
-It's one native program, not a web page. On my TV (LG 65UQ801C0SB):
-
-| What                       | Lounge                                     |
-| -------------------------- | ------------------------------------------ |
-| First frame from cold      | 0.42 s                                     |
-| Back to Home from an app   | about 0.1 s                                |
-| Memory while YouTube plays | about 25 MB (LG's Home holds about 113 MB) |
-| Sitting on Home            | wakes about once a minute, for the clock   |
+On my TV (an LG 65UQ801C0SB on webOS 22), pressing Home inside an app brings Lounge back in about
+a tenth of a second, and from a cold start its first frame is up in under half a second. While
+you watch something it keeps very little memory for itself (about 25 MB here, where LG's Home
+keeps about 113 MB), so the app you're in gets the rest. Your TV will have its own numbers.
 
 ## What's in it
 
