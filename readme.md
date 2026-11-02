@@ -43,6 +43,10 @@ keeps about 113 MB), so the app you're in gets the rest. Your TV will have its o
     <td width="50%"><img src="docs/readme/grid.jpg" alt="Every app in a grid under the dock"></td>
     <td width="50%"><img src="docs/readme/search.jpg" alt="Search: a letter grid with results as you type"></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="docs/readme/qr.jpg" alt="Settings › Background › From your phone: a QR code to scan with the phone"></td>
+    <td width="50%"><img src="docs/readme/from-phone.jpg" alt="The phone's page sending a photo, and the photo as the TV's wallpaper behind the dock"></td>
+  </tr>
 </table>
 
 - **A dock of five apps,** and every other app one press down.
