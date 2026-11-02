@@ -1599,9 +1599,21 @@ impl Shell {
     fn app_covers(&self) -> bool {
         !self.presence.raising()
             && platform::front_app().is_some_and(|front| {
+                // An app from the grid, or a TV input (Live TV, HDMI): either hides Home.
                 platform::covers_home(
                     &front,
-                    self.state.inventory.apps.iter().map(|app| app.id.as_str()),
+                    self.state
+                        .inventory
+                        .apps
+                        .iter()
+                        .map(|app| app.id.as_str())
+                        .chain(
+                            self.state
+                                .inventory
+                                .inputs
+                                .iter()
+                                .map(|input| input.id.as_str()),
+                        ),
                 )
             })
     }
