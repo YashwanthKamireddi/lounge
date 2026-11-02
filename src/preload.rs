@@ -314,12 +314,10 @@ pub fn request_home(preload: &mut Preload, state: &State, assets: &Assets) {
     for path in wallpaper_pictures(assets, &state.preferences.background) {
         preload.request(path);
     }
-    let order: Vec<String> = state
-        .preferences
-        .favorites(&state.inventory.apps)
-        .into_iter()
-        .chain(assets.tiles.keys().cloned())
-        .collect();
+    // The owner's apps only (their saved order, before the TV's list arrives): every bundled
+    // card, installed or not, was decoded here, tens of MB of GPU memory and start-up work for
+    // apps this TV may not have. Cards for apps that arrive later decode with the list.
+    let order: Vec<String> = state.preferences.favorites(&state.inventory.apps);
     // Top Shelf art for the dock apps: decoded on first focus it froze the
     // screen ~140 ms per app on the TV.
     if state.preferences.top_shelf_art {
@@ -332,8 +330,10 @@ pub fn request_home(preload: &mut Preload, state: &State, assets: &Assets) {
             preload.request(assets.path(format!("heroes/{id}-glass.png")));
         }
     }
-    for id in order.iter().filter(|id| assets.tiles.contains_key(*id)) {
-        preload.request(assets.path(format!("tiles/{id}.png")));
+    for id in &order {
+        for path in card_pictures(assets, state.preferences.appearance, id) {
+            preload.request(path);
+        }
     }
     for id in state.backgrounds() {
         preload.request(assets.wallpaper_thumbnail(id));
@@ -388,6 +388,26 @@ pub fn wallpaper_pictures(assets: &Assets, id: &str) -> [String; 3] {
     [".jpg", "-glass.png", "-home-glass.png"].map(|suffix| assets.wallpaper(id, suffix))
 }
 
+/// A bundled card's pictures the appearance can show: its dark version in Dark, the light one
+/// in Light, both in Automatic (which crossfades between them). Cards without a dark version
+/// always use the light one.
+fn card_pictures(assets: &Assets, appearance: crate::model::Appearance, id: &str) -> Vec<String> {
+    use crate::model::Appearance;
+    if !assets.tiles.contains_key(id) {
+        return vec![];
+    }
+    let dark = format!("{id}.dark");
+    let has_dark = assets.tiles.contains_key(&dark);
+    let mut paths = Vec::with_capacity(2);
+    if has_dark && appearance != Appearance::Light {
+        paths.push(assets.path(format!("tiles/{dark}.png")));
+    }
+    if !has_dark || appearance != Appearance::Dark {
+        paths.push(assets.path(format!("tiles/{id}.png")));
+    }
+    paths
+}
+
 /// Back from an app: the tiles freed while it was in front
 /// decode again in the background, before any scroll reaches
 /// them. Only what is missing is queued.
@@ -413,15 +433,14 @@ pub fn refill(
         }
     }
     for app in &state.inventory.apps {
-        let names = if assets.tiles.contains_key(&app.id) {
-            vec![format!("tiles/{}.png", app.id)]
+        let paths = if assets.tiles.contains_key(&app.id) {
+            card_pictures(assets, state.preferences.appearance, &app.id)
         } else if app.brand != "generic" {
-            vec![format!("surfaces/{}.png", app.brand)]
+            vec![assets.path(format!("surfaces/{}.png", app.brand))]
         } else {
             vec![]
         };
-        for name in names {
-            let path = assets.path(name);
+        for path in paths {
             if !renderer.has(&path) && std::path::Path::new(&path).is_file() {
                 preload.request(path);
             }

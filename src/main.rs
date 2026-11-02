@@ -229,6 +229,11 @@ fn restart_updated_home() {
 
 fn home_start(options: &Options) -> Option<Result<(), String>> {
     if !platform::is_home() {
+        // A measuring run (tools/tv-bench.sh) is started as the app on purpose: it runs, with
+        // its own preferences untouched, rather than opening Home.
+        if options.profile_frames.is_some() {
+            return None;
+        }
         return platform::redirect_to_home().then_some(Ok(()));
     }
     platform::status(&format!(
