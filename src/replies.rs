@@ -90,17 +90,28 @@ impl Replies {
             }
             Response::Running(_) => {}
             Response::TvHome(result) => {
-                let asked = std::mem::take(&mut state.tv_home_busy);
+                state.tv_home_busy = false;
+                // Running as the TV's Home is proof of it, whatever a reply says: the switch
+                // must then always be there to turn it off.
+                let home_now = crate::platform::is_home();
                 match result {
                     Ok(on) => {
-                        if asked {
-                            state.notify(i18n::t(if on { "tvHomeLounge" } else { "tvHomeLg" }));
+                        let on = on || home_now;
+                        let wanted = state.tv_home_wanted.take();
+                        state.tv_home_rechecking = false;
+                        if let Some(wanted) = wanted {
+                            state.notify(i18n::t(match (on == wanted, on) {
+                                (true, true) => "tvHomeLounge",
+                                (true, false) => "tvHomeLg",
+                                (false, true) => "tvHomeStuck",
+                                (false, false) => "tvHomeError",
+                            }));
                         }
                         state.tv_home = Some(on);
                         state.tv_home_blocked = None;
                         // A TV that can have Lounge as its Home, and does not yet: asked once,
                         // the first time nothing else is open.
-                        if !asked
+                        if wanted.is_none()
                             && !on
                             && !state.preferences.home_offered
                             && state.overlay.is_none()
@@ -118,10 +129,29 @@ impl Replies {
                     Err(error) => {
                         eprintln!("Lounge as Home: {error}");
                         let block = state::home_block(&error);
-                        if asked {
-                            state.notify(i18n::t(block));
-                        } else if state.tv_home.is_none() {
-                            state.tv_home_blocked = Some(block);
+                        if state.tv_home_wanted.is_some() && !state.tv_home_rechecking {
+                            // The change may well have happened (the reply can be lost while
+                            // Home switches over): ask the TV how things stand before saying.
+                            state.tv_home_rechecking = true;
+                            state.tv_home_busy = true;
+                            state.queued.push(state::Effect::TvHome(None));
+                        } else {
+                            // Said when asked: after a change, or the row pressed while the
+                            // TV could not be read.
+                            let wanted = state.tv_home_wanted.take();
+                            if std::mem::take(&mut state.tv_home_rechecking) {
+                                state.notify(i18n::t(if home_now && wanted == Some(false) {
+                                    "tvHomeStuck"
+                                } else {
+                                    block
+                                }));
+                            }
+                            if home_now {
+                                state.tv_home = Some(true);
+                                state.tv_home_blocked = None;
+                            } else if state.tv_home.is_none() {
+                                state.tv_home_blocked = Some(block);
+                            }
                         }
                     }
                 }

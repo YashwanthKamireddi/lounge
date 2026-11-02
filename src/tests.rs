@@ -2279,3 +2279,49 @@ fn a_missing_service_is_not_retried_for_ever() {
     ));
     assert!(!crate::platform::permanent("Timed out"));
 }
+
+#[test]
+fn a_home_change_that_went_through_is_never_reported_as_failed_and_the_switch_never_goes() {
+    use crate::platform::{Platform, Response};
+    use crate::replies::Replies;
+    let platform = Platform::new(false, None);
+    let assets = test_assets();
+    let mut replies = Replies::new(false);
+    let mut state = ready();
+    state.preferences.home_offered = true;
+    let mut apply = |state: &mut State, result: Result<bool, String>| {
+        replies.apply(Response::TvHome(result), state, &platform, &assets, true, 0);
+    };
+    // The TV couldn't be read at start: the row says why, but pressing it reads the TV again.
+    apply(&mut state, Err("timed out".into()));
+    assert!(state.tv_home_blocked.is_some());
+    state.open(2);
+    state.section = 0;
+    state.focus = Target::Setting(10);
+    let effects = state.activate();
+    assert!(matches!(effects.as_slice(), [Effect::TvHome(None)]));
+    // This time it answers: the switch is back.
+    apply(&mut state, Ok(false));
+    assert_eq!(state.tv_home, Some(false));
+    assert!(state.tv_home_blocked.is_none());
+    // Turned on; the reply is lost while Home switches over. Nothing is said until the TV is
+    // read again, and then what is true is said.
+    state.notice = None;
+    let effects = state.activate();
+    assert!(matches!(effects.as_slice(), [Effect::TvHome(Some(true))]));
+    apply(&mut state, Err("timed out".into()));
+    assert!(
+        state.notice.is_none(),
+        "a lost reply was reported as a failure"
+    );
+    assert!(state.queued.contains(&Effect::TvHome(None)));
+    apply(&mut state, Ok(true));
+    assert_eq!(state.tv_home, Some(true));
+    assert_eq!(
+        state.notice.as_ref().map(|(text, _)| text.as_str()),
+        Some(crate::i18n::t("tvHomeLounge"))
+    );
+    // And it can always be switched off again.
+    let effects = state.activate();
+    assert!(matches!(effects.as_slice(), [Effect::TvHome(Some(false))]));
+}

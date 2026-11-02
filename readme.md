@@ -108,9 +108,10 @@ Prefer a file? Install `io.github.yashwanthkamireddi.lounge_1.2.0_arm.ipk` from
 [Releases](https://github.com/YashwanthKamireddi/lounge/releases/latest) with
 [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop).
 
-**Back to LG's Home, any time:** turn off Settings › General › Lounge as Home, or run
-`sh /var/lib/lounge/home.sh disable` over SSH. Nothing is written to LG's firmware, and if Lounge
-ever fails to start three times in a minute, it hands Home back to LG by itself.
+**Back to LG's Home, any time, with the remote:** turn off Settings › General › Lounge as Home.
+Uninstalling Lounge in Homebrew Channel and restarting the TV does it too. Nothing is written to
+LG's firmware, and if Lounge ever fails to start three times in a minute, it hands Home back to LG
+by itself. (Over SSH: `sh /var/lib/lounge/home.sh disable`.)
 
 ## Compatibility
 

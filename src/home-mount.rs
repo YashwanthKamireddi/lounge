@@ -1260,11 +1260,18 @@ impl<S: System> Home<S> {
             enabled: settings.is_some_and(|s| s.enabled),
             mounted: ours_mounted && current,
             stale: ours_mounted && !current,
-            foreign: self.exe_foreign(id)? || self.manifest_foreign(id)?,
-            hook: self.hook_owned()?,
+            // Side facts: one that can't be read is reported as absent, never as a failed
+            // status (that would leave the TV's switch unusable over a detail).
+            foreign: self.exe_foreign(id).unwrap_or(false)
+                || self.manifest_foreign(id).unwrap_or(false),
+            hook: self.hook_owned().unwrap_or(false),
             marker: self.system.exists(MARKER),
             checkpoint: self.system.exists(&checkpoint)
-                || (self.system.exists(&persistent) && !self.system.list(&persistent)?.is_empty()),
+                || (self.system.exists(&persistent)
+                    && self
+                        .system
+                        .list(&persistent)
+                        .is_ok_and(|names| !names.is_empty())),
             app_dir,
             home_id: (id != HOME).then_some(id),
         })

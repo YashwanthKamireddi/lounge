@@ -222,12 +222,17 @@ impl State {
                             && !self.tv_home_busy
                         {
                             self.tv_home_busy = true;
+                            self.tv_home_wanted = Some(!on);
                             self.dirty = true;
                             return vec![Effect::TvHome(Some(!on))];
                         }
-                        // Not possible on this TV: say why, every time it is asked.
-                        if let Some(block) = self.tv_home_blocked {
-                            self.notify(i18n::t(block));
+                        // The TV could not be read: read it again, and say why if it still
+                        // can't be (a passing failure must not leave the switch gone).
+                        if self.tv_home_blocked.is_some() && !self.tv_home_busy {
+                            self.tv_home_busy = true;
+                            self.tv_home_rechecking = true;
+                            self.dirty = true;
+                            return vec![Effect::TvHome(None)];
                         }
                         return vec![];
                     }
@@ -343,6 +348,7 @@ impl State {
                 self.dirty = true;
                 if index == 0 && !self.tv_home_busy {
                     self.tv_home_busy = true;
+                    self.tv_home_wanted = Some(true);
                     return vec![Effect::TvHome(Some(true))];
                 }
                 return vec![];

@@ -240,6 +240,12 @@ pub struct State {
     /// Why this TV cannot have Lounge as its Home (a message key), when it said so: the row
     /// stays, saying why, instead of disappearing.
     pub tv_home_blocked: Option<&'static str>,
+    /// The change of Home asked for (on or off), until the TV confirms it: a reply that came
+    /// back as an error is checked against the TV's real state before anything is said.
+    pub tv_home_wanted: Option<bool>,
+    /// A check of the TV whose failure is said out loud: after a change came back as an
+    /// error, or the row pressed while the TV could not be read.
+    pub tv_home_rechecking: bool,
     /// Where the focused tile sits in the grid, so focus can go to the tile
     /// that takes its place if it disappears.
     pub focus_slot: usize,
@@ -443,6 +449,8 @@ impl State {
             tv_home: None,
             tv_home_busy: false,
             tv_home_blocked: None,
+            tv_home_wanted: None,
+            tv_home_rechecking: false,
             focus_slot: 0,
             avatar_index: 0,
             avatar_since: crate::clock::now(),

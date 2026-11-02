@@ -122,6 +122,7 @@
   "tvHomeLounge": "Lounge is now the TV's Home",
   "tvHomeLg": "LG Home is back",
   "tvHomeError": "Couldn't change Home. Is the Homebrew Channel elevated?",
+  "tvHomeStuck": "Couldn't give Home back to LG. Uninstall Lounge in Homebrew Channel and restart the TV: LG Home returns.",
   "tvHomeNeedsRoot": "Lounge becomes Home once the Homebrew Channel has root access.",
   "tvHomeOther": "Another launcher is this TV's Home. Switch it off there, then try again.",
   "tvHomeUnsupported": "On this TV, Lounge opens as an app. Becoming Home isn't available for its webOS version yet.",
