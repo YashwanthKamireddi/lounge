@@ -72,9 +72,8 @@ itself. (Over SSH: `sh /var/lib/lounge/home.sh disable`.)
 
 ## How it works
 
-Lounge started from [Luma](https://github.com/ecklf/lg-luma), which already drew natively with
-SDL2 and OpenGL ES, with vector text and partial redraws. Since the fork about 27,000 of its
-30,000 lines of Rust have been added or rewritten. What I built on top:
+Lounge is one native Rust binary that draws straight to the TV's graphics plane with OpenGL ES
+2.0 through SDL2, not a web page.
 
 - **Liquid glass.** One shader samples a pre-blurred backdrop, with refraction at the rim, so a
   glass panel costs a single pass. Opaque tiles are written to the stencil buffer first, so
@@ -85,7 +84,7 @@ SDL2 and OpenGL ES, with vector text and partial redraws. Since the fork about 2
 - **Starting fast.** Compiled shaders are cached on the TV, pictures ship ASTC-compressed for the
   GPU, and decoding runs on worker threads. The drawing thread never reads a file or waits on the
   network.
-- **Becoming Home, rewritten.** Lounge's binary is bind-mounted over LG Home's (webOS 5, 6 and 22
+- **Becoming Home.** Lounge's binary is bind-mounted over LG Home's (webOS 5, 6 and 22
   to 24), or a Home manifest pointing at Lounge is mounted (webOS 25 and 26). Pressing Home brings
   back the running Lounge instead of starting a new one. A crash loop gives Home back to LG, and
   turning it off only ever needs the remote.
