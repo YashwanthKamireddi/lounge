@@ -66,7 +66,7 @@ You need an LG TV rooted with an elevated [Homebrew Channel](https://www.webosbr
 2. Install **Lounge** from Homebrew Channel. Updates arrive there too.
 3. Open Lounge and choose **Make Home**. From then on, the Home button opens Lounge.
 
-Prefer a file? Install `io.github.yashwanthkamireddi.lounge_1.2.0_arm.ipk` from
+Prefer a file? Install `io.github.yashwanthkamireddi.lounge_1.3.0_arm.ipk` from
 [Releases](https://github.com/YashwanthKamireddi/lounge/releases/latest) with
 [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop).
 
@@ -129,7 +129,7 @@ nix develop
 pnpm install --frozen-lockfile
 pnpm sdk
 export WEBOS_NDK="$PWD/.build/toolchain/arm-webos-linux-gnueabi_sdk-buildroot"
-pnpm run package   # dist/io.github.yashwanthkamireddi.lounge_1.2.0_arm.ipk
+pnpm run package   # dist/io.github.yashwanthkamireddi.lounge_1.3.0_arm.ipk
 pnpm dev           # desktop preview with sample apps
 ```
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.0
+
+### Minor Changes
+
+- 8451ff8: Your own wallpaper and profile picture, sent from your phone. Settings › Background ends with a "From your phone" tile, and Profile picture has the same row: the TV shows a QR code, your phone opens a small page, you pick a photo and tap Send. The phone fits the photo itself (iPhone HEIC included) and the TV makes the wallpaper's shading and glass from it, as for the bundled ones. The TV only listens while the code is on screen, on your own network, at an address with a random token.
+
+### Patch Changes
+
+- fd15b2f: After a cold start, Lounge comes up over the TV's input even when webOS opens that input late, after Home is already up. It follows the TV's own Home Auto Launch setting, as LG's Home does: with it off, the TV stays on its input. The "Make Lounge your Home" question waits until the screen has settled, and alerts and menus open with their button already in place, so they fade in without a shake.
+- 1317a91: After a cold start, Lounge takes over Home about 10 seconds sooner: once webOS has brought LG's Home back from its saved image, Lounge drops that image and takes its place at once, instead of waiting for webOS to finish saving it.
+- 11402aa: Lounge as Home can always be switched off with the remote. A change that went through is no longer reported as failed: when a reply is lost while Home switches over, Lounge reads the TV's real state before saying anything. While Lounge is the TV's Home, the Settings row always shows On and turns it off, and a row that couldn't read the TV reads it again when pressed instead of staying "Not available". A detail of the TV that can't be read no longer fails the whole check.
+- fd15b2f: A photo from the phone is used at the size the page sends, with no extra resampling, and anything far larger is refused, so preparing it takes little memory on the TV.
+- 36ad922: Motion is timed to the display's refresh: every frame of an animation moves by the same amount, even when the TV wakes Lounge a few milliseconds early or late.
+
 ## 1.2.0
 
 ### Minor Changes
